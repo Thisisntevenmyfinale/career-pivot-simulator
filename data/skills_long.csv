@@ -1,0 +1,22 @@
+occupation,skill,importance
+Data Scientist,python,4.8
+Data Scientist,statistics,4.6
+Data Scientist,machine learning,4.7
+Data Scientist,sql,4.2
+Software Engineer,python,4.0
+Software Engineer,git,4.8
+Software Engineer,software design,4.6
+Software Engineer,docker,4.2
+Data Analyst,sql,4.8
+Data Analyst,excel,4.6
+Data Analyst,data visualization,4.4
+Data Analyst,statistics,4.1
+UX Designer,user research,4.7
+UX Designer,prototyping,4.6
+UX Designer,ui design,4.5
+Product Manager,roadmapping,4.6
+Product Manager,stakeholder management,4.7
+Product Manager,analytics,4.1
+Cybersecurity Analyst,network security,4.8
+Cybersecurity Analyst,risk assessment,4.5
+Cybersecurity Analyst,incident response,4.6

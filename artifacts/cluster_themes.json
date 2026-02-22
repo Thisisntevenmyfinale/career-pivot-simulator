@@ -1,0 +1,46 @@
+{
+  "2": {
+    "top_skills": [
+      "network security",
+      "incident response",
+      "risk assessment",
+      "analytics",
+      "ui design",
+      "statistics"
+    ],
+    "notes": "Top skills by mean importance within cluster (simple, interpretable theme)."
+  },
+  "0": {
+    "top_skills": [
+      "sql",
+      "python",
+      "statistics",
+      "git",
+      "machine learning",
+      "software design"
+    ],
+    "notes": "Top skills by mean importance within cluster (simple, interpretable theme)."
+  },
+  "3": {
+    "top_skills": [
+      "stakeholder management",
+      "roadmapping",
+      "analytics",
+      "data visualization",
+      "ui design",
+      "statistics"
+    ],
+    "notes": "Top skills by mean importance within cluster (simple, interpretable theme)."
+  },
+  "1": {
+    "top_skills": [
+      "user research",
+      "prototyping",
+      "ui design",
+      "risk assessment",
+      "statistics",
+      "stakeholder management"
+    ],
+    "notes": "Top skills by mean importance within cluster (simple, interpretable theme)."
+  }
+}

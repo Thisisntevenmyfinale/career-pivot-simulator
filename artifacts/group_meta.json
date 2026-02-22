@@ -1,0 +1,19 @@
+{
+  "group_order": [
+    "Data & Analytics",
+    "Engineering",
+    "Product & Strategy",
+    "Design & UX",
+    "Security & Risk",
+    "Other"
+  ],
+  "group_descriptions": {
+    "Data & Analytics": "Analysis, modeling, data tooling, quantitative reasoning.",
+    "Engineering": "Software building blocks, tooling, development practices.",
+    "Product & Strategy": "Planning, alignment, stakeholder work, roadmap & prioritization.",
+    "Design & UX": "Research, prototyping, UI/UX craft and iteration.",
+    "Security & Risk": "Security controls, incident response, risk management basics.",
+    "Other": "Uncategorized / future taxonomy expansion."
+  },
+  "notes": "Heuristic dummy taxonomy. Replace offline with O*NET/ESCO mapping later."
+}

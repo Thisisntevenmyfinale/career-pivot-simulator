@@ -1,0 +1,10 @@
+{
+  "n_occupations": 6,
+  "n_skills": 18,
+  "matrix_density": 0.19444444444444445,
+  "occupation_coverage_mean": 0.19444444444444442,
+  "occupation_coverage_min": 0.16666666666666666,
+  "skill_coverage_mean": 0.19444444444444442,
+  "skill_coverage_min": 0.16666666666666666,
+  "notes": "Coverage is based on non-zero importance values in the matrix."
+}

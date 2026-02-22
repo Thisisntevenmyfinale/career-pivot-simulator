@@ -1,0 +1,20 @@
+{
+  "analytics": "Other",
+  "data visualization": "Data & Analytics",
+  "docker": "Engineering",
+  "excel": "Data & Analytics",
+  "git": "Engineering",
+  "incident response": "Security & Risk",
+  "machine learning": "Data & Analytics",
+  "network security": "Security & Risk",
+  "prototyping": "Design & UX",
+  "python": "Data & Analytics",
+  "risk assessment": "Security & Risk",
+  "roadmapping": "Product & Strategy",
+  "software design": "Engineering",
+  "sql": "Data & Analytics",
+  "stakeholder management": "Product & Strategy",
+  "statistics": "Data & Analytics",
+  "ui design": "Design & UX",
+  "user research": "Design & UX"
+}
