@@ -2,20 +2,17 @@ from __future__ import annotations
 
 import os
 import re
+from typing import Optional
 
 import pandas as pd
-from openai import OpenAI
 
 
-def _get_api_key() -> str:
-    key = os.getenv("OPENAI_API_KEY", "").strip()
-    if not key:
-        raise RuntimeError(
-            "OPENAI_API_KEY is not set. "
-            "Set it locally: export OPENAI_API_KEY='...'\n"
-            "On Streamlit Cloud: App → Settings → Secrets."
-        )
-    return key
+def _get_api_key_optional() -> str:
+    """
+    Returns API key or empty string (never raises).
+    Online mode requires a non-empty key.
+    """
+    return os.getenv("OPENAI_API_KEY", "").strip()
 
 
 def _sanitize_role_name(s: str) -> str:
@@ -67,17 +64,8 @@ _EXCLUSION_RE = _compile_exclusion_regex()
 
 def _pick_missing_skills_for_llm(gap_df: pd.DataFrame, *, max_n: int = 6) -> pd.DataFrame:
     """
-    Selects a small, high-signal set of missing skills for the LLM prompt.
-    IMPORTANT: O*NET IM is 1..5. Our goal is a practical plan, not a physiology checklist.
-
-    Rules:
-    1) Start strict:
-       - gap > 0
-       - target_importance >= 3.0
-       - gap >= 0.8
-    2) Exclude physical/sensory/psychomotor patterns (see regex).
-    3) If too few remain, relax thresholds gradually (but keep exclusions).
-    4) Rank by priority = gap * target_importance (classic), and return top max_n.
+    Selects a small, high-signal set of missing skills for the prompt.
+    IMPORTANT: O*NET IM is 1..5. Goal is practical plan, not physiology checklist.
 
     Returns dataframe with columns:
       skill, gap, current_importance, target_importance, priority
@@ -90,11 +78,9 @@ def _pick_missing_skills_for_llm(gap_df: pd.DataFrame, *, max_n: int = 6) -> pd.
     df = gap_df.copy()
     df["skill"] = df["skill"].astype(str)
 
-    # numeric safety
     for col in ["gap", "current_importance", "target_importance"]:
         df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0.0)
 
-    # Only missing
     df = df[df["gap"] > 0].copy()
     if df.empty:
         return pd.DataFrame(columns=["skill", "gap", "current_importance", "target_importance", "priority"])
@@ -102,27 +88,22 @@ def _pick_missing_skills_for_llm(gap_df: pd.DataFrame, *, max_n: int = 6) -> pd.
     # Exclude physical/sensory patterns
     df = df[~df["skill"].str.contains(_EXCLUSION_RE, na=False)].copy()
 
-    # helper to apply thresholds
     def apply_thresholds(d: pd.DataFrame, *, min_tgt: float, min_gap: float) -> pd.DataFrame:
         out = d[(d["target_importance"] >= float(min_tgt)) & (d["gap"] >= float(min_gap))].copy()
         out["priority"] = (out["gap"] * out["target_importance"]).astype(float)
         out = out.sort_values(["priority", "gap", "target_importance"], ascending=False)
         return out
 
-    # Stage 1: strict
     cand = apply_thresholds(df, min_tgt=3.0, min_gap=0.8)
 
-    # Stage 2: relax gap
     if len(cand) < max_n:
         cand2 = apply_thresholds(df, min_tgt=3.0, min_gap=0.5)
         cand = pd.concat([cand, cand2], ignore_index=True).drop_duplicates(subset=["skill"])
 
-    # Stage 3: relax target importance slightly (still meaningful on 1..5 scale)
     if len(cand) < max_n:
         cand3 = apply_thresholds(df, min_tgt=2.8, min_gap=0.5)
         cand = pd.concat([cand, cand3], ignore_index=True).drop_duplicates(subset=["skill"])
 
-    # Final fallback: just take top missing by priority after exclusions
     if cand.empty:
         df["priority"] = (df["gap"] * df["target_importance"]).astype(float)
         cand = df.sort_values(["priority", "gap", "target_importance"], ascending=False)
@@ -130,32 +111,156 @@ def _pick_missing_skills_for_llm(gap_df: pd.DataFrame, *, max_n: int = 6) -> pd.
     return cand.head(int(max_n)).reset_index(drop=True)
 
 
-def generate_ai_learning_plan_markdown(
+def _offline_learning_plan_markdown(
     *,
     current_role: str,
     target_role: str,
     gap_df: pd.DataFrame,
-    model: str = "gpt-4o-mini",
-    language: str = "de",
-    max_missing: int = 6,
+    language: str,
+    max_missing: int,
 ) -> str:
     """
-    Uses OpenAI to translate quantified gaps into a realistic learning plan (Markdown).
-    The LLM is used for *wording + structuring*, while skill selection remains deterministic.
+    Deterministic offline fallback.
+    Uses the same missing-skill selection logic as the online prompt.
+    Never calls external services.
     """
-    _get_api_key()
-    client = OpenAI()
-
     cur = _sanitize_role_name(current_role)
     tgt = _sanitize_role_name(target_role)
 
     miss = _pick_missing_skills_for_llm(gap_df, max_n=max_missing)
 
     if miss.empty:
+        if language.lower().startswith("en"):
+            return (
+                "🧰 **Learning Plan (Offline-Fallback):**\n\n"
+                "✅ In dieser Pivot-Konfiguration gibt es nach Filtern keine klar prioritären Skill-Gaps.\n\n"
+                "**Empfohlener Fokus (8–14 Tage):**\n"
+                "- 1 Portfolio-Projekt, das deinen Pivot plausibel macht (Output: Repo + kurze Demo).\n"
+                "- CV/LinkedIn: 3 transferierbare Stories (Problem → Aktion → Ergebnis).\n"
+                "- 6 Zielrollen-Interviewfragen üben (STAR + Zahlen/Impact).\n"
+            )
         return (
-            "✅ **AI Coach:** Nach Filtern (O*NET IM 1–5) gibt es hier keine klaren prioritären Skill-Gaps. "
-            "Fokus: 1 Portfolio-Projekt + Bewerbungsunterlagen + Interview-Stories."
+            "🧰 **Learning Plan (Offline fallback):**\n\n"
+            "✅ After filtering, there are no clear priority skill gaps for this pivot.\n\n"
+            "**Focus (8–14 days):**\n"
+            "- One portfolio project (repo + short demo).\n"
+            "- Resume/LinkedIn: 3 transferable stories (problem → action → impact).\n"
+            "- Practice 6 target-role interview questions (STAR + metrics).\n"
         )
+
+    skills = miss["skill"].astype(str).tolist()
+
+    # simple 3-phase split (deterministic, stable)
+    n = len(skills)
+    a = max(1, n // 3)
+    b = max(1, n // 3)
+    foundations = skills[:a]
+    intermediate = skills[a : a + b]
+    advanced = skills[a + b :]
+
+    def bullets(phase_skills: list[str]) -> str:
+        return "\n".join([f"- **{s}** → 2×/Woche Übungsblock + 1 messbarer Output" for s in phase_skills]) if phase_skills else "- (keine weiteren prioritären Skills)"
+
+    if language.lower().startswith("en"):
+        return (
+            "🧰 **Learning Plan (Offline-Fallback, deterministisch):**\n"
+            "_OpenAI nicht verfügbar (kein Key/Quota/Netz/Dependency) – Plan wird lokal erzeugt._\n\n"
+            f"**Pivot:** {cur} → {tgt}\n\n"
+            "## 1) Foundations (2–3 Wochen)\n"
+            f"{bullets(foundations)}\n\n"
+            "**Mini-Projekt:** 1 kleines Artefakt, das **2 Foundations-Skills** sichtbar macht (Repo + Readme + 1 Demo-Screenshot).\n\n"
+            "## 2) Intermediate (3–6 Wochen)\n"
+            f"{bullets(intermediate)}\n\n"
+            "**Mini-Projekt:** 1 Case-Study (Problem → Ansatz → Ergebnis) als Blogpost/Notion/README.\n\n"
+            "## 3) Advanced (6–10 Wochen)\n"
+            f"{bullets(advanced)}\n\n"
+            "**Mini-Projekt:** 1 “realistischeres” Projekt (mehr Constraints, Tests/Quality, kurze Präsentation).\n\n"
+            "## Interview-Fragen (Zielrolle)\n"
+            f"- Welche 2–3 Kernprobleme löst ein(e) **{tgt}** im Alltag?\n"
+            "- Erzähle von einem Projekt, das unklare Anforderungen hatte – wie bist du vorgegangen?\n"
+            "- Wie misst du Qualität/Erfolg (Metriken, Tests, Feedback-Loops)?\n"
+            "- Wo gehst du bewusst Trade-offs ein (Zeit vs Qualität vs Scope)?\n"
+            "- Wie gehst du mit Stakeholdern/Konflikten/Scope-Creep um?\n"
+            "- Was war dein größter Lernsprung – und wie hast du ihn erreicht?\n\n"
+            "## 3 typische Fehler beim Pivot\n"
+            "- Zu viel “Konsum” (Kurse) ohne Output – **Portfolio schlägt Zertifikate**.\n"
+            "- Skills isoliert lernen statt entlang eines Problems – **Problem-First**.\n"
+            "- Unklare Narrative – du brauchst 3 klare Stories (Transfer, Motivation, Beleg).\n"
+        )
+
+    return (
+        "🧰 **Learning Plan (Offline fallback, deterministic):**\n"
+        "_OpenAI unavailable (no key/quota/network/dependency) – generated locally._\n\n"
+        f"**Pivot:** {cur} → {tgt}\n\n"
+        "## 1) Foundations (2–3 weeks)\n"
+        + "\n".join([f"- **{s}** → 2 practice blocks/week + one measurable output" for s in foundations])
+        + "\n\n"
+        "**Mini-project:** one small artifact demonstrating **2 foundations skills** (repo + README + demo).\n\n"
+        "## 2) Intermediate (3–6 weeks)\n"
+        + "\n".join([f"- **{s}** → applied practice + one deliverable" for s in intermediate])
+        + "\n\n"
+        "**Mini-project:** one case study (problem → approach → outcome) as a short write-up.\n\n"
+        "## 3) Advanced (6–10 weeks)\n"
+        + "\n".join([f"- **{s}** → realistic constraints + quality bar" for s in advanced])
+        + "\n\n"
+        "**Mini-project:** one more realistic project (constraints, tests/quality, short presentation).\n\n"
+        "## Interview questions (target role)\n"
+        f"- What are the 2–3 core problems a **{tgt}** solves day-to-day?\n"
+        "- Tell me about a project with ambiguous requirements — how did you proceed?\n"
+        "- How do you measure quality/success (metrics, tests, feedback loops)?\n"
+        "- Where do you intentionally make trade-offs (time vs quality vs scope)?\n"
+        "- How do you handle stakeholders/conflict/scope creep?\n"
+        "- What was your biggest learning jump — and how did you achieve it?\n\n"
+        "## 3 common pivot mistakes\n"
+        "- Too much consumption (courses) without output — **portfolio beats certificates**.\n"
+        "- Learning skills in isolation instead of around a problem — **problem-first**.\n"
+        "- Unclear narrative — you need 3 crisp stories (transfer, motivation, evidence).\n"
+    )
+
+
+def generate_learning_plan_markdown(
+    *,
+    current_role: str,
+    target_role: str,
+    gap_df: pd.DataFrame,
+    model: str = "gpt-4o-mini",
+    language: str = "en",
+    max_missing: int = 6,
+    prefer_online: bool = True,
+) -> str:
+    """
+    Single entry-point:
+    - tries OpenAI if possible
+    - otherwise deterministic offline fallback
+    ALWAYS English unless language starts with 'de'
+    """
+
+    fallback = _offline_learning_plan_markdown(
+        current_role=current_role,
+        target_role=target_role,
+        gap_df=gap_df,
+        language=language,
+        max_missing=max_missing,
+    )
+
+    if not prefer_online:
+        return fallback
+
+    key = _get_api_key_optional()
+    if not key:
+        return fallback
+
+    try:
+        from openai import OpenAI
+    except Exception:
+        return fallback
+
+    cur = _sanitize_role_name(current_role)
+    tgt = _sanitize_role_name(target_role)
+
+    miss = _pick_missing_skills_for_llm(gap_df, max_n=max_missing)
+    if miss.empty:
+        return fallback
 
     bullets = []
     for _, r in miss.iterrows():
@@ -163,51 +268,65 @@ def generate_ai_learning_plan_markdown(
             f"- {r['skill']} (gap={float(r['gap']):.2f}, target={float(r['target_importance']):.1f}, current={float(r['current_importance']):.1f})"
         )
 
+    # ===== LANGUAGE SWITCH (CLEAN) =====
     if language.lower().startswith("de"):
+
         instructions = (
             "Du bist ein pragmatischer Career-Coach. "
-            "Du darfst NICHT übertreiben oder unnötige Themen erfinden. "
-            "Gib nur job-relevante, umsetzbare Schritte. "
-            "Wenn ein Skill abstrakt ist, übersetze ihn in ein konkretes Verhalten/Übungsformat. "
-            "Antworte als Markdown, klar strukturiert."
+            "Keine Floskeln. Keine Übertreibung. "
+            "Nur umsetzbare, job-relevante Schritte. "
+            "Markdown-Struktur verwenden."
         )
+
         user_text = (
             f"Aktueller Job: {cur}\n"
             f"Zieljob: {tgt}\n\n"
-            "Top Missing Skills (aus O*NET, Importance 1..5, bereits gefiltert für Career-Actionability):\n"
+            "Top Missing Skills:\n"
             + "\n".join(bullets)
             + "\n\n"
             "Erstelle:\n"
-            "1) Einen 3-Phasen Lernplan (Foundations / Intermediate / Advanced), max 5 bullets pro Phase.\n"
-            "2) Pro Phase: 1 Mini-Projekt mit konkretem Output (Repo, Demo, Blogpost, Case Study).\n"
-            "3) Danach: 6 Interviewfragen (für den Zieljob) + je 1 Satz, worauf man achten sollte.\n"
-            "4) Optional: 3 typische Fehler/Illusionen von Career-Changern.\n"
-            "Kurz, praktisch, keine Floskeln."
+            "1) 3-Phasen Lernplan (Foundations / Intermediate / Advanced)\n"
+            "2) Pro Phase 1 Mini-Projekt\n"
+            "3) 6 Interviewfragen + 1 Satz Hinweis\n"
+            "4) 3 typische Fehler\n"
         )
+
     else:
+
         instructions = (
-            "You are a pragmatic career coach. Do not over-recommend or invent unnecessary topics. "
-            "Only give job-relevant, actionable steps. Return Markdown."
+            "You are a pragmatic career coach. "
+            "No fluff. No exaggeration. "
+            "Only actionable, job-relevant steps. "
+            "Return clean Markdown. "
+            "Respond strictly in English."
         )
+
         user_text = (
             f"Current role: {cur}\n"
             f"Target role: {tgt}\n\n"
-            "Top Missing Skills (O*NET 1..5, filtered for career-actionability):\n"
+            "Top Missing Skills:\n"
             + "\n".join(bullets)
             + "\n\n"
             "Create:\n"
-            "1) A 3-phase plan (Foundations/Intermediate/Advanced), max 5 bullets each.\n"
-            "2) One mini-project per phase with a concrete output.\n"
-            "3) Then: 6 interview questions + 1 sentence guidance each.\n"
-            "4) Optional: 3 common mistakes career changers make.\n"
-            "Short, practical, no fluff."
+            "1) A 3-phase plan (Foundations / Intermediate / Advanced)\n"
+            "2) One mini-project per phase\n"
+            "3) 6 interview questions + 1 guidance sentence each\n"
+            "4) 3 common pivot mistakes\n"
         )
 
-    resp = client.responses.create(
-        model=model,
-        instructions=instructions,
-        input=user_text,
-    )
+    try:
+        client = OpenAI(api_key=key)
+        resp = client.responses.create(
+            model=model,
+            instructions=instructions,
+            input=user_text,
+        )
 
-    text = (resp.output_text or "").strip()
-    return text if text else "⚠️ AI Coach: Empty response. Try again."
+        text = (resp.output_text or "").strip()
+        if not text:
+            return fallback
+
+        return "🤖 **AI Coach (OpenAI):**\n\n" + text
+
+    except Exception:
+        return fallback

@@ -13,7 +13,6 @@ from src.model_logic import (
     load_runtime_artifacts,
     compute_gap_df,
     compute_skill_contributions,
-    generate_learning_plan,
     compute_confidence_score,
     compute_group_gap_df,
     filter_missing_skills_by_group,
@@ -22,6 +21,8 @@ from src.model_logic import (
     pareto_frontier_flags,
     counterfactual_uplift_greedy,
 )
+
+from src.ai_coach import generate_learning_plan_markdown
 
 # ============================================================
 # Page config
@@ -718,7 +719,6 @@ map_ct = float(map_parts_current.get(str(target), 0.0))
 # Explainability artifacts
 gap_df = compute_gap_df(mat, current, target)
 contrib = compute_skill_contributions(gap_df)
-plan = generate_learning_plan(gap_df)
 conf = compute_confidence_score(mat, art.pca_meta, current, target)
 group_gap_df = compute_group_gap_df(mat, skill_taxonomy, group_meta, current, target)
 
@@ -894,7 +894,7 @@ with right:
 
     with c1:
         st.markdown("### Pivot Path Finder")
-        if not path_out.get("reachable"):
+        if not path_out.get("rseachable"):
             st.warning(path_out.get("notes", "Target not reachable. Try increasing kNN neighbors."))
         else:
             path = path_out["path"]
@@ -910,48 +910,39 @@ with right:
                     st.write(f"Step {i}: **{p}**")
 
             if step_costs:
-                df_steps = pd.DataFrame({"from": path[:-1], "to": path[1:], "transition_cost": step_costs})
+                df_steps = pd.DataFrame(
+                    {"from": path[:-1], "to": path[1:], "transition_cost": step_costs}
+                )
                 st.dataframe(df_steps, use_container_width=True, hide_index=True)
 
     with c2:
         st.markdown("### Learning plan (3 phases)")
-        # --- AI Coach (OpenAI) for learning plan (on-demand)
-from src.ai_coach import generate_ai_learning_plan_markdown  # move to top imports if you prefer
+        st.caption("Single pipeline: AI Coach (OpenAI if available) with deterministic offline fallback.")
 
-with st.expander("🤖 AI Coach: Generate a realistic learning plan (OpenAI)", expanded=False):
-    st.caption("Uses OpenAI to turn the quantified skill gaps into a practical plan. Runs only when you click.")
-    use_ai = st.toggle("Enable AI Coach", value=False, key="ai_coach_enable")
+        with st.expander("🤖 Learning Plan (AI Coach + Offline Fallback)", expanded=False):
+            st.caption(
+                "On click: tries OpenAI. If unavailable (no key/quota/network/dependency), returns a deterministic offline plan."
+            )
 
-    if use_ai:
-        if st.button("Generate AI learning plan", key="ai_generate_plan"):
-            try:
-                ai_md = generate_ai_learning_plan_markdown(
-                    current_role=current,
-                    target_role=target,
+            if st.button("Generate learning plan", key="ai_generate_plan"):
+                md = generate_learning_plan_markdown(
+                    current_role=str(current),
+                    target_role=str(target),
                     gap_df=gap_df,
-                    language="de",
+                    language="en",
                     model="gpt-4o-mini",
                     max_missing=6,
+                    prefer_online=True,
                 )
-                st.session_state["ai_learning_plan_md"] = ai_md
-            except Exception as e:
-                st.error("AI Coach failed (missing key, network, or API error).")
-                st.exception(e)
+                st.session_state["ai_learning_plan_md"] = md
 
-        if "ai_learning_plan_md" in st.session_state:
-            st.markdown(st.session_state["ai_learning_plan_md"])
-    else:
-        st.info("Toggle on to use the AI Coach. Your deterministic plan remains below.")
-        st.caption("Derived from largest missing skill gaps.")
-        st.markdown("**Foundations**")
-        for b in plan["Foundations"]:
-            st.write("- " + b)
-        st.markdown("**Intermediate**")
-        for b in plan["Intermediate"]:
-            st.write("- " + b)
-        st.markdown("**Advanced**")
-        for b in plan["Advanced"]:
-            st.write("- " + b)
+            if "ai_learning_plan_md" in st.session_state and str(st.session_state["ai_learning_plan_md"]).strip():
+                st.markdown(st.session_state["ai_learning_plan_md"])
+            else:
+                st.info(
+                    "Click **Generate learning plan** to create the plan (online if possible, otherwise offline fallback)."
+                )
+                
 
 # ============================================================
 # Tabs (deep dives) — heavy tabs on-demand
