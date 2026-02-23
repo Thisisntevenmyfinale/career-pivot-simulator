@@ -29,7 +29,7 @@ st.set_page_config(page_title="Career Pivot Simulator", page_icon="🧭", layout
 st.title("🧭 Career Pivot Simulator")
 st.caption(
     "Decision-support prototype for career pivots: matching + explainability + planning + robustness + what-if sensitivity. "
-    "Artifacts are precomputed offline and loaded at runtime (deploy-ready)."
+    "Artifacts are precomputed offline and loaded at runtime."
 )
 
 # -----------------------------
@@ -51,7 +51,6 @@ except Exception as e:
 mat: pd.DataFrame = art.matrix
 coords_pca: pd.DataFrame = art.coords
 
-# Optional UMAP (may be empty)
 coords_umap: pd.DataFrame = art.umap_coords if hasattr(art, "umap_coords") else pd.DataFrame(columns=["occupation", "x", "y"])
 umap_meta: dict[str, Any] = art.umap_meta if hasattr(art, "umap_meta") and isinstance(art.umap_meta, dict) else {}
 
@@ -74,9 +73,17 @@ if "__has_run__" not in st.session_state:
 if "__target_override__" not in st.session_state:
     st.session_state["__target_override__"] = None
 
+# cache buckets for heavy computations
+if "__cache__" not in st.session_state:
+    st.session_state["__cache__"] = {
+        "robustness": {},     # key -> rob dict
+        "decision_brief": {}, # key -> df
+        "whatif": {},         # key -> (sweep_df, stab_dict)
+    }
+
 
 # -----------------------------
-# Helpers (runtime-only)
+# Helpers
 # -----------------------------
 def _coords_is_valid(df: pd.DataFrame) -> bool:
     return (
@@ -90,13 +97,12 @@ def _coords_is_valid(df: pd.DataFrame) -> bool:
 @st.cache_data(show_spinner=False)
 def _precompute_map_context(coords_df: pd.DataFrame) -> dict[str, Any]:
     """
-    Precompute fast map lookup + max_dist normalization.
-    Uses bounding-box diagonal for max_dist (O(n), stable, no SciPy).
+    Fast map normalization:
+    max_dist = bounding box diagonal (O(n)).
+    Also builds lookup occupation -> (x,y).
     """
     df = coords_df.copy()
     df["occupation"] = df["occupation"].astype(str)
-
-    # Keep only first occurrence per occupation (defensive)
     df = df.dropna(subset=["occupation", "x", "y"])
     df = df.drop_duplicates(subset=["occupation"], keep="first").reset_index(drop=True)
 
@@ -108,7 +114,6 @@ def _precompute_map_context(coords_df: pd.DataFrame) -> dict[str, Any]:
         xmax, ymax = np.max(xy, axis=0)
         max_dist = float(np.linalg.norm([xmax - xmin, ymax - ymin]))
 
-    # Dict lookup occupation -> (x,y)
     occ_to_xy: dict[str, tuple[float, float]] = {}
     for occ, x, y in df[["occupation", "x", "y"]].itertuples(index=False, name=None):
         occ_to_xy[str(occ)] = (float(x), float(y))
@@ -116,38 +121,8 @@ def _precompute_map_context(coords_df: pd.DataFrame) -> dict[str, Any]:
     return {"df": df, "xy": xy, "max_dist": float(max_dist), "occ_to_xy": occ_to_xy}
 
 
-def _map_proximity_precomputed(ctx: dict[str, Any], occ_a: str, occ_b: str) -> float:
-    occ_to_xy: dict[str, tuple[float, float]] = ctx["occ_to_xy"]
-    max_dist: float = float(ctx["max_dist"])
-
-    a = occ_to_xy.get(str(occ_a))
-    b = occ_to_xy.get(str(occ_b))
-    if a is None or b is None:
-        return 0.0
-    if max_dist <= 0.0:
-        return 1.0
-    dist = float(np.linalg.norm(np.array(a) - np.array(b)))
-    return float(np.clip(1.0 - dist / max_dist, 0.0, 1.0))
-
-
-def _cosine(a: np.ndarray, b: np.ndarray) -> float:
-    denom = float(np.linalg.norm(a) * np.linalg.norm(b))
-    if denom == 0.0:
-        return 0.0
-    return float(np.dot(a, b) / denom)
-
-
-def _hybrid_score_from_vectors(a: np.ndarray, b: np.ndarray, map_part: float, w_cosine: float, w_map: float) -> float:
-    cos = max(0.0, _cosine(a, b))  # 0..1
-    score = 100.0 * (w_cosine * cos + w_map * float(map_part))
-    return float(np.clip(score, 0.0, 100.0))
-
-
 @st.cache_data(show_spinner=False)
 def _map_parts_from_current(coords_df: pd.DataFrame, current_occ: str) -> dict[str, float]:
-    """
-    Vectorized map proximity current -> all (O(n)).
-    """
     ctx = _precompute_map_context(coords_df)
     df = ctx["df"]
     xy = ctx["xy"]
@@ -156,7 +131,6 @@ def _map_parts_from_current(coords_df: pd.DataFrame, current_occ: str) -> dict[s
     if df.empty or xy.shape[0] == 0:
         return {}
 
-    # Find current index
     occs = df["occupation"].astype(str).to_numpy()
     cur_mask = occs == str(current_occ)
     if not np.any(cur_mask):
@@ -168,8 +142,19 @@ def _map_parts_from_current(coords_df: pd.DataFrame, current_occ: str) -> dict[s
 
     d = np.linalg.norm(xy - cur_xy, axis=1)
     prox = np.clip(1.0 - d / max_dist, 0.0, 1.0)
-
     return {str(o): float(p) for o, p in zip(occs, prox)}
+
+
+def _cosine(a: np.ndarray, b: np.ndarray) -> float:
+    denom = float(np.linalg.norm(a) * np.linalg.norm(b))
+    if denom == 0.0:
+        return 0.0
+    return float(np.dot(a, b) / denom)
+
+
+def _hybrid_score_from_vectors(a: np.ndarray, b: np.ndarray, map_part: float, w_cosine: float, w_map: float) -> float:
+    cos = max(0.0, _cosine(a, b))  # 0..1
+    return float(np.clip(100.0 * (w_cosine * cos + w_map * float(map_part)), 0.0, 100.0))
 
 
 @st.cache_data(show_spinner=False)
@@ -194,236 +179,30 @@ def _recommend_similar_roles_fast(
         s = _hybrid_score_from_vectors(a, b, mp, float(w_cosine), float(w_map))
         rows.append((occ, s))
 
-    out = (
+    return (
         pd.DataFrame(rows, columns=["occupation", "match_score"])
         .sort_values("match_score", ascending=False)
         .head(int(top_k))
         .reset_index(drop=True)
     )
-    return out
 
 
-@st.cache_data(show_spinner=False)
-def _robustness_analysis_fast(
-    matrix: pd.DataFrame,
-    coords_df: pd.DataFrame,
-    current_occ: str,
-    target_occ: str,
-    *,
-    w_cosine: float,
-    w_map: float,
-    n_samples: int,
-    noise_std: float,
-    seed: int,
-) -> dict[str, Any]:
-    rng = np.random.default_rng(int(seed))
-    a0 = matrix.loc[current_occ].astype(float).to_numpy()
-    b0 = matrix.loc[target_occ].astype(float).to_numpy()
-
-    map_parts = _map_parts_from_current(coords_df, current_occ)
-    map_part = float(map_parts.get(str(target_occ), 0.0))
-
-    scores: list[float] = []
-    for _ in range(int(n_samples)):
-        a = np.clip(a0 + rng.normal(0.0, float(noise_std), size=a0.shape), 0.0, None)
-        b = np.clip(b0 + rng.normal(0.0, float(noise_std), size=b0.shape), 0.0, None)
-        s = _hybrid_score_from_vectors(a, b, map_part, float(w_cosine), float(w_map))
-        scores.append(s)
-
-    arr = np.array(scores, dtype=float)
-    return {
-        "n_samples": int(n_samples),
-        "noise_std": float(noise_std),
-        "mean": float(np.mean(arr)) if arr.size else float("nan"),
-        "std": float(np.std(arr)) if arr.size else float("nan"),
-        "ci95_low": float(np.quantile(arr, 0.025)) if arr.size else float("nan"),
-        "ci95_high": float(np.quantile(arr, 0.975)) if arr.size else float("nan"),
-        "scores": scores,
-        "notes": "Monte Carlo stability on skill vectors (Gaussian noise). Map part fixed from selected embedding.",
-    }
+def _pick_coords(choice: str) -> tuple[pd.DataFrame, str]:
+    if choice == "UMAP" and _coords_is_valid(coords_umap):
+        return coords_umap.copy(), "UMAP"
+    return coords_pca.copy(), "PCA"
 
 
-@st.cache_data(show_spinner=False)
-def _compute_all_targets_robustness_fast(
-    matrix: pd.DataFrame,
-    coords_df: pd.DataFrame,
-    current_occ: str,
-    *,
-    w_cosine: float,
-    w_map: float,
-    n_samples: int,
-    noise_std: float,
-    seed: int,
-) -> pd.DataFrame:
-    rng = np.random.default_rng(int(seed))
-    a0 = matrix.loc[current_occ].astype(float).to_numpy()
-
-    map_parts = _map_parts_from_current(coords_df, current_occ)
-
-    rows: list[dict[str, Any]] = []
-    for occ in matrix.index.astype(str):
-        if occ == current_occ:
-            continue
-
-        b0 = matrix.loc[occ].astype(float).to_numpy()
-        mp = float(map_parts.get(occ, 0.0))
-
-        scores = []
-        for _ in range(int(n_samples)):
-            a = np.clip(a0 + rng.normal(0.0, float(noise_std), size=a0.shape), 0.0, None)
-            b = np.clip(b0 + rng.normal(0.0, float(noise_std), size=b0.shape), 0.0, None)
-            s = _hybrid_score_from_vectors(a, b, mp, float(w_cosine), float(w_map))
-            scores.append(s)
-
-        arr = np.array(scores, dtype=float)
-        if arr.size == 0:
-            continue
-
-        q05 = float(np.quantile(arr, 0.05))
-        tail = arr[arr <= q05]
-        cvar05 = float(np.mean(tail)) if tail.size else q05
-
-        rows.append(
-            {
-                "occupation": occ,
-                "mean": float(np.mean(arr)),
-                "std": float(np.std(arr)),
-                "q05": q05,
-                "q95": float(np.quantile(arr, 0.95)),
-                "cvar05": cvar05,
-                "map_part": float(mp),
-            }
-        )
-
-    return pd.DataFrame(rows).sort_values("mean", ascending=False).reset_index(drop=True)
-
-
-@st.cache_data(show_spinner=False)
-def _what_if_sweep(
-    matrix: pd.DataFrame,
-    coords_df: pd.DataFrame,
-    current_occ: str,
-    grid_w_cosine: tuple[float, float, int],
-    grid_noise: tuple[float, float, int],
-    mc_per_cell: int,
-    seed: int,
-) -> pd.DataFrame:
-    rng = np.random.default_rng(int(seed))
-    a0 = matrix.loc[current_occ].astype(float).to_numpy()
-
-    w0, w1, wn = grid_w_cosine
-    n0, n1, nn = grid_noise
-
-    w_vals = np.linspace(float(w0), float(w1), int(wn))
-    n_vals = np.linspace(float(n0), float(n1), int(nn))
-
-    map_parts = _map_parts_from_current(coords_df, current_occ)
-
-    records = []
-    for w in w_vals:
-        w = float(np.clip(w, 0.0, 1.0))
-        w_map = float(1.0 - w)
-        for noise in n_vals:
-            noise = float(max(0.0, noise))
-            for occ in matrix.index.astype(str):
-                if occ == current_occ:
-                    continue
-                b0 = matrix.loc[occ].astype(float).to_numpy()
-                mp = float(map_parts.get(occ, 0.0))
-
-                scores = []
-                for _ in range(int(mc_per_cell)):
-                    a = np.clip(a0 + rng.normal(0.0, noise, size=a0.shape), 0.0, None)
-                    b = np.clip(b0 + rng.normal(0.0, noise, size=b0.shape), 0.0, None)
-                    s = _hybrid_score_from_vectors(a, b, mp, w, w_map)
-                    scores.append(s)
-
-                records.append(
-                    {
-                        "w_cosine": w,
-                        "w_map": w_map,
-                        "noise_std": noise,
-                        "occupation": occ,
-                        "mean_score": float(np.mean(scores)) if scores else float("nan"),
-                    }
-                )
-
-    return pd.DataFrame(records)
-
-
-@st.cache_data(show_spinner=False)
-def _ranking_stability(
-    sweep_df: pd.DataFrame,
-    target_occ: str,
-    top_k: int = 3,
-) -> dict[str, Any]:
-    group_cols = ["w_cosine", "w_map", "noise_std"]
-    ranks_frames = []
-    topk_lists = []
-    target_ranks = []
-
-    for _, g in sweep_df.groupby(group_cols):
-        g2 = g.sort_values("mean_score", ascending=False).reset_index(drop=True)
-        g2["rank"] = np.arange(1, len(g2) + 1)
-        ranks_frames.append(g2)
-
-        topk = tuple(g2.head(int(top_k))["occupation"].tolist())
-        topk_lists.append(topk)
-
-        tr = g2.loc[g2["occupation"] == target_occ, "rank"]
-        if len(tr) == 0:
-            target_ranks.append(np.nan)
-        else:
-            target_ranks.append(int(tr.iloc[0]))
-
-    ranks_df = pd.concat(ranks_frames, ignore_index=True) if ranks_frames else pd.DataFrame()
-    target_ranks_arr = np.array([r for r in target_ranks if not (isinstance(r, float) and np.isnan(r))], dtype=int)
-
-    in_topk = float(np.mean(target_ranks_arr <= int(top_k))) if len(target_ranks_arr) else 0.0
-
-    freq = Counter()
-    for t in topk_lists:
-        for occ in t:
-            freq[occ] += 1
-
-    freq_df = (
-        pd.DataFrame({"occupation": list(freq.keys()), "count": list(freq.values())})
-        .sort_values("count", ascending=False)
-        .reset_index(drop=True)
-    )
-    freq_df["share"] = freq_df["count"] / max(1, len(topk_lists))
-
-    topk_mode = None
-    topk_mode_share = 0.0
-    if topk_lists:
-        set_counts = Counter(topk_lists)
-        topk_mode, c = set_counts.most_common(1)[0]
-        topk_mode = list(topk_mode)
-        topk_mode_share = float(c / len(topk_lists))
-
-    return {
-        "target_in_topk_rate": in_topk,
-        "target_rank_values": target_ranks_arr.tolist(),
-        "topk_freq_df": freq_df,
-        "topk_mode": topk_mode,
-        "topk_mode_share": topk_mode_share,
-        "ranks_df": ranks_df,
-        "n_configs": int(len(topk_lists)),
-    }
-
-
-def _pick_coords(choice: str, coords_umap_df: pd.DataFrame, coords_pca_df: pd.DataFrame) -> tuple[pd.DataFrame, str]:
-    if choice == "UMAP" and _coords_is_valid(coords_umap_df):
-        return coords_umap_df.copy(), "UMAP"
-    return coords_pca_df.copy(), "PCA"
+def _cache_key(*parts: Any) -> str:
+    return "|".join([str(p) for p in parts])
 
 
 # -----------------------------
-# Sidebar: controls
+# Sidebar
 # -----------------------------
 with st.sidebar:
     st.header("Controls")
-    st.write("Pick a pivot → run analysis → interpret plan + risks.")
+    st.write("Pick a pivot → run analysis → explore deep dives on demand.")
     st.divider()
 
     with st.expander("1) Choose your pivot", expanded=True):
@@ -452,7 +231,7 @@ with st.sidebar:
         k_neighbors = st.slider("kNN neighbors", 2, 10, 5, 1)
         max_steps = st.slider("Max steps", 2, 6, 4, 1)
 
-        st.subheader("Robustness")
+        st.subheader("Robustness (runs on-demand)")
         n_samples = st.slider("Monte Carlo samples", 50, 600, 200, 50)
         noise_std = st.slider("Noise level (std)", 0.00, 0.20, 0.05, 0.01)
 
@@ -464,9 +243,6 @@ with st.sidebar:
         embedding_choice = st.selectbox("Embedding for map + proximity", options=embed_options, index=0)
         show_map = st.toggle("Show map tab (advanced)", value=False)
         color_by_cluster = st.toggle("Color by clusters", value=bool(clusters))
-
-        if embedding_choice == "UMAP" and not _coords_is_valid(coords_umap):
-            st.warning("UMAP not available (missing artifacts). Falling back to PCA.")
 
     st.divider()
     run = st.button("🚀 Run pivot analysis", use_container_width=True)
@@ -480,164 +256,67 @@ with st.sidebar:
 
 
 # -----------------------------
-# Empty-state: onboarding + AI transparency
+# Empty-state
 # -----------------------------
 if not st.session_state["__has_run__"]:
-    left, right = st.columns([1.35, 1.0], gap="large")
-
-    with left:
-        st.subheader("What can I do here?")
-        st.markdown(
-            """
-This prototype evaluates a career pivot with **AI-driven decision support**:
-
-1) **Match score** – role similarity in skill space (vector similarity)  
-2) **Explainability** – transferable vs missing skills  
-3) **Pivot path** – stepping-stone roles via graph shortest-path  
-4) **Robustness** – uncertainty via Monte Carlo simulation  
-5) **What-if lab** – stability of rankings across parameter/noise variations
-
-👉 Choose Current + Target in the sidebar and click **Run pivot analysis**.
-            """
-        )
-
-        st.markdown("### Quick experiments")
-        st.markdown(
-            """
-- Near pivot: *Data Analyst → Data Scientist*  
-- Hard pivot: *Cybersecurity Analyst → UX Designer*  
-- Increase noise to see when the score becomes unstable
-            """
-        )
-
-    with right:
-        st.subheader("Where is AI/ML used?")
-        st.markdown(
-            """
-This uses classic ML techniques (no deep learning required):
-
-- **Feature representation:** occupation = skill-importance vector  
-- **Similarity model:** cosine similarity (embedding-style matching)  
-- **Dimensionality reduction:** PCA / UMAP (optional map)  
-- **Clustering:** KMeans (career neighborhoods)  
-- **Planning:** kNN graph + Dijkstra shortest path  
-- **Uncertainty:** Monte Carlo perturbation (stability metrics)  
-- **Sensitivity:** what-if sweeps (ranking stability across configs)
-            """
-        )
-        st.info("The value comes from the model — without it, the app has no purpose.")
-
+    st.info("Choose Current + Target in the sidebar and click **Run pivot analysis**.")
     st.stop()
 
+coords, coords_label = _pick_coords(embedding_choice)
 
 # -----------------------------
-# Choose embedding (PCA vs UMAP)
-# -----------------------------
-coords, coords_label = _pick_coords(embedding_choice, coords_umap, coords_pca)
-
-# -----------------------------
-# Core AI outputs
+# Fast core outputs (no heavy Monte Carlo here)
 # -----------------------------
 gap_df = compute_gap_df(mat, current, target)
-
-# Compute hybrid score with fast precomputed map-part (no model_logic maxdist loop)
-map_parts_current = _map_parts_from_current(coords, current)
-map_part_ct = float(map_parts_current.get(str(target), 0.0))
-a_vec = mat.loc[current].astype(float).to_numpy()
-b_vec = mat.loc[target].astype(float).to_numpy()
-match_score = _hybrid_score_from_vectors(a_vec, b_vec, map_part_ct, float(w_cosine), float(w_map))
-
-# Keep cosine score for transparency
-cosine_score = float(np.clip(max(0.0, _cosine(a_vec, b_vec)) * 100.0, 0.0, 100.0))
-
 contrib = compute_skill_contributions(gap_df)
 plan = generate_learning_plan(gap_df)
 conf = compute_confidence_score(mat, art.pca_meta, current, target)
-
 path_out = find_pivot_path(mat, current, target, k_neighbors=int(k_neighbors), max_steps=int(max_steps))
-
-rob = _robustness_analysis_fast(
-    mat,
-    coords,
-    current,
-    target,
-    w_cosine=float(w_cosine),
-    w_map=float(w_map),
-    n_samples=int(n_samples),
-    noise_std=float(noise_std),
-    seed=42,
-)
-
 group_gap_df = compute_group_gap_df(mat, skill_taxonomy, group_meta, current, target)
 
+# fast score (no loops over all pairs)
+a_vec = mat.loc[current].astype(float).to_numpy()
+b_vec = mat.loc[target].astype(float).to_numpy()
+map_parts_current = _map_parts_from_current(coords, current)
+map_part_ct = float(map_parts_current.get(str(target), 0.0))
+match_score = _hybrid_score_from_vectors(a_vec, b_vec, map_part_ct, float(w_cosine), float(w_map))
+cosine_score = float(np.clip(max(0.0, _cosine(a_vec, b_vec)) * 100.0, 0.0, 100.0))
+
 # -----------------------------
-# Overview
+# Overview (FAST)
 # -----------------------------
 st.subheader("Overview")
+
+# robustness placeholder (computed on-demand)
+rob_key = _cache_key("rob", coords_label, current, target, w_cosine, w_map, n_samples, noise_std)
+rob_cached = st.session_state["__cache__"]["robustness"].get(rob_key)
+
 m1, m2, m3, m4 = st.columns(4)
 m1.metric("Match score (hybrid)", f"{match_score:.0f}/100")
 m2.metric("Confidence (coverage)", f"{conf['confidence_score']:.0f}/100")
-m3.metric("Robust mean", f"{rob['mean']:.1f}")
-m4.metric("Robust 95% CI width", f"{(rob['ci95_high'] - rob['ci95_low']):.1f}")
 
-ci_width = float(rob["ci95_high"] - rob["ci95_low"])
-if match_score >= 70:
-    pivot_label = "Likely smooth pivot"
-elif match_score >= 40:
-    pivot_label = "Moderate pivot (skill build required)"
+if isinstance(rob_cached, dict):
+    m3.metric("Robust mean", f"{rob_cached['mean']:.1f}")
+    m4.metric("Robust 95% CI width", f"{(rob_cached['ci95_high'] - rob_cached['ci95_low']):.1f}")
 else:
-    pivot_label = "Hard pivot (expect significant gaps)"
+    m3.metric("Robust mean", "—")
+    m4.metric("Robust 95% CI width", "—")
 
-if ci_width <= 8:
-    stability_label = "Stable score"
-elif ci_width <= 18:
-    stability_label = "Moderately sensitive"
-else:
-    stability_label = "Sensitive / unstable"
-
-st.success(f"**{pivot_label}** • **{stability_label}** • Map embedding: **{coords_label}**")
+st.success(f"Map embedding: **{coords_label}** • Map proximity: **{map_part_ct:.2f}**")
 
 with st.expander("Under the hood: score breakdown (transparent)", expanded=False):
-    st.markdown("### Components")
-    st.write(f"- Cosine-based score: **{cosine_score:.1f}/100** (vector similarity)")
-    st.write(f"- Map proximity (0..1): **{map_part_ct:.2f}** (from {coords_label} coords; weak prior)")
+    st.write(f"- Cosine-based score: **{cosine_score:.1f}/100**")
+    st.write(f"- Map proximity (0..1): **{map_part_ct:.2f}** (from {coords_label})")
     st.write(f"- Weights: `w_cosine={w_cosine:.2f}`, `w_map={w_map:.2f}`")
     st.code("score = 100 * (w_cosine * max(0, cosine_similarity) + w_map * map_proximity)")
 
-    st.markdown("### Why your score is high/low")
-    top_missing = gap_df[gap_df["gap"] > 0].sort_values(["gap", "target_importance"], ascending=False).head(5)
-    top_transfer = gap_df.copy()
-    top_transfer["overlap"] = np.minimum(top_transfer["current_importance"], top_transfer["target_importance"])
-    top_transfer = top_transfer.sort_values("overlap", ascending=False).head(5)
-
-    c1, c2 = st.columns(2)
-    with c1:
-        st.markdown("**Top transferable skills (overlap)**")
-        st.dataframe(
-            top_transfer[["skill", "current_importance", "target_importance", "overlap"]],
-            hide_index=True,
-            use_container_width=True,
-        )
-    with c2:
-        st.markdown("**Top missing skills (gaps)**")
-        if top_missing.empty:
-            st.success("No missing skills in this dataset.")
-        else:
-            st.dataframe(
-                top_missing[["skill", "current_importance", "target_importance", "gap"]],
-                hide_index=True,
-                use_container_width=True,
-            )
-
 # -----------------------------
-# Main: Neighborhood + Plan
+# Main: Neighborhood + Plan (FAST)
 # -----------------------------
 left, right = st.columns([1.1, 1.4], gap="large")
 
 with left:
     st.subheader("Career neighborhood (actionable)")
-    st.caption("Closest roles to your current occupation + one-click stepping-stones.")
-
     rec_df = _recommend_similar_roles_fast(mat, coords, current, top_k=6, w_cosine=float(w_cosine), w_map=float(w_map))
     st.dataframe(rec_df, use_container_width=True, hide_index=True)
 
@@ -661,19 +340,8 @@ with left:
         else:
             st.write(f"Cluster **{cur_cluster}** theme skills: {format_cluster_theme(cur_cluster, cluster_themes)}")
 
-    st.divider()
-    st.subheader("Confidence (coverage)")
-    st.progress(int(round(conf["confidence_score"])))
-    st.caption(
-        f"Overlap Jaccard: {conf['signals']['overlap_jaccard']:.2f} • "
-        f"Matrix density: {conf['signals']['matrix_density']:.2f} • "
-        f"PCA EVR(2D): {conf['signals']['pca_evr_2d']:.2f}"
-    )
-
 with right:
     st.subheader("Plan: Pivot Path + Learning Plan")
-    st.caption("This is the decision-support core: route + learning phases.")
-
     c1, c2 = st.columns([1.1, 0.9], gap="large")
 
     with c1:
@@ -683,8 +351,6 @@ with right:
         else:
             path = path_out["path"]
             step_costs = path_out.get("step_costs", [])
-
-            st.markdown("**Suggested route**")
             for i, p in enumerate(path):
                 if i == 0:
                     st.write(f"Start: **{p}**")
@@ -692,15 +358,12 @@ with right:
                     st.write(f"Target: **{p}**")
                 else:
                     st.write(f"Step {i}: **{p}**")
-
             if step_costs:
                 df_steps = pd.DataFrame({"from": path[:-1], "to": path[1:], "transition_cost": step_costs})
                 st.dataframe(df_steps, use_container_width=True, hide_index=True)
 
     with c2:
         st.markdown("### Learning plan (3 phases)")
-        st.caption("Derived from the largest missing skill gaps.")
-
         st.markdown("**Foundations**")
         for b in plan["Foundations"]:
             st.write("- " + b)
@@ -712,379 +375,17 @@ with right:
             st.write("- " + b)
 
 # -----------------------------
-# Tabs (deep dives)
+# Tabs
 # -----------------------------
 st.divider()
 tabs = st.tabs(
-    ["Decision Brief", "What-If Lab", "Explain", "Skill Groups", "Robustness", "Skill Gap", "Radar", "Export", "Map (advanced)"]
+    ["Explain", "Skill Groups", "Robustness (on-demand)", "Decision Brief (on-demand)", "What-If Lab (on-demand)", "Map (advanced)", "Export"]
 )
 
-# ---- Decision Brief
-with tabs[0]:
-    st.subheader("Decision Brief (risk-aware, tradeoffs, actionable)")
-    st.caption(
-        "This panel turns model outputs into decision support: robust recommendations, Pareto tradeoffs, and minimal skill lifts."
-    )
-
-    colA, colB, colC = st.columns([1.1, 1.1, 1.0], gap="large")
-
-    with colA:
-        risk_options = ["Risk-averse (CVaR)", "Balanced", "Risk-seeking (Mean)"]
-        try:
-            risk_profile = st.segmented_control("Risk profile", options=risk_options, default=risk_options[1])
-        except Exception:
-            risk_profile = st.radio("Risk profile", options=risk_options, index=1)
-
-    with colB:
-        goal_options = ["Threshold", "Top-K"]
-        try:
-            goal_mode_ui = st.segmented_control("Counterfactual goal", options=goal_options, default=goal_options[0])
-        except Exception:
-            goal_mode_ui = st.radio("Counterfactual goal", options=goal_options, index=0)
-
-        goal_mode = "threshold" if goal_mode_ui == "Threshold" else "topk"
-        score_threshold = st.slider("Score threshold", 40.0, 90.0, 60.0, 1.0)
-        topk_goal = st.slider("Top-K", 1, 5, 3, 1)
-
-    with colC:
-        uplift_budget = st.slider("Max uplift skills", 1, 6, 3, 1)
-        min_conf = st.slider("Min confidence gate", 0, 100, 25, 5)
-
-        with st.popover("What is CVaR / Pareto / Counterfactual?"):
-            st.markdown(
-                """
-- **CVaR(5%)**: average score in the worst 5% outcomes (downside robustness).
-- **Pareto frontier**: roles that are not dominated on (Match ↑, Risk ↑, Effort ↓).
-- **Counterfactual uplift**: minimal set of missing skills to unlock a goal (Top-K or score threshold).
-                """
-            )
-
-    @st.cache_data(show_spinner=False)
-    def _decision_brief_table(
-        matrix: pd.DataFrame,
-        coords_df: pd.DataFrame,
-        current_occ: str,
-        w_cos: float,
-        w_m: float,
-        n_samp: int,
-        noise: float,
-        k_neigh: int,
-        max_steps_: int,
-    ) -> pd.DataFrame:
-        base = _compute_all_targets_robustness_fast(
-            matrix,
-            coords_df,
-            current_occ,
-            w_cosine=float(w_cos),
-            w_map=float(w_m),
-            n_samples=int(n_samp),
-            noise_std=float(noise),
-            seed=42,
-        )
-
-        rows = []
-        for _, r in base.iterrows():
-            occ = str(r["occupation"])
-            po = find_pivot_path(matrix, current_occ, occ, k_neighbors=int(k_neigh), max_steps=int(max_steps_))
-            pc = po.get("total_cost", np.nan) if po.get("reachable") else np.nan
-
-            em = compute_effort_metrics(matrix, current_occ, occ, path_cost=pc)
-            out = dict(r)
-            out.update(em)
-            out["reachable"] = bool(po.get("reachable"))
-            rows.append(out)
-
-        df = pd.DataFrame(rows)
-
-        df["pareto_frontier"] = pareto_frontier_flags(
-            df,
-            maximize_cols=["mean", "cvar05"],
-            minimize_cols=["effort_mix"],
-        ).astype(bool)
-
-        return df.sort_values(["pareto_frontier", "mean"], ascending=[False, False]).reset_index(drop=True)
-
-    df = _decision_brief_table(
-        mat,
-        coords,
-        current,
-        float(w_cosine),
-        float(w_map),
-        int(n_samples),
-        float(noise_std),
-        int(k_neighbors),
-        int(max_steps),
-    )
-
-    gated = df.copy()
-
-    @st.cache_data(show_spinner=False)
-    def _confidence_table(matrix: pd.DataFrame, current_occ: str) -> pd.DataFrame:
-        a = matrix.loc[current_occ].astype(float).values
-        a_nz = a > 0
-        rows = []
-        for occ in matrix.index.astype(str):
-            if occ == current_occ:
-                continue
-            b = matrix.loc[occ].astype(float).values
-            b_nz = b > 0
-            inter = float((a_nz & b_nz).mean()) if len(a_nz) else 0.0
-            uni = float((a_nz | b_nz).mean()) if len(a_nz) else 0.0
-            jacc = 0.0 if uni == 0 else inter / uni
-            rows.append({"occupation": occ, "confidence": 100.0 * jacc})
-        return pd.DataFrame(rows)
-
-    conf_df = _confidence_table(mat, current)
-    gated = gated.merge(conf_df, on="occupation", how="left")
-    gated["confidence_gate_ok"] = gated["confidence"].fillna(0.0) >= float(min_conf)
-
-    if risk_profile.startswith("Risk-averse"):
-        cand = gated[gated["confidence_gate_ok"]].copy()
-        if cand.empty:
-            cand = gated.copy()
-        chosen = cand.sort_values(["cvar05", "mean"], ascending=False).head(1)
-        rationale = "Chosen by **downside robustness (CVaR 5%)** with confidence gate."
-    elif risk_profile.startswith("Risk-seeking"):
-        cand = gated[gated["confidence_gate_ok"]].copy()
-        if cand.empty:
-            cand = gated.copy()
-        chosen = cand.sort_values(["mean", "cvar05"], ascending=False).head(1)
-        rationale = "Chosen by **highest expected score (mean)** with confidence gate."
-    else:
-        cand = gated[gated["confidence_gate_ok"] & gated["pareto_frontier"]].copy()
-        if cand.empty:
-            cand = gated[gated["confidence_gate_ok"]].copy()
-        if cand.empty:
-            cand = gated.copy()
-        chosen = cand.sort_values(["mean", "cvar05"], ascending=False).head(1)
-        rationale = "Chosen from **Pareto frontier**, then by mean + CVaR."
-
-    st.markdown("### Recommended target (decision-grade)")
-    if chosen.empty:
-        st.warning("No targets available.")
-    else:
-        rec = chosen.iloc[0]
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Recommended", str(rec["occupation"]))
-        c2.metric("Mean", f"{rec['mean']:.1f}")
-        c3.metric("CVaR 5%", f"{rec['cvar05']:.1f}")
-        c4.metric("Effort (mix)", f"{rec['effort_mix']:.1f}")
-        st.info(rationale)
-
-        if st.button("Use recommended as target", key="use_decision_brief_reco"):
-            st.session_state["__target_override__"] = str(rec["occupation"])
-            st.session_state["__has_run__"] = True
-            st.rerun()
-
-    st.markdown("### Tradeoff map (Pareto frontier)")
-    plot_df = df.copy()
-    plot_df["frontier_label"] = plot_df["pareto_frontier"].apply(lambda x: "Frontier" if x else "Dominated")
-
-    fig = px.scatter(
-        plot_df,
-        x="effort_mix",
-        y="mean",
-        size="cvar05",
-        hover_name="occupation",
-        color="frontier_label",
-        title="Higher = better score (y), lower = less effort (x), bubble size = CVaR(5%) robustness",
-    )
-    fig.update_layout(height=520)
-    st.plotly_chart(fig, use_container_width=True)
-
-    st.markdown("### Decision table (sortable)")
-    show_cols = [
-        "occupation",
-        "mean",
-        "cvar05",
-        "q05",
-        "std",
-        "effort_mix",
-        "gap_effort",
-        "path_cost",
-        "reachable",
-        "pareto_frontier",
-    ]
-    st.dataframe(
-        df[show_cols].sort_values(["pareto_frontier", "mean"], ascending=[False, False]),
-        use_container_width=True,
-        hide_index=True,
-    )
-
-    st.markdown("### Counterfactual: minimal skill uplift to unlock your target")
-    chosen_target = st.selectbox(
-        "Pick a target to unlock",
-        options=df["occupation"].astype(str).tolist(),
-        index=0,
-        key="cf_target_select",
-    )
-
-    if goal_mode == "threshold":
-        cf = counterfactual_uplift_greedy(
-            mat,
-            coords,
-            current,
-            chosen_target,
-            w_cosine=float(w_cosine),
-            w_map=float(w_map),
-            goal_mode="threshold",
-            score_threshold=float(score_threshold),
-            max_skills=int(uplift_budget),
-        )
-        st.caption(f"Goal: reach score ≥ {score_threshold:.0f} for **{chosen_target}**")
-    else:
-        cf = counterfactual_uplift_greedy(
-            mat,
-            coords,
-            current,
-            chosen_target,
-            w_cosine=float(w_cosine),
-            w_map=float(w_map),
-            goal_mode="topk",
-            top_k=int(topk_goal),
-            max_skills=int(uplift_budget),
-        )
-        st.caption(f"Goal: make **{chosen_target}** appear in Top-{topk_goal}")
-
-    if cf.get("selected_skills"):
-        st.success(
-            "Suggested uplift skills ("
-            + str(len(cf["selected_skills"]))
-            + "): **"
-            + "**, **".join(cf["selected_skills"])
-            + "**"
-        )
-    else:
-        st.info("No uplift skills suggested (either goal already met or dataset too sparse for this target).")
-
-    st.write(
-        f"Before score: **{cf.get('before_score', np.nan):.1f}**  → After score: **{cf.get('after_score', np.nan):.1f}**"
-    )
-    st.caption(str(cf.get("notes", "")))
-
-
-# ---- What-If Lab
-with tabs[1]:
-    st.subheader("What-If Sensitivity Lab (overkill mode)")
-    st.caption(
-        "We sweep across weight settings and noise levels to measure how stable your target recommendation is. "
-        "This is the prototyping mindset: accuracy + uncertainty + decision robustness."
-    )
-
-    with st.expander("Configuration", expanded=True):
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            w_min = st.slider("w_cosine min", 0.0, 1.0, 0.40, 0.05)
-            w_max = st.slider("w_cosine max", 0.0, 1.0, 0.90, 0.05)
-            w_steps = st.slider("w_cosine steps", 3, 9, 6, 1)
-        with c2:
-            n_min = st.slider("noise min", 0.00, 0.20, 0.00, 0.01)
-            n_max = st.slider("noise max", 0.00, 0.20, 0.12, 0.01)
-            n_steps = st.slider("noise steps", 3, 9, 6, 1)
-        with c3:
-            mc = st.slider("MC per cell (speed vs fidelity)", 5, 60, 20, 5)
-            topk = st.slider("Top-K stability", 1, 5, 3, 1)
-            seed = st.number_input("Seed", value=42, step=1)
-
-        if w_max < w_min:
-            w_min, w_max = w_max, w_min
-        if n_max < n_min:
-            n_min, n_max = n_max, n_min
-
-    sweep = _what_if_sweep(
-        mat,
-        coords,
-        current,
-        grid_w_cosine=(float(w_min), float(w_max), int(w_steps)),
-        grid_noise=(float(n_min), float(n_max), int(n_steps)),
-        mc_per_cell=int(mc),
-        seed=int(seed),
-    )
-
-    stab = _ranking_stability(sweep, target_occ=target, top_k=int(topk))
-
-    st.markdown("### Stability summary")
-    a, b, c = st.columns(3)
-    a.metric(f"Target in Top-{topk}", f"{100*stab['target_in_topk_rate']:.0f}%")
-
-    if stab["topk_mode"] is None:
-        b.metric("Most common Top-K set", "n/a")
-        c.metric("Top-K set stability", "n/a")
-    else:
-        b.metric("Most common Top-K set", " • ".join(stab["topk_mode"]))
-        c.metric("Top-K set stability", f"{100*stab['topk_mode_share']:.0f}%")
-
-    freq_df = stab["topk_freq_df"].copy()
-    if not freq_df.empty:
-        st.markdown("### Robust alternatives (if target is unstable)")
-        st.caption("These roles appear in Top-K across many configurations — i.e. more robust recommendations.")
-        show_n = min(6, len(freq_df))
-        best = freq_df.head(show_n).copy()
-
-        for _, r in best.iterrows():
-            c1, c2, c3 = st.columns([3, 1, 1])
-            with c1:
-                st.write(f"**{r['occupation']}**")
-            with c2:
-                st.write(f"{100*float(r['share']):.0f}%")
-            with c3:
-                if st.button("Use", key=f"whatif_use_{r['occupation']}"):
-                    st.session_state["__target_override__"] = str(r["occupation"])
-                    st.session_state["__has_run__"] = True
-                    st.rerun()
-
-    st.markdown("### Target score sensitivity (heatmap)")
-    target_df = sweep[sweep["occupation"] == target].copy()
-    if target_df.empty:
-        st.warning("Target not found in sweep output.")
-    else:
-        pivot = target_df.pivot_table(index="noise_std", columns="w_cosine", values="mean_score", aggfunc="mean")
-        fig = px.imshow(
-            pivot.to_numpy(),
-            x=[f"{x:.2f}" for x in pivot.columns.tolist()],
-            y=[f"{y:.2f}" for y in pivot.index.tolist()],
-            labels={"x": "w_cosine", "y": "noise_std", "color": "mean score"},
-            title=f"Mean hybrid score for selected target across weight/noise sweep ({coords_label})",
-            aspect="auto",
-        )
-        fig.update_layout(height=520)
-        st.plotly_chart(fig, use_container_width=True)
-
-    st.markdown("### Target rank distribution (robust decision view)")
-    ranks = stab["target_rank_values"]
-    if len(ranks) == 0:
-        st.info("No rank values computed.")
-    else:
-        fig = px.histogram(
-            pd.DataFrame({"rank": ranks}),
-            x="rank",
-            nbins=min(10, len(set(ranks))),
-            title="Rank of selected target across configurations",
-        )
-        fig.update_layout(height=420)
-        st.plotly_chart(fig, use_container_width=True)
-
-    st.markdown(f"### Stable recommendations (who appears in Top-{topk} most often?)")
-    if freq_df.empty:
-        st.info("No Top-K frequency computed.")
-    else:
-        show_n = min(10, len(freq_df))
-        fig = px.bar(freq_df.head(show_n), x="occupation", y="share", title=f"Share of configs where role appears in Top-{topk}")
-        fig.update_layout(height=420)
-        st.plotly_chart(fig, use_container_width=True)
-        st.dataframe(freq_df.head(show_n), use_container_width=True, hide_index=True)
-
-    st.info(
-        f"Interpretation: If your target is rarely in Top-{topk} across plausible configurations, it's a risky choice. "
-        f"If it stays Top-{topk} across most configs, it's robust."
-    )
-
-
 # ---- Explain
-with tabs[2]:
+with tabs[0]:
     st.subheader("Explainability (what drives vs blocks the pivot)")
     c1, c2, c3 = st.columns(3)
-
     with c1:
         st.markdown("**Match drivers (overlap)**")
         st.dataframe(
@@ -1092,7 +393,6 @@ with tabs[2]:
             use_container_width=True,
             hide_index=True,
         )
-
     with c2:
         st.markdown("**Missing drivers (priority gaps)**")
         md = contrib["missing_drivers"]
@@ -1104,9 +404,8 @@ with tabs[2]:
                 use_container_width=True,
                 hide_index=True,
             )
-
     with c3:
-        st.markdown("**Surplus skills (less relevant in target)**")
+        st.markdown("**Surplus skills**")
         ss = contrib["surplus_skills"]
         if ss.empty:
             st.info("No surplus skills detected.")
@@ -1117,15 +416,13 @@ with tabs[2]:
                 hide_index=True,
             )
 
-
 # ---- Skill Groups
-with tabs[3]:
+with tabs[1]:
     st.subheader("Skill Groups (taxonomy view)")
     if group_gap_df.empty:
         st.info("No taxonomy artifacts loaded.")
     else:
         left2, right2 = st.columns([1.2, 1.0], gap="large")
-
         with left2:
             tmp = group_gap_df.copy().sort_values("gap", ascending=False)
             fig = px.bar(tmp, x="group", y="gap", title="Group gap (target − current)")
@@ -1136,19 +433,13 @@ with tabs[3]:
                 use_container_width=True,
                 hide_index=True,
             )
-
         with right2:
             categories = group_gap_df["group"].tolist()
             fig = go.Figure()
-            fig.add_trace(
-                go.Scatterpolar(r=group_gap_df["current_importance"], theta=categories, fill="toself", name="Current")
-            )
-            fig.add_trace(
-                go.Scatterpolar(r=group_gap_df["target_importance"], theta=categories, fill="toself", name="Target")
-            )
+            fig.add_trace(go.Scatterpolar(r=group_gap_df["current_importance"], theta=categories, fill="toself", name="Current"))
+            fig.add_trace(go.Scatterpolar(r=group_gap_df["target_importance"], theta=categories, fill="toself", name="Target"))
             fig.update_layout(height=420, polar=dict(radialaxis=dict(visible=True)))
             st.plotly_chart(fig, use_container_width=True)
-
             st.markdown("#### Drilldown: missing skills in a group")
             chosen_group = st.selectbox("Select group", options=categories, index=0)
             miss_in_group = filter_missing_skills_by_group(gap_df, skill_taxonomy, chosen_group, top_n=20)
@@ -1161,84 +452,352 @@ with tabs[3]:
                     hide_index=True,
                 )
 
+# ---- Robustness (on-demand)
+with tabs[2]:
+    st.subheader("Robustness (stability under noise) — on-demand")
+    st.caption("This is expensive. Click to run Monte Carlo and cache results for this configuration.")
 
-# ---- Robustness
-with tabs[4]:
-    st.subheader("Robustness (stability under noise)")
-    m1, m2, m3 = st.columns(3)
-    m1.metric("Mean score", f"{rob['mean']:.1f}")
-    m2.metric("Std dev", f"{rob['std']:.1f}")
-    m3.metric("95% CI", f"[{rob['ci95_low']:.1f}, {rob['ci95_high']:.1f}]")
+    if st.button("Run robustness (Monte Carlo)", key="run_robustness"):
+        with st.spinner("Running Monte Carlo robustness..."):
+            rng = np.random.default_rng(42)
+            a0 = mat.loc[current].astype(float).to_numpy()
+            b0 = mat.loc[target].astype(float).to_numpy()
+            mp = float(map_parts_current.get(str(target), 0.0))
 
-    fig = px.histogram(
-        pd.DataFrame({"score": rob["scores"]}),
-        x="score",
-        nbins=20,
-        title=f"Score distribution (Monte Carlo) — map={coords_label}",
-    )
-    fig.update_layout(height=420)
-    st.plotly_chart(fig, use_container_width=True)
+            scores: list[float] = []
+            for _ in range(int(n_samples)):
+                a = np.clip(a0 + rng.normal(0.0, float(noise_std), size=a0.shape), 0.0, None)
+                b = np.clip(b0 + rng.normal(0.0, float(noise_std), size=b0.shape), 0.0, None)
+                s = _hybrid_score_from_vectors(a, b, mp, float(w_cosine), float(w_map))
+                scores.append(s)
 
+            arr = np.array(scores, dtype=float)
+            rob = {
+                "n_samples": int(n_samples),
+                "noise_std": float(noise_std),
+                "mean": float(np.mean(arr)),
+                "std": float(np.std(arr)),
+                "ci95_low": float(np.quantile(arr, 0.025)),
+                "ci95_high": float(np.quantile(arr, 0.975)),
+                "scores": scores,
+            }
+            st.session_state["__cache__"]["robustness"][rob_key] = rob
+            rob_cached = rob
 
-# ---- Skill Gap
-with tabs[5]:
-    st.subheader("Skill Gap (target minus current)")
-    top_missing = gap_df[gap_df["gap"] > 0].copy()
-    top_missing = top_missing.sort_values(["gap", "target_importance"], ascending=False).head(15)
-    if top_missing.empty:
-        st.success("No positive gaps found.")
+    if not isinstance(rob_cached, dict):
+        st.info("Not computed yet for this pivot/config.")
     else:
-        st.dataframe(
-            top_missing[["skill", "current_importance", "target_importance", "gap"]],
-            use_container_width=True,
-            hide_index=True,
+        m1, m2, m3 = st.columns(3)
+        m1.metric("Mean score", f"{rob_cached['mean']:.1f}")
+        m2.metric("Std dev", f"{rob_cached['std']:.1f}")
+        m3.metric("95% CI", f"[{rob_cached['ci95_low']:.1f}, {rob_cached['ci95_high']:.1f}]")
+
+        fig = px.histogram(pd.DataFrame({"score": rob_cached["scores"]}), x="score", nbins=20, title=f"Score distribution — map={coords_label}")
+        fig.update_layout(height=420)
+        st.plotly_chart(fig, use_container_width=True)
+
+# ---- Decision Brief (on-demand)
+with tabs[3]:
+    st.subheader("Decision Brief — on-demand (very expensive)")
+    st.caption("This computes robust stats for all targets + path costs. Use only when needed.")
+
+    risk_options = ["Risk-averse (CVaR)", "Balanced", "Risk-seeking (Mean)"]
+    try:
+        risk_profile = st.segmented_control("Risk profile", options=risk_options, default=risk_options[1])
+    except Exception:
+        risk_profile = st.radio("Risk profile", options=risk_options, index=1)
+
+    uplift_budget = st.slider("Max uplift skills", 1, 6, 3, 1)
+    min_conf = st.slider("Min confidence gate", 0, 100, 25, 5)
+
+    db_key = _cache_key("db", coords_label, current, w_cosine, w_map, n_samples, noise_std, k_neighbors, max_steps)
+    df_cached = st.session_state["__cache__"]["decision_brief"].get(db_key)
+
+    if st.button("Compute Decision Brief", key="run_decision_brief"):
+        with st.spinner("Computing Decision Brief (robust all-target ranking + effort + pareto)..."):
+            rng = np.random.default_rng(42)
+            a0 = mat.loc[current].astype(float).to_numpy()
+            map_parts = map_parts_current
+
+            rows: list[dict[str, Any]] = []
+            for occ in mat.index.astype(str):
+                if occ == current:
+                    continue
+
+                b0 = mat.loc[occ].astype(float).to_numpy()
+                mp = float(map_parts.get(occ, 0.0))
+
+                scores = []
+                for _ in range(int(n_samples)):
+                    a = np.clip(a0 + rng.normal(0.0, float(noise_std), size=a0.shape), 0.0, None)
+                    b = np.clip(b0 + rng.normal(0.0, float(noise_std), size=b0.shape), 0.0, None)
+                    s = _hybrid_score_from_vectors(a, b, mp, float(w_cosine), float(w_map))
+                    scores.append(s)
+
+                arr = np.array(scores, dtype=float)
+                q05 = float(np.quantile(arr, 0.05))
+                tail = arr[arr <= q05]
+                cvar05 = float(np.mean(tail)) if tail.size else q05
+
+                po = find_pivot_path(mat, current, occ, k_neighbors=int(k_neighbors), max_steps=int(max_steps))
+                pc = po.get("total_cost", np.nan) if po.get("reachable") else np.nan
+
+                em = compute_effort_metrics(mat, current, occ, path_cost=pc)
+
+                rows.append(
+                    {
+                        "occupation": occ,
+                        "mean": float(np.mean(arr)),
+                        "std": float(np.std(arr)),
+                        "q05": q05,
+                        "q95": float(np.quantile(arr, 0.95)),
+                        "cvar05": cvar05,
+                        "map_part": float(mp),
+                        "reachable": bool(po.get("reachable")),
+                        **em,
+                    }
+                )
+
+            df = pd.DataFrame(rows)
+            df["pareto_frontier"] = pareto_frontier_flags(
+                df,
+                maximize_cols=["mean", "cvar05"],
+                minimize_cols=["effort_mix"],
+            ).astype(bool)
+            df = df.sort_values(["pareto_frontier", "mean"], ascending=[False, False]).reset_index(drop=True)
+
+            st.session_state["__cache__"]["decision_brief"][db_key] = df
+            df_cached = df
+
+    if df_cached is None or not isinstance(df_cached, pd.DataFrame) or df_cached.empty:
+        st.info("Not computed yet for this configuration.")
+    else:
+        # confidence gating (cheap)
+        a = mat.loc[current].astype(float).values
+        a_nz = a > 0
+        conf_rows = []
+        for occ in mat.index.astype(str):
+            if occ == current:
+                continue
+            b = mat.loc[occ].astype(float).values
+            b_nz = b > 0
+            inter = float((a_nz & b_nz).mean()) if len(a_nz) else 0.0
+            uni = float((a_nz | b_nz).mean()) if len(a_nz) else 0.0
+            jacc = 0.0 if uni == 0 else inter / uni
+            conf_rows.append({"occupation": occ, "confidence": 100.0 * jacc})
+        conf_df = pd.DataFrame(conf_rows)
+
+        gated = df_cached.merge(conf_df, on="occupation", how="left")
+        gated["confidence_gate_ok"] = gated["confidence"].fillna(0.0) >= float(min_conf)
+
+        if risk_profile.startswith("Risk-averse"):
+            cand = gated[gated["confidence_gate_ok"]].copy()
+            if cand.empty:
+                cand = gated.copy()
+            chosen = cand.sort_values(["cvar05", "mean"], ascending=False).head(1)
+            rationale = "Chosen by downside robustness (CVaR 5%) with confidence gate."
+        elif risk_profile.startswith("Risk-seeking"):
+            cand = gated[gated["confidence_gate_ok"]].copy()
+            if cand.empty:
+                cand = gated.copy()
+            chosen = cand.sort_values(["mean", "cvar05"], ascending=False).head(1)
+            rationale = "Chosen by highest expected score (mean) with confidence gate."
+        else:
+            cand = gated[gated["confidence_gate_ok"] & gated["pareto_frontier"]].copy()
+            if cand.empty:
+                cand = gated[gated["confidence_gate_ok"]].copy()
+            if cand.empty:
+                cand = gated.copy()
+            chosen = cand.sort_values(["mean", "cvar05"], ascending=False).head(1)
+            rationale = "Chosen from Pareto frontier, then by mean + CVaR."
+
+        st.markdown("### Recommended target (decision-grade)")
+        if not chosen.empty:
+            rec = chosen.iloc[0]
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("Recommended", str(rec["occupation"]))
+            c2.metric("Mean", f"{rec['mean']:.1f}")
+            c3.metric("CVaR 5%", f"{rec['cvar05']:.1f}")
+            c4.metric("Effort (mix)", f"{rec['effort_mix']:.1f}")
+            st.info(rationale)
+
+        st.markdown("### Tradeoff map (Pareto)")
+        plot_df = df_cached.copy()
+        plot_df["frontier_label"] = plot_df["pareto_frontier"].apply(lambda x: "Frontier" if x else "Dominated")
+        fig = px.scatter(
+            plot_df,
+            x="effort_mix",
+            y="mean",
+            size="cvar05",
+            hover_name="occupation",
+            color="frontier_label",
+            title="Higher = better score (y), lower = less effort (x), bubble size = CVaR(5%)",
         )
+        fig.update_layout(height=520)
+        st.plotly_chart(fig, use_container_width=True)
 
+        st.markdown("### Counterfactual uplift (your selected target)")
+        goal_mode = st.radio("Goal mode", options=["threshold", "topk"], index=0, horizontal=True)
+        score_threshold = st.slider("Score threshold", 40.0, 90.0, 60.0, 1.0)
+        topk_goal = st.slider("Top-K", 1, 5, 3, 1)
 
-# ---- Radar
-with tabs[6]:
-    st.subheader("Radar chart (current vs target)")
-    radar_df = gap_df.sort_values("target_importance", ascending=False).head(12).copy()
-    categories = radar_df["skill"].tolist()
-    fig = go.Figure()
-    fig.add_trace(go.Scatterpolar(r=radar_df["current_importance"], theta=categories, fill="toself", name="Current"))
-    fig.add_trace(go.Scatterpolar(r=radar_df["target_importance"], theta=categories, fill="toself", name="Target"))
-    fig.update_layout(height=520, polar=dict(radialaxis=dict(visible=True)))
-    st.plotly_chart(fig, use_container_width=True)
+        if goal_mode == "threshold":
+            cf = counterfactual_uplift_greedy(
+                mat,
+                coords,
+                current,
+                target,
+                w_cosine=float(w_cosine),
+                w_map=float(w_map),
+                goal_mode="threshold",
+                score_threshold=float(score_threshold),
+                max_skills=int(uplift_budget),
+            )
+        else:
+            cf = counterfactual_uplift_greedy(
+                mat,
+                coords,
+                current,
+                target,
+                w_cosine=float(w_cosine),
+                w_map=float(w_map),
+                goal_mode="topk",
+                top_k=int(topk_goal),
+                max_skills=int(uplift_budget),
+            )
 
+        if cf.get("selected_skills"):
+            st.success("Suggested uplift skills: **" + "**, **".join(cf["selected_skills"]) + "**")
+        else:
+            st.info("No uplift skills suggested (goal already met or sparse).")
 
-# ---- Export
-with tabs[7]:
-    st.subheader("Export")
-    export_df = gap_df.copy()
-    export_df.insert(0, "current_occupation", current)
-    export_df.insert(1, "target_occupation", target)
-    export_df.insert(2, "match_score", round(match_score, 2))
-    export_df.insert(3, "confidence_score", round(conf["confidence_score"], 2))
-    export_df.insert(4, "robust_mean_score", round(rob["mean"], 2))
-    export_df.insert(5, "robust_ci95_low", round(rob["ci95_low"], 2))
-    export_df.insert(6, "robust_ci95_high", round(rob["ci95_high"], 2))
-    export_df.insert(7, "map_embedding", coords_label)
+        st.write(f"Before: **{cf.get('before_score', np.nan):.1f}** → After: **{cf.get('after_score', np.nan):.1f}**")
 
-    if not group_gap_df.empty:
-        for _, r in group_gap_df.iterrows():
-            key = f"group_gap__{str(r['group']).replace(' ', '_').lower()}"
-            export_df[key] = round(float(r["gap"]), 4)
+# ---- What-If Lab (on-demand)
+with tabs[4]:
+    st.subheader("What-If Lab — on-demand (extremely expensive)")
+    st.caption("This can take long. Keep grid small for demo. Results are cached per configuration.")
 
-    csv_bytes = export_df.to_csv(index=False).encode("utf-8")
-    st.download_button(
-        label="Download pivot CSV",
-        data=csv_bytes,
-        file_name=f"pivot_{current}_to_{target}.csv".replace(" ", "_").lower(),
-        mime="text/csv",
-    )
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        w_min = st.slider("w_cosine min", 0.0, 1.0, 0.40, 0.05, key="wmin")
+        w_max = st.slider("w_cosine max", 0.0, 1.0, 0.90, 0.05, key="wmax")
+        w_steps = st.slider("w_cosine steps", 3, 7, 5, 1, key="wsteps")
+    with c2:
+        n_min = st.slider("noise min", 0.00, 0.20, 0.00, 0.01, key="nmin")
+        n_max = st.slider("noise max", 0.00, 0.20, 0.10, 0.01, key="nmax")
+        n_steps = st.slider("noise steps", 3, 7, 5, 1, key="nsteps")
+    with c3:
+        mc = st.slider("MC per cell", 5, 30, 15, 5, key="mc")
+        topk = st.slider("Top-K stability", 1, 5, 3, 1, key="topk")
+        seed = st.number_input("Seed", value=42, step=1, key="seed")
 
+    if w_max < w_min:
+        w_min, w_max = w_max, w_min
+    if n_max < n_min:
+        n_min, n_max = n_max, n_min
+
+    wf_key = _cache_key("wf", coords_label, current, target, w_min, w_max, w_steps, n_min, n_max, n_steps, mc, seed)
+    cached = st.session_state["__cache__"]["whatif"].get(wf_key)
+
+    if st.button("Run What-If Sweep", key="run_whatif"):
+        with st.spinner("Running sweep (this is heavy)..."):
+            rng = np.random.default_rng(int(seed))
+            a0 = mat.loc[current].astype(float).to_numpy()
+            map_parts = map_parts_current
+
+            w_vals = np.linspace(float(w_min), float(w_max), int(w_steps))
+            n_vals = np.linspace(float(n_min), float(n_max), int(n_steps))
+
+            records = []
+            for w in w_vals:
+                w = float(np.clip(w, 0.0, 1.0))
+                w_map_local = float(1.0 - w)
+                for noise in n_vals:
+                    noise = float(max(0.0, noise))
+                    for occ in mat.index.astype(str):
+                        if occ == current:
+                            continue
+                        b0 = mat.loc[occ].astype(float).to_numpy()
+                        mp = float(map_parts.get(occ, 0.0))
+
+                        scores = []
+                        for _ in range(int(mc)):
+                            a = np.clip(a0 + rng.normal(0.0, noise, size=a0.shape), 0.0, None)
+                            b = np.clip(b0 + rng.normal(0.0, noise, size=b0.shape), 0.0, None)
+                            s = _hybrid_score_from_vectors(a, b, mp, w, w_map_local)
+                            scores.append(s)
+
+                        records.append(
+                            {"w_cosine": w, "w_map": w_map_local, "noise_std": noise, "occupation": occ, "mean_score": float(np.mean(scores))}
+                        )
+
+            sweep_df = pd.DataFrame(records)
+
+            # stability
+            group_cols = ["w_cosine", "w_map", "noise_std"]
+            topk_lists = []
+            target_ranks = []
+
+            for _, g in sweep_df.groupby(group_cols):
+                g2 = g.sort_values("mean_score", ascending=False).reset_index(drop=True)
+                topk_set = tuple(g2.head(int(topk))["occupation"].tolist())
+                topk_lists.append(topk_set)
+
+                tr = g2.index[g2["occupation"] == target]
+                target_ranks.append(int(tr[0] + 1) if len(tr) else np.nan)
+
+            ranks_arr = np.array([r for r in target_ranks if not (isinstance(r, float) and np.isnan(r))], dtype=int)
+            in_topk_rate = float(np.mean(ranks_arr <= int(topk))) if len(ranks_arr) else 0.0
+
+            freq = Counter()
+            for t in topk_lists:
+                for occ in t:
+                    freq[occ] += 1
+            freq_df = pd.DataFrame({"occupation": list(freq.keys()), "count": list(freq.values())}).sort_values("count", ascending=False)
+            freq_df["share"] = freq_df["count"] / max(1, len(topk_lists))
+
+            stab = {
+                "target_in_topk_rate": in_topk_rate,
+                "target_rank_values": ranks_arr.tolist(),
+                "topk_freq_df": freq_df.reset_index(drop=True),
+                "n_configs": int(len(topk_lists)),
+            }
+
+            st.session_state["__cache__"]["whatif"][wf_key] = (sweep_df, stab)
+            cached = (sweep_df, stab)
+
+    if cached is None:
+        st.info("Not computed yet. Click **Run What-If Sweep**.")
+    else:
+        sweep_df, stab = cached
+        st.metric(f"Target in Top-{topk}", f"{100*stab['target_in_topk_rate']:.0f}%")
+
+        target_df = sweep_df[sweep_df["occupation"] == target].copy()
+        if not target_df.empty:
+            pivot = target_df.pivot_table(index="noise_std", columns="w_cosine", values="mean_score", aggfunc="mean")
+            fig = px.imshow(
+                pivot.to_numpy(),
+                x=[f"{x:.2f}" for x in pivot.columns.tolist()],
+                y=[f"{y:.2f}" for y in pivot.index.tolist()],
+                labels={"x": "w_cosine", "y": "noise_std", "color": "mean score"},
+                title=f"Mean hybrid score for target across sweep ({coords_label})",
+                aspect="auto",
+            )
+            fig.update_layout(height=520)
+            st.plotly_chart(fig, use_container_width=True)
+
+        freq_df = stab["topk_freq_df"]
+        if not freq_df.empty:
+            show_n = min(10, len(freq_df))
+            fig = px.bar(freq_df.head(show_n), x="occupation", y="share", title=f"Share of configs where role appears in Top-{topk}")
+            fig.update_layout(height=420)
+            st.plotly_chart(fig, use_container_width=True)
+            st.dataframe(freq_df.head(show_n), use_container_width=True, hide_index=True)
 
 # ---- Map (advanced)
-with tabs[8]:
+with tabs[5]:
     st.subheader(f"Map (advanced) — {coords_label}")
-    st.caption("The map is for intuition only. Axes are not semantic.")
-
     if not show_map:
         st.info("Enable **Show map tab (advanced)** in the sidebar to display this.")
     else:
@@ -1252,9 +811,7 @@ with tabs[8]:
 
             if clusters:
                 coords_plot["cluster_id"] = coords_plot["occupation"].map(lambda o: clusters.get(str(o), -1))
-                coords_plot["cluster_theme"] = coords_plot["cluster_id"].map(
-                    lambda c_: format_cluster_theme(c_, cluster_themes)
-                )
+                coords_plot["cluster_theme"] = coords_plot["cluster_id"].map(lambda c_: format_cluster_theme(c_, cluster_themes))
             else:
                 coords_plot["cluster_id"] = -1
                 coords_plot["cluster_theme"] = ""
@@ -1268,7 +825,7 @@ with tabs[8]:
                     color="cluster_id",
                     symbol="selected",
                     hover_data={"cluster_id": True, "cluster_theme": True, "x": False, "y": False},
-                    title=f"Clustered {coords_label} map (career neighborhoods).",
+                    title=f"Clustered {coords_label} map.",
                 )
             else:
                 fig = px.scatter(
@@ -1277,34 +834,41 @@ with tabs[8]:
                     y="y",
                     hover_name="occupation",
                     color="selected",
-                    title=f"{coords_label} map (unclustered).",
+                    title=f"{coords_label} map.",
                 )
 
-            # Path overlay (only if all path nodes exist in coords)
+            # Path overlay
             if path_out.get("reachable") and len(path_out.get("path", [])) >= 2:
                 path = [str(p) for p in path_out.get("path", [])]
                 coords_idx = coords_plot.set_index("occupation")
                 if all(p in coords_idx.index for p in path):
                     sub = coords_idx.loc[path][["x", "y"]].reset_index()
-                    fig.add_trace(
-                        go.Scatter(
-                            x=sub["x"],
-                            y=sub["y"],
-                            mode="lines+markers",
-                            name="Pivot path",
-                            hovertext=sub["occupation"],
-                        )
-                    )
+                    fig.add_trace(go.Scatter(x=sub["x"], y=sub["y"], mode="lines+markers", name="Pivot path", hovertext=sub["occupation"]))
 
             fig.update_layout(height=620)
             st.plotly_chart(fig, use_container_width=True)
 
         except Exception as e:
             st.error("Map rendering failed (the rest of the app is still usable).")
-            with st.expander("Details (traceback)"):
+            with st.expander("Details"):
                 st.exception(e)
 
-st.caption(
-    "Engineering note: runtime loads precomputed artifacts (matrix + PCA/UMAP coords + clusters + taxonomy). "
-    "This prototype adds decision robustness via what-if sensitivity sweeps."
-)
+# ---- Export
+with tabs[6]:
+    st.subheader("Export")
+    export_df = gap_df.copy()
+    export_df.insert(0, "current_occupation", current)
+    export_df.insert(1, "target_occupation", target)
+    export_df.insert(2, "match_score", round(match_score, 2))
+    export_df.insert(3, "confidence_score", round(conf["confidence_score"], 2))
+    export_df.insert(4, "map_embedding", coords_label)
+
+    csv_bytes = export_df.to_csv(index=False).encode("utf-8")
+    st.download_button(
+        label="Download pivot CSV",
+        data=csv_bytes,
+        file_name=f"pivot_{current}_to_{target}.csv".replace(" ", "_").lower(),
+        mime="text/csv",
+    )
+
+st.caption("Note: Heavy computations are on-demand to keep the prototype fast and usable.")
