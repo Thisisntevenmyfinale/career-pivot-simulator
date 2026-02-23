@@ -1,4 +1,3 @@
-# src/model_logic.py
 from __future__ import annotations
 
 import json
@@ -16,22 +15,15 @@ class RuntimeArtifacts:
     coords: pd.DataFrame
     pca_meta: dict[str, Any]
     quality: dict[str, Any]
-
-    # Optional "overkill" artifacts (safe to ignore if missing)
     clusters: dict[str, int]
     cluster_meta: dict[str, Any]
     cluster_themes: dict[str, Any]
     skill_taxonomy: dict[str, str]
     group_meta: dict[str, Any]
-
-    # Optional: UMAP embedding (if available)
     umap_coords: pd.DataFrame
     umap_meta: dict[str, Any]
 
 
-# -----------------------------
-# Loading
-# -----------------------------
 def _read_json_if_exists(path: Path, default: Any) -> Any:
     if path.exists():
         return json.loads(path.read_text(encoding="utf-8"))
@@ -46,14 +38,12 @@ def load_runtime_artifacts(artifact_dir: str | Path = "artifacts") -> RuntimeArt
     pca_meta_path = artifact_dir / "pca_meta.json"
     quality_path = artifact_dir / "data_quality.json"
 
-    # Optional artifacts
     clusters_path = artifact_dir / "clusters.json"
     cluster_meta_path = artifact_dir / "cluster_meta.json"
     cluster_themes_path = artifact_dir / "cluster_themes.json"
     taxonomy_path = artifact_dir / "skill_taxonomy.json"
     group_meta_path = artifact_dir / "group_meta.json"
 
-    # Optional UMAP artifacts
     umap_coords_path = artifact_dir / "umap_coords.parquet"
     umap_meta_path = artifact_dir / "umap_meta.json"
 
@@ -81,32 +71,26 @@ def load_runtime_artifacts(artifact_dir: str | Path = "artifacts") -> RuntimeArt
     skill_taxonomy = _read_json_if_exists(taxonomy_path, {})
     group_meta = _read_json_if_exists(group_meta_path, {})
 
-    # --- UMAP is optional: never crash if missing
     umap_coords = pd.DataFrame(columns=["occupation", "x", "y"])
     if umap_coords_path.exists():
         try:
             tmp = pd.read_parquet(umap_coords_path)
-            # only accept if it looks correct
             if "occupation" in tmp.columns and {"x", "y"}.issubset(tmp.columns):
                 umap_coords = tmp[["occupation", "x", "y"]].copy()
         except Exception:
-            # keep empty on any read error
             umap_coords = pd.DataFrame(columns=["occupation", "x", "y"])
 
     umap_meta = _read_json_if_exists(umap_meta_path, {})
 
-    # Validate PCA coords
     if "occupation" not in coords.columns or not {"x", "y"}.issubset(coords.columns):
         raise ValueError("pca_coords.parquet must contain columns: occupation, x, y")
 
-    # Normalize / sort for stable UI behavior
     matrix = matrix.sort_index(axis=0).sort_index(axis=1)
     coords = coords.sort_values("occupation").reset_index(drop=True)
 
     if not umap_coords.empty:
         umap_coords = umap_coords.sort_values("occupation").reset_index(drop=True)
 
-    # Return runtime bundle
     return RuntimeArtifacts(
         matrix=matrix,
         coords=coords,
@@ -122,9 +106,6 @@ def load_runtime_artifacts(artifact_dir: str | Path = "artifacts") -> RuntimeArt
     )
 
 
-# -----------------------------
-# Core math
-# -----------------------------
 def _cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
     denom = float(np.linalg.norm(a) * np.linalg.norm(b))
     if denom == 0.0:
@@ -185,7 +166,7 @@ def compute_gap_df(matrix: pd.DataFrame, current_occ: str, target_occ: str) -> p
 def compute_match_score_cosine(matrix: pd.DataFrame, current_occ: str, target_occ: str) -> float:
     a = matrix.loc[current_occ].astype(float).values
     b = matrix.loc[target_occ].astype(float).values
-    sim = _cosine_similarity(a, b)  # [-1,1]
+    sim = _cosine_similarity(a, b)
     return float(np.clip(max(0.0, sim) * 100.0, 0.0, 100.0))
 
 
@@ -197,16 +178,13 @@ def compute_match_score_hybrid(
     w_cosine: float = 0.65,
     w_map: float = 0.35,
 ) -> float:
-    cosine_part = compute_match_score_cosine(matrix, current_occ, target_occ) / 100.0  # 0..1
+    cosine_part = compute_match_score_cosine(matrix, current_occ, target_occ) / 100.0
     max_dist = _precompute_map_maxdist(coords)
     map_part = _map_proximity(coords, current_occ, target_occ, max_dist)
     score = 100.0 * (w_cosine * cosine_part + w_map * map_part)
     return float(np.clip(score, 0.0, 100.0))
 
 
-# -----------------------------
-# Explainability
-# -----------------------------
 def compute_skill_contributions(gap_df: pd.DataFrame) -> dict[str, pd.DataFrame]:
     df = gap_df.copy()
 
@@ -234,10 +212,10 @@ def generate_learning_plan(gap_df: pd.DataFrame) -> dict[str, list[str]]:
     if missing.empty:
         return {
             "Foundations": [
-                "You already cover the target skill profile in this dataset. Focus on portfolio + interview stories."
+                "The target skill profile is already covered in this dataset. Focus on portfolio work and interview narratives."
             ],
-            "Intermediate": ["Deepen real-world projects that demonstrate overlap skills."],
-            "Advanced": ["Specialize in domain-specific variants of your strongest transferable skills."],
+            "Intermediate": ["Deepen real-world projects that demonstrate your strongest overlap skills."],
+            "Advanced": ["Specialize into domain-specific variants of your most transferable strengths."],
         }
 
     missing["priority"] = missing["gap"] * missing["target_importance"]
@@ -256,7 +234,7 @@ def generate_learning_plan(gap_df: pd.DataFrame) -> dict[str, list[str]]:
         if not phase_skills:
             return [f"No additional {label.lower()} skills identified in this dataset."]
         return [
-            f"Build {label.lower()} competence in **{s}** via a small project + spaced practice + one measurable deliverable."
+            f"Build {label.lower()} competence in **{s}** through a small project, spaced practice, and a measurable deliverable."
             for s in phase_skills
         ]
 
@@ -267,9 +245,6 @@ def generate_learning_plan(gap_df: pd.DataFrame) -> dict[str, list[str]]:
     }
 
 
-# -----------------------------
-# NEW: Skill taxonomy groups (runtime analytics)
-# -----------------------------
 def _get_group_order(group_meta: dict[str, Any]) -> list[str]:
     order = group_meta.get("group_order", [])
     if isinstance(order, list) and all(isinstance(x, str) for x in order):
@@ -324,7 +299,7 @@ def filter_missing_skills_by_group(
     df = gap_df.copy()
     df["group"] = df["skill"].astype(str).map(lambda s: skill_taxonomy.get(s, "Other"))
     missing = df[(df["gap"] > 0) & (df["group"] == group_name)].copy()
-    missing = missing.sort_values(["gap", "target_importance"], ascending=False).head(top_n)
+    missing = missing.sort_values(["gap", "target_importance"], ascending=False).head(int(top_n))
     return missing.reset_index(drop=True)
 
 
@@ -338,9 +313,6 @@ def format_cluster_theme(cluster_id: int | str, cluster_themes: dict[str, Any]) 
     return ""
 
 
-# -----------------------------
-# Recommender
-# -----------------------------
 def recommend_similar_roles(
     matrix: pd.DataFrame,
     coords: pd.DataFrame,
@@ -352,7 +324,7 @@ def recommend_similar_roles(
     max_dist = _precompute_map_maxdist(coords)
     a = matrix.loc[current_occ].astype(float).values
 
-    roles = []
+    roles: list[tuple[str, float]] = []
     for occ in matrix.index.astype(str):
         if occ == current_occ:
             continue
@@ -362,18 +334,14 @@ def recommend_similar_roles(
         score = 100.0 * (w_cosine * sim + w_map * map_part)
         roles.append((occ, float(np.clip(score, 0.0, 100.0))))
 
-    out = (
+    return (
         pd.DataFrame(roles, columns=["occupation", "match_score"])
         .sort_values("match_score", ascending=False)
         .head(int(top_k))
         .reset_index(drop=True)
     )
-    return out
 
 
-# -----------------------------
-# Confidence / coverage (heuristic)
-# -----------------------------
 def compute_confidence_score(
     matrix: pd.DataFrame, pca_meta: dict[str, Any], current_occ: str, target_occ: str
 ) -> dict[str, Any]:
@@ -387,7 +355,7 @@ def compute_confidence_score(
     b_nz = b > 0
     overlap = float((a_nz & b_nz).mean()) if len(a_nz) else 0.0
     union = float((a_nz | b_nz).mean()) if len(a_nz) else 0.0
-    jacc = 0.0 if union == 0 else overlap / union
+    jacc = 0.0 if union == 0.0 else overlap / union
 
     evr = pca_meta.get("explained_variance_ratio", [0.0, 0.0])
     evr2 = float(sum(evr[:2])) if isinstance(evr, list) else 0.0
@@ -402,13 +370,10 @@ def compute_confidence_score(
             "matrix_density": float(density),
             "pca_evr_2d": float(evr2),
         },
-        "notes": "Heuristic confidence: overlap + density + PCA 2D EVR. Not calibrated probability.",
+        "notes": "Heuristic confidence: overlap + density + PCA 2D EVR. Not a calibrated probability.",
     }
 
 
-# ============================================================
-# Pivot Path Finder (multi-step planning)
-# ============================================================
 def _top_k_neighbors_by_cosine(matrix: pd.DataFrame, occ: str, k: int) -> List[Tuple[str, float]]:
     a = matrix.loc[occ].astype(float).values
     sims: List[Tuple[str, float]] = []
@@ -419,7 +384,7 @@ def _top_k_neighbors_by_cosine(matrix: pd.DataFrame, occ: str, k: int) -> List[T
         sim = _cosine_similarity(a, b)
         sims.append((str(other), float(sim)))
     sims.sort(key=lambda x: x[1], reverse=True)
-    return sims[:k]
+    return sims[: int(k)]
 
 
 def build_transition_graph(matrix: pd.DataFrame, k_neighbors: int = 5) -> Dict[str, List[Tuple[str, float]]]:
@@ -484,49 +449,44 @@ def find_pivot_path(
         path.append(prev[path[-1]])
     path.reverse()
 
-    if len(path) > max_steps:
-        path = path[:max_steps]
-        truncated = True
-    else:
-        truncated = False
+    truncated = len(path) > int(max_steps)
+    if truncated:
+        path = path[: int(max_steps)]
 
     if truncated and path[-1] != target:
         return {
             "path": path,
             "reachable": False,
             "truncated": True,
-            "k_neighbors": k_neighbors,
-            "max_steps": max_steps,
+            "k_neighbors": int(k_neighbors),
+            "max_steps": int(max_steps),
             "step_costs": [],
             "total_cost": float(dist.get(target, np.nan)),
-            "notes": "Path exists but was truncated by max_steps before reaching target. Increase max_steps.",
+            "notes": "Path exists but was truncated before reaching target. Increase max_steps.",
         }
 
-    step_costs = []
+    step_costs: list[float] = []
     for i in range(len(path) - 1):
         u, v = path[i], path[i + 1]
-        cost = None
+        cost = np.nan
         for neigh, c in graph.get(u, []):
             if neigh == v:
                 cost = c
                 break
-        step_costs.append(float(cost) if cost is not None else np.nan)
+        step_costs.append(float(cost))
 
     return {
         "path": path,
         "reachable": True,
-        "truncated": truncated,
-        "k_neighbors": k_neighbors,
-        "max_steps": max_steps,
+        "truncated": bool(truncated),
+        "k_neighbors": int(k_neighbors),
+        "max_steps": int(max_steps),
         "step_costs": step_costs,
         "total_cost": float(dist.get(target, np.nan)),
-        "notes": "Edge cost is 1 - max(0, cosine_sim). Lower cost means easier transition.",
+        "notes": "Edge cost is 1 - max(0, cosine_sim). Lower cost indicates an easier transition.",
     }
 
 
-# ============================================================
-# Robustness / stability via Monte Carlo noise
-# ============================================================
 def robustness_analysis(
     matrix: pd.DataFrame,
     coords: pd.DataFrame,
@@ -551,7 +511,7 @@ def robustness_analysis(
         a = np.clip(a0 + rng.normal(0.0, noise_std, size=a0.shape), 0.0, None)
         b = np.clip(b0 + rng.normal(0.0, noise_std, size=b0.shape), 0.0, None)
 
-        sim = max(0.0, _cosine_similarity(a, b))  # 0..1
+        sim = max(0.0, _cosine_similarity(a, b))
         score = 100.0 * (w_cosine * sim + w_map * map_part)
         scores.append(float(np.clip(score, 0.0, 100.0)))
 
@@ -569,13 +529,10 @@ def robustness_analysis(
         "ci95_low": lo,
         "ci95_high": hi,
         "scores": scores,
-        "notes": "Monte Carlo stability on skill vectors (Gaussian noise). Map part fixed (artifact).",
+        "notes": "Monte Carlo stability on skill vectors (Gaussian noise). Map component held fixed.",
     }
 
 
-# ============================================================
-# Decision Brief: risk-aware ranking + pareto frontier + counterfactual uplift
-# ============================================================
 def _hybrid_score_from_vectors(
     a: np.ndarray,
     b: np.ndarray,
@@ -583,7 +540,7 @@ def _hybrid_score_from_vectors(
     w_cosine: float,
     w_map: float,
 ) -> float:
-    sim = max(0.0, _cosine_similarity(a, b))  # 0..1
+    sim = max(0.0, _cosine_similarity(a, b))
     score = 100.0 * (w_cosine * sim + w_map * float(map_part))
     return float(np.clip(score, 0.0, 100.0))
 
@@ -595,9 +552,7 @@ def _cvar_left_tail(scores: np.ndarray, alpha: float = 0.05) -> float:
     a = min(max(a, 1e-6), 1.0)
     q = float(np.quantile(scores, a))
     tail = scores[scores <= q]
-    if tail.size == 0:
-        return float(q)
-    return float(np.mean(tail))
+    return float(np.mean(tail)) if tail.size else float(q)
 
 
 def compute_all_targets_robustness(
@@ -624,12 +579,11 @@ def compute_all_targets_robustness(
         b0 = matrix.loc[occ].astype(float).values
         map_part = _map_proximity(coords, current_occ, occ, max_dist)
 
-        scores = []
+        scores: list[float] = []
         for _ in range(int(n_samples)):
             a = np.clip(a0 + rng.normal(0.0, noise_std, size=a0.shape), 0.0, None)
             b = np.clip(b0 + rng.normal(0.0, noise_std, size=b0.shape), 0.0, None)
-            s = _hybrid_score_from_vectors(a, b, map_part, w_cosine, w_map)
-            scores.append(s)
+            scores.append(_hybrid_score_from_vectors(a, b, map_part, w_cosine, w_map))
 
         arr = np.array(scores, dtype=float)
         rows.append(
@@ -658,7 +612,9 @@ def compute_effort_metrics(
 ) -> dict[str, float]:
     gap_df = compute_gap_df(matrix, current_occ, target_occ)
     missing = gap_df[gap_df["gap"] > 0].copy()
-    gap_effort = float(np.sum(missing["gap"].values * missing["target_importance"].values)) if not missing.empty else 0.0
+    gap_effort = (
+        float(np.sum(missing["gap"].values * missing["target_importance"].values)) if not missing.empty else 0.0
+    )
 
     pc = (
         float(path_cost)
@@ -727,7 +683,7 @@ def counterfactual_uplift_greedy(
     *,
     w_cosine: float,
     w_map: float,
-    goal_mode: str,  # "threshold" | "topk"
+    goal_mode: str,
     score_threshold: float = 60.0,
     top_k: int = 3,
     max_skills: int = 3,
@@ -746,11 +702,7 @@ def counterfactual_uplift_greedy(
     gap_df = compute_gap_df(matrix, current_occ, target_occ)
     candidates = gap_df[gap_df["gap"] > 0].copy()
     if candidates.empty:
-        return {
-            "selected_skills": [],
-            "achieved": True,
-            "notes": "No missing skills for this pivot in this dataset.",
-        }
+        return {"selected_skills": [], "achieved": True, "notes": "No missing skills for this pivot in this dataset."}
 
     cand_idx = candidates.index.tolist()
 
@@ -758,7 +710,7 @@ def counterfactual_uplift_greedy(
         return _hybrid_score_from_vectors(a_vec, b_target, map_parts[target_occ], w_cosine, w_map)
 
     def _target_in_topk(a_vec: np.ndarray) -> bool:
-        rows = []
+        rows: list[tuple[str, float]] = []
         for occ in matrix.index.astype(str):
             if occ == current_occ:
                 continue
@@ -785,13 +737,13 @@ def counterfactual_uplift_greedy(
             "achieved": True,
             "before_score": float(_score_for_target(a_base)),
             "after_score": float(_score_for_target(a)),
-            "notes": "Goal already met with current skills (under this dataset/model).",
+            "notes": "Goal already met under the current dataset and scoring model.",
         }
 
-    for _step in range(int(max_skills)):
-        best_skill = None
-        best_gain = -1e9
-        best_a = None
+    for _ in range(int(max_skills)):
+        best_skill: str | None = None
+        best_gain = -1e18
+        best_a: np.ndarray | None = None
 
         base_score = float(_score_for_target(a))
 
@@ -807,9 +759,8 @@ def counterfactual_uplift_greedy(
             s_try = float(_score_for_target(a_try))
             gain = s_try - base_score
 
-            if goal_mode == "topk":
-                if (not _target_in_topk(a)) and _target_in_topk(a_try):
-                    gain += 1000.0
+            if goal_mode == "topk" and (not _target_in_topk(a)) and _target_in_topk(a_try):
+                gain += 1000.0
 
             if gain > best_gain:
                 best_gain = gain
@@ -831,5 +782,5 @@ def counterfactual_uplift_greedy(
         "achieved": bool(achieved),
         "before_score": float(_score_for_target(a_base)),
         "after_score": float(_score_for_target(a)),
-        "notes": "Greedy uplift: closes selected gaps fully (to target level).",
+        "notes": "Greedy uplift: selected skills are raised to target levels in the vector model.",
     }

@@ -1,50 +1,45 @@
-# src/preprocessing.py
 from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, Dict, Tuple
+from typing import Any
 
 import numpy as np
 import pandas as pd
 from sklearn.cluster import KMeans
 from sklearn.decomposition import PCA
-from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import silhouette_score
+from sklearn.preprocessing import StandardScaler
 
 
-# -----------------------------
-# Core preprocessing
-# -----------------------------
 def build_occupation_matrix(skills_long_path: str | Path) -> pd.DataFrame:
     """
-    Load long-format skills data and return a wide occupation x skill matrix.
+   Load long-format skills data and return a wide matrix (occupation × skill).
+
     Expected columns: occupation, skill, importance
     """
     skills_long_path = Path(skills_long_path)
     if not skills_long_path.exists():
-        raise FileNotFoundError(f"Could not find data file: {skills_long_path}")
+        raise FileNotFoundError(f"Data file not found: {skills_long_path}")
 
     df = pd.read_csv(skills_long_path)
 
     required = {"occupation", "skill", "importance"}
     missing = required - set(df.columns)
     if missing:
-        raise ValueError(f"Missing columns in CSV: {sorted(missing)}. Found: {list(df.columns)}")
+        raise ValueError(f"Missing required CSV columns: {sorted(missing)}. Found: {list(df.columns)}")
 
     df = df.copy()
     df["occupation"] = df["occupation"].astype(str).str.strip()
     df["skill"] = df["skill"].astype(str).str.strip()
     df["importance"] = pd.to_numeric(df["importance"], errors="coerce")
-
     df = df.dropna(subset=["occupation", "skill", "importance"])
 
-    # average duplicates
+    # If duplicates exist, average them.
     df = df.groupby(["occupation", "skill"], as_index=False)["importance"].mean()
 
     mat = df.pivot(index="occupation", columns="skill", values="importance").fillna(0.0)
     mat = mat.sort_index(axis=0).sort_index(axis=1)
-
     return mat
 
 
@@ -54,17 +49,19 @@ def compute_pca_coords(
     random_state: int = 42,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     """
-    Compute PCA coords (2D) from standardized skill matrix.
-    Returns coords df + pca metadata.
+   Compute PCA coordinates from a standardized occupation-skill matrix.
+
+    Returns:
+        - coords: DataFrame with columns [occupation, x, y]
+        - meta: PCA metadata (explained variance ratio, singular values, parameters)
     """
     if matrix.shape[0] < 2:
-        raise ValueError("Need at least 2 occupations to compute PCA coords.")
+        raise ValueError("At least 2 occupations are required to compute PCA coordinates.")
     if matrix.shape[1] < 2:
-        raise ValueError("Need at least 2 skills to compute 2D PCA coords.")
+        raise ValueError("At least 2 skills are required to compute 2D PCA coordinates.")
 
     X = matrix.to_numpy(dtype=float)
-    scaler = StandardScaler(with_mean=True, with_std=True)
-    X_scaled = scaler.fit_transform(X)
+    X_scaled = StandardScaler(with_mean=True, with_std=True).fit_transform(X)
 
     pca = PCA(n_components=n_components, random_state=random_state)
     coords_arr = pca.fit_transform(X_scaled)
@@ -78,14 +75,14 @@ def compute_pca_coords(
     )
 
     meta = {
-        "n_components": n_components,
-        "random_state": random_state,
+        "n_components": int(n_components),
+        "random_state": int(random_state),
         "explained_variance_ratio": pca.explained_variance_ratio_.tolist(),
         "singular_values": pca.singular_values_.tolist(),
-        "notes": "PCA run on standardized skill features (StandardScaler).",
     }
 
     return coords, meta
+
 
 def compute_umap_coords(
     matrix: pd.DataFrame,
@@ -96,26 +93,22 @@ def compute_umap_coords(
     random_state: int = 42,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     """
-    Compute UMAP coords (2D) from standardized skill matrix.
-    Returns coords df + umap metadata.
+   Compute UMAP coordinates from a standardized occupation-skill matrix.
 
     Requires: umap-learn
     """
     if matrix.shape[0] < 2:
-        raise ValueError("Need at least 2 occupations to compute UMAP coords.")
+        raise ValueError("At least 2 occupations are required to compute UMAP coordinates.")
     if matrix.shape[1] < 2:
-        raise ValueError("Need at least 2 skills to compute 2D UMAP coords.")
+        raise ValueError("At least 2 skills are required to compute 2D UMAP coordinates.")
 
     try:
         import umap  # type: ignore
     except Exception as e:
-        raise ImportError(
-            "UMAP requires `umap-learn`. Install via: pip install umap-learn"
-        ) from e
+        raise ImportError("UMAP requires `umap-learn`. Install with: pip install umap-learn") from e
 
     X = matrix.to_numpy(dtype=float)
-    scaler = StandardScaler(with_mean=True, with_std=True)
-    X_scaled = scaler.fit_transform(X)
+    X_scaled = StandardScaler(with_mean=True, with_std=True).fit_transform(X)
 
     reducer = umap.UMAP(
         n_components=n_components,
@@ -140,79 +133,68 @@ def compute_umap_coords(
         "min_dist": float(min_dist),
         "metric": str(metric),
         "random_state": int(random_state),
-        "notes": "UMAP run on standardized skill features (StandardScaler).",
     }
-    return coords, meta 
+    return coords, meta
 
 
 def compute_data_quality(matrix: pd.DataFrame) -> dict[str, Any]:
     """
-    Lightweight data quality / coverage signals for confidence display.
+   Compute lightweight coverage metrics for the occupation-skill matrix.
     """
     X = matrix.to_numpy(dtype=float)
     n_occ, n_skills = X.shape
 
-    nonzero = (X > 0).sum()
-    density = float(nonzero / (n_occ * n_skills)) if n_occ * n_skills else 0.0
+    denom = int(n_occ * n_skills)
+    density = float((X > 0).sum() / denom) if denom else 0.0
 
-    # per-occupation coverage: fraction of skills with >0
     occ_cov = (X > 0).mean(axis=1) if n_skills else np.array([])
     skill_cov = (X > 0).mean(axis=0) if n_occ else np.array([])
 
-    quality = {
+    return {
         "n_occupations": int(n_occ),
         "n_skills": int(n_skills),
-        "matrix_density": density,
-        "occupation_coverage_mean": float(np.mean(occ_cov)) if len(occ_cov) else 0.0,
-        "occupation_coverage_min": float(np.min(occ_cov)) if len(occ_cov) else 0.0,
-        "skill_coverage_mean": float(np.mean(skill_cov)) if len(skill_cov) else 0.0,
-        "skill_coverage_min": float(np.min(skill_cov)) if len(skill_cov) else 0.0,
-        "notes": "Coverage is based on non-zero importance values in the matrix.",
+        "matrix_density": float(density),
+        "occupation_coverage_mean": float(np.mean(occ_cov)) if occ_cov.size else 0.0,
+        "occupation_coverage_min": float(np.min(occ_cov)) if occ_cov.size else 0.0,
+        "skill_coverage_mean": float(np.mean(skill_cov)) if skill_cov.size else 0.0,
+        "skill_coverage_min": float(np.min(skill_cov)) if skill_cov.size else 0.0,
     }
-    return quality
 
 
-# -----------------------------
-# Feature A: Role clustering
-# -----------------------------
 def compute_role_clusters_kmeans(
     matrix: pd.DataFrame,
     n_clusters: int | None = None,
     random_state: int = 42,
 ) -> tuple[dict[str, int], dict[str, Any]]:
     """
-    KMeans clustering on standardized occupation skill vectors.
-    If n_clusters is None -> choose k by silhouette score.
+   Cluster occupations using KMeans on standardized skill vectors.
+
+    If n_clusters is None, selects k by maximizing silhouette score over a bounded range.
 
     Returns:
-      - clusters: occupation -> cluster_id
-      - meta: cluster sizes + inertia + silhouette + chosen_k + notes
+        - clusters: mapping occupation -> cluster_id
+        - meta: clustering metadata (sizes, inertia, silhouette scores)
     """
     n_occ = int(matrix.shape[0])
     if n_occ < 2:
         clusters = {str(matrix.index[0]): 0} if n_occ == 1 else {}
-        meta = {"n_clusters": 1 if n_occ == 1 else 0, "notes": "Not enough occupations to cluster."}
+        meta = {"n_clusters": 1 if n_occ == 1 else 0}
         return clusters, meta
 
     X = matrix.to_numpy(dtype=float)
-    scaler = StandardScaler(with_mean=True, with_std=True)
-    X_scaled = scaler.fit_transform(X)
+    X_scaled = StandardScaler(with_mean=True, with_std=True).fit_transform(X)
 
-    # --- Choose k by silhouette if not provided
     sil_scores: dict[int, float] = {}
-    chosen_k: int
-
     if n_clusters is None:
         k_min = 2
-        k_max = min(14, n_occ - 1)  # keep it sane / fast
+        k_max = min(14, n_occ - 1)
+
         best_k = k_min
         best_s = -1.0
 
         for k in range(k_min, k_max + 1):
             km_tmp = KMeans(n_clusters=k, random_state=random_state, n_init="auto")
             labels_tmp = km_tmp.fit_predict(X_scaled)
-
-            # silhouette requires at least 2 clusters and no empty clusters
             if len(np.unique(labels_tmp)) < 2:
                 continue
 
@@ -223,8 +205,10 @@ def compute_role_clusters_kmeans(
                 best_k = k
 
         chosen_k = int(best_k)
+        chosen_by = "silhouette"
     else:
         chosen_k = int(max(2, min(int(n_clusters), n_occ)))
+        chosen_by = "manual"
 
     km = KMeans(n_clusters=chosen_k, random_state=random_state, n_init="auto")
     labels = km.fit_predict(X_scaled)
@@ -239,11 +223,11 @@ def compute_role_clusters_kmeans(
         "random_state": int(random_state),
         "inertia": float(km.inertia_),
         "cluster_sizes": size_map,
-        "silhouette_scores": sil_scores,  # empty if user forced k
-        "chosen_by": "silhouette" if n_clusters is None else "manual",
-        "notes": "KMeans on standardized occupation skill vectors (StandardScaler). Auto-k uses silhouette.",
+        "silhouette_scores": sil_scores,
+        "chosen_by": chosen_by,
     }
     return clusters, meta
+
 
 def compute_cluster_themes(
     matrix: pd.DataFrame,
@@ -251,9 +235,7 @@ def compute_cluster_themes(
     top_n_skills: int = 6,
 ) -> dict[str, Any]:
     """
-    For each cluster, compute a simple theme: top skills by average importance in that cluster.
-    Returns cluster_themes dict:
-      cluster_id -> {top_skills: [...], mean_vector_top: [...]}
+   Summarize each cluster by listing the top skills by mean importance.
     """
     if matrix.empty or not clusters:
         return {}
@@ -261,65 +243,47 @@ def compute_cluster_themes(
     df = matrix.copy()
     df.index = df.index.astype(str)
 
-    # group occupations by cluster id
-    inv: dict[int, list[str]] = {}
+    by_cluster: dict[int, list[str]] = {}
     for occ, cid in clusters.items():
-        inv.setdefault(int(cid), []).append(str(occ))
+        by_cluster.setdefault(int(cid), []).append(str(occ))
 
     themes: dict[str, Any] = {}
-    for cid, occs in inv.items():
+    for cid, occs in by_cluster.items():
         sub = df.loc[df.index.intersection(occs)]
         if sub.empty:
             continue
         mean_vec = sub.mean(axis=0).sort_values(ascending=False)
-        top_skills = mean_vec.head(top_n_skills).index.astype(str).tolist()
-        themes[str(cid)] = {
-            "top_skills": top_skills,
-            "notes": "Top skills by mean importance within cluster (simple, interpretable theme).",
-        }
+        top_skills = mean_vec.head(int(top_n_skills)).index.astype(str).tolist()
+        themes[str(cid)] = {"top_skills": top_skills}
+
     return themes
 
 
-# -----------------------------
-# Feature B: Skill taxonomy groups (dummy, but future-proof)
-# -----------------------------
-def build_skill_taxonomy_dummy(skills: list[str]) -> tuple[dict[str, str], dict[str, Any]]:
+def build_skill_taxonomy(skills: list[str]) -> tuple[dict[str, str], dict[str, Any]]:
     """
-    Deterministic, lightweight skill->group mapping.
-    For dummy dataset we use keyword heuristics. Later can be swapped with O*NET taxonomy offline.
+   Assign skills to high-level groups based on keyword rules.
 
-    Returns:
-      - taxonomy: skill -> group
-      - group_meta: order + descriptions
+    This is a lightweight default for simple datasets and can be replaced with a richer taxonomy.
     """
-    def _group_for(skill: str) -> str:
+
+    def group_for(skill: str) -> str:
         s = skill.strip().lower()
 
-        # Security
         if any(k in s for k in ["security", "incident", "risk assessment"]):
             return "Security & Risk"
-
-        # Design / UX
         if any(k in s for k in ["ux", "ui", "user research", "prototyp"]):
             return "Design & UX"
-
-        # Product / Strategy
         if any(k in s for k in ["roadmap", "stakeholder", "strategy", "product"]):
             return "Product & Strategy"
-
-        # Engineering
         if any(k in s for k in ["git", "docker", "software design", "engineering"]):
             return "Engineering"
-
-        # Analytics / Data
         if any(k in s for k in ["sql", "excel", "statistics", "machine learning", "data", "python", "visualization"]):
             return "Data & Analytics"
 
         return "Other"
 
-    taxonomy = {str(skill): _group_for(str(skill)) for skill in skills}
+    taxonomy = {str(skill): group_for(str(skill)) for skill in skills}
 
-    # Stable order for nicer charts
     group_order = [
         "Data & Analytics",
         "Engineering",
@@ -331,23 +295,16 @@ def build_skill_taxonomy_dummy(skills: list[str]) -> tuple[dict[str, str], dict[
     group_descriptions = {
         "Data & Analytics": "Analysis, modeling, data tooling, quantitative reasoning.",
         "Engineering": "Software building blocks, tooling, development practices.",
-        "Product & Strategy": "Planning, alignment, stakeholder work, roadmap & prioritization.",
+        "Product & Strategy": "Planning, alignment, stakeholder work, roadmap and prioritization.",
         "Design & UX": "Research, prototyping, UI/UX craft and iteration.",
         "Security & Risk": "Security controls, incident response, risk management basics.",
-        "Other": "Uncategorized / future taxonomy expansion.",
+        "Other": "Uncategorized.",
     }
 
-    group_meta = {
-        "group_order": group_order,
-        "group_descriptions": group_descriptions,
-        "notes": "Heuristic dummy taxonomy. Replace offline with O*NET/ESCO mapping later.",
-    }
+    group_meta = {"group_order": group_order, "group_descriptions": group_descriptions}
     return taxonomy, group_meta
 
 
-# -----------------------------
-# Saving artifacts
-# -----------------------------
 def save_artifacts(
     out_dir: Path,
     matrix: pd.DataFrame,
@@ -361,9 +318,11 @@ def save_artifacts(
     skill_taxonomy: dict[str, str] | None = None,
     group_meta: dict[str, Any] | None = None,
 ) -> None:
+    """
+   Persist preprocessing outputs to disk.
+    """
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    # Parquet is robust & fast on Streamlit Cloud (pyarrow already included)
     matrix_path = out_dir / "occupation_skill_matrix.parquet"
     coords_path = out_dir / "pca_coords.parquet"
 
@@ -375,7 +334,6 @@ def save_artifacts(
     (out_dir / "pca_meta.json").write_text(json.dumps(pca_meta, indent=2), encoding="utf-8")
     (out_dir / "data_quality.json").write_text(json.dumps(quality, indent=2), encoding="utf-8")
 
-    # New: optional "overkill" artifacts (safe to ignore at runtime)
     if clusters is not None:
         (out_dir / "clusters.json").write_text(json.dumps(clusters, indent=2), encoding="utf-8")
     if cluster_meta is not None:
