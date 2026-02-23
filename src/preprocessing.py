@@ -10,6 +10,7 @@ import pandas as pd
 from sklearn.cluster import KMeans
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import silhouette_score
 
 
 # -----------------------------
@@ -86,6 +87,63 @@ def compute_pca_coords(
 
     return coords, meta
 
+def compute_umap_coords(
+    matrix: pd.DataFrame,
+    n_components: int = 2,
+    n_neighbors: int = 20,
+    min_dist: float = 0.15,
+    metric: str = "cosine",
+    random_state: int = 42,
+) -> tuple[pd.DataFrame, dict[str, Any]]:
+    """
+    Compute UMAP coords (2D) from standardized skill matrix.
+    Returns coords df + umap metadata.
+
+    Requires: umap-learn
+    """
+    if matrix.shape[0] < 2:
+        raise ValueError("Need at least 2 occupations to compute UMAP coords.")
+    if matrix.shape[1] < 2:
+        raise ValueError("Need at least 2 skills to compute 2D UMAP coords.")
+
+    try:
+        import umap  # type: ignore
+    except Exception as e:
+        raise ImportError(
+            "UMAP requires `umap-learn`. Install via: pip install umap-learn"
+        ) from e
+
+    X = matrix.to_numpy(dtype=float)
+    scaler = StandardScaler(with_mean=True, with_std=True)
+    X_scaled = scaler.fit_transform(X)
+
+    reducer = umap.UMAP(
+        n_components=n_components,
+        n_neighbors=n_neighbors,
+        min_dist=min_dist,
+        metric=metric,
+        random_state=random_state,
+    )
+    emb = reducer.fit_transform(X_scaled)
+
+    coords = pd.DataFrame(
+        {
+            "occupation": matrix.index.astype(str),
+            "x": emb[:, 0],
+            "y": emb[:, 1],
+        }
+    )
+
+    meta = {
+        "n_components": int(n_components),
+        "n_neighbors": int(n_neighbors),
+        "min_dist": float(min_dist),
+        "metric": str(metric),
+        "random_state": int(random_state),
+        "notes": "UMAP run on standardized skill features (StandardScaler).",
+    }
+    return coords, meta 
+
 
 def compute_data_quality(matrix: pd.DataFrame) -> dict[str, Any]:
     """
@@ -124,44 +182,68 @@ def compute_role_clusters_kmeans(
 ) -> tuple[dict[str, int], dict[str, Any]]:
     """
     KMeans clustering on standardized occupation skill vectors.
+    If n_clusters is None -> choose k by silhouette score.
+
     Returns:
       - clusters: occupation -> cluster_id
-      - meta: cluster sizes + inertia + notes
+      - meta: cluster sizes + inertia + silhouette + chosen_k + notes
     """
     n_occ = int(matrix.shape[0])
     if n_occ < 2:
-        # trivial
         clusters = {str(matrix.index[0]): 0} if n_occ == 1 else {}
         meta = {"n_clusters": 1 if n_occ == 1 else 0, "notes": "Not enough occupations to cluster."}
         return clusters, meta
-
-    # Choose a safe default: min(4, n_occ), but at least 2
-    if n_clusters is None:
-        n_clusters = max(2, min(4, n_occ))
-    n_clusters = int(max(2, min(n_clusters, n_occ)))
 
     X = matrix.to_numpy(dtype=float)
     scaler = StandardScaler(with_mean=True, with_std=True)
     X_scaled = scaler.fit_transform(X)
 
-    # sklearn 1.4+: n_init='auto' is supported
-    km = KMeans(n_clusters=n_clusters, random_state=random_state, n_init="auto")
+    # --- Choose k by silhouette if not provided
+    sil_scores: dict[int, float] = {}
+    chosen_k: int
+
+    if n_clusters is None:
+        k_min = 2
+        k_max = min(14, n_occ - 1)  # keep it sane / fast
+        best_k = k_min
+        best_s = -1.0
+
+        for k in range(k_min, k_max + 1):
+            km_tmp = KMeans(n_clusters=k, random_state=random_state, n_init="auto")
+            labels_tmp = km_tmp.fit_predict(X_scaled)
+
+            # silhouette requires at least 2 clusters and no empty clusters
+            if len(np.unique(labels_tmp)) < 2:
+                continue
+
+            s = float(silhouette_score(X_scaled, labels_tmp))
+            sil_scores[int(k)] = s
+            if s > best_s:
+                best_s = s
+                best_k = k
+
+        chosen_k = int(best_k)
+    else:
+        chosen_k = int(max(2, min(int(n_clusters), n_occ)))
+
+    km = KMeans(n_clusters=chosen_k, random_state=random_state, n_init="auto")
     labels = km.fit_predict(X_scaled)
 
     clusters = {str(occ): int(lbl) for occ, lbl in zip(matrix.index.astype(str).tolist(), labels)}
-    # sizes
+
     unique, counts = np.unique(labels, return_counts=True)
     size_map = {int(u): int(c) for u, c in zip(unique, counts)}
 
     meta = {
-        "n_clusters": int(n_clusters),
+        "n_clusters": int(chosen_k),
         "random_state": int(random_state),
         "inertia": float(km.inertia_),
         "cluster_sizes": size_map,
-        "notes": "KMeans on standardized occupation skill vectors (StandardScaler).",
+        "silhouette_scores": sil_scores,  # empty if user forced k
+        "chosen_by": "silhouette" if n_clusters is None else "manual",
+        "notes": "KMeans on standardized occupation skill vectors (StandardScaler). Auto-k uses silhouette.",
     }
     return clusters, meta
-
 
 def compute_cluster_themes(
     matrix: pd.DataFrame,

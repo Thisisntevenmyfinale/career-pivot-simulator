@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Tuple, Optional
+from typing import Any, Dict, List, Tuple
 
 import numpy as np
 import pandas as pd
@@ -16,12 +16,17 @@ class RuntimeArtifacts:
     coords: pd.DataFrame
     pca_meta: dict[str, Any]
     quality: dict[str, Any]
+
     # Optional "overkill" artifacts (safe to ignore if missing)
     clusters: dict[str, int]
     cluster_meta: dict[str, Any]
     cluster_themes: dict[str, Any]
     skill_taxonomy: dict[str, str]
     group_meta: dict[str, Any]
+
+    # Optional: UMAP embedding (if available)
+    umap_coords: pd.DataFrame
+    umap_meta: dict[str, Any]
 
 
 # -----------------------------
@@ -41,20 +46,24 @@ def load_runtime_artifacts(artifact_dir: str | Path = "artifacts") -> RuntimeArt
     pca_meta_path = artifact_dir / "pca_meta.json"
     quality_path = artifact_dir / "data_quality.json"
 
-    # Optional new artifacts
+    # Optional artifacts
     clusters_path = artifact_dir / "clusters.json"
     cluster_meta_path = artifact_dir / "cluster_meta.json"
     cluster_themes_path = artifact_dir / "cluster_themes.json"
     taxonomy_path = artifact_dir / "skill_taxonomy.json"
     group_meta_path = artifact_dir / "group_meta.json"
 
+    # Optional UMAP artifacts
+    umap_coords_path = artifact_dir / "umap_coords.parquet"
+    umap_meta_path = artifact_dir / "umap_meta.json"
+
     if not matrix_path.exists():
         raise FileNotFoundError(
-            f"Missing artifact: {matrix_path}. Run preprocessing: python scripts/preprocess_dummy.py"
+            f"Missing artifact: {matrix_path}. Run preprocessing: python scripts/preprocess_dummy.py or preprocess_onet.py"
         )
     if not coords_path.exists():
         raise FileNotFoundError(
-            f"Missing artifact: {coords_path}. Run preprocessing: python scripts/preprocess_dummy.py"
+            f"Missing artifact: {coords_path}. Run preprocessing: python scripts/preprocess_dummy.py or preprocess_onet.py"
         )
 
     matrix = pd.read_parquet(matrix_path)
@@ -72,24 +81,44 @@ def load_runtime_artifacts(artifact_dir: str | Path = "artifacts") -> RuntimeArt
     skill_taxonomy = _read_json_if_exists(taxonomy_path, {})
     group_meta = _read_json_if_exists(group_meta_path, {})
 
+    # --- UMAP is optional: never crash if missing
+    umap_coords = pd.DataFrame(columns=["occupation", "x", "y"])
+    if umap_coords_path.exists():
+        try:
+            tmp = pd.read_parquet(umap_coords_path)
+            # only accept if it looks correct
+            if "occupation" in tmp.columns and {"x", "y"}.issubset(tmp.columns):
+                umap_coords = tmp[["occupation", "x", "y"]].copy()
+        except Exception:
+            # keep empty on any read error
+            umap_coords = pd.DataFrame(columns=["occupation", "x", "y"])
+
+    umap_meta = _read_json_if_exists(umap_meta_path, {})
+
+    # Validate PCA coords
     if "occupation" not in coords.columns or not {"x", "y"}.issubset(coords.columns):
         raise ValueError("pca_coords.parquet must contain columns: occupation, x, y")
 
+    # Normalize / sort for stable UI behavior
     matrix = matrix.sort_index(axis=0).sort_index(axis=1)
     coords = coords.sort_values("occupation").reset_index(drop=True)
 
-    # Sanity: taxonomy keys should match skills where possible
-    # (We keep it permissive; runtime should not crash on mismatch.)
+    if not umap_coords.empty:
+        umap_coords = umap_coords.sort_values("occupation").reset_index(drop=True)
+
+    # Return runtime bundle
     return RuntimeArtifacts(
         matrix=matrix,
         coords=coords,
-        pca_meta=pca_meta,
-        quality=quality,
+        pca_meta=pca_meta if isinstance(pca_meta, dict) else {},
+        quality=quality if isinstance(quality, dict) else {},
         clusters={str(k): int(v) for k, v in clusters.items()} if isinstance(clusters, dict) else {},
         cluster_meta=cluster_meta if isinstance(cluster_meta, dict) else {},
         cluster_themes=cluster_themes if isinstance(cluster_themes, dict) else {},
         skill_taxonomy={str(k): str(v) for k, v in skill_taxonomy.items()} if isinstance(skill_taxonomy, dict) else {},
         group_meta=group_meta if isinstance(group_meta, dict) else {},
+        umap_coords=umap_coords,
+        umap_meta=umap_meta if isinstance(umap_meta, dict) else {},
     )
 
 
@@ -101,6 +130,7 @@ def _cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
     if denom == 0.0:
         return 0.0
     return float(np.dot(a, b) / denom)
+
 
 def _precompute_map_maxdist(coords: pd.DataFrame) -> float:
     all_xy = coords[["x", "y"]].to_numpy(dtype=float)
@@ -137,7 +167,6 @@ def compute_gap_df(matrix: pd.DataFrame, current_occ: str, target_occ: str) -> p
 
     current = matrix.loc[current_occ].astype(float)
     target = matrix.loc[target_occ].astype(float)
-
     gap = target - current
 
     df = pd.DataFrame(
@@ -255,19 +284,12 @@ def compute_group_gap_df(
     current_occ: str,
     target_occ: str,
 ) -> pd.DataFrame:
-    """
-    Aggregate skill importance to group-level profiles, then compute group gaps.
-
-    Returns columns:
-      group, current_importance, target_importance, gap
-    """
     if not skill_taxonomy:
         return pd.DataFrame(columns=["group", "current_importance", "target_importance", "gap"])
 
     current = matrix.loc[current_occ].astype(float)
     target = matrix.loc[target_occ].astype(float)
 
-    # Create a group column per skill
     skills = matrix.columns.astype(str).tolist()
     groups = [skill_taxonomy.get(s, "Other") for s in skills]
 
@@ -280,7 +302,6 @@ def compute_group_gap_df(
     out = cur_agg.merge(tgt_agg, on="group", how="outer").fillna(0.0)
     out["gap"] = out["target_importance"] - out["current_importance"]
 
-    # order groups nicely
     order = _get_group_order(group_meta)
     if order:
         out["__ord__"] = out["group"].apply(lambda g: order.index(g) if g in order else 10_000)
@@ -308,9 +329,6 @@ def filter_missing_skills_by_group(
 
 
 def format_cluster_theme(cluster_id: int | str, cluster_themes: dict[str, Any]) -> str:
-    """
-    Human-friendly single-line theme summary for hover/tooltips.
-    """
     key = str(cluster_id)
     info = cluster_themes.get(key, {})
     if isinstance(info, dict):
@@ -392,7 +410,6 @@ def compute_confidence_score(
 # Pivot Path Finder (multi-step planning)
 # ============================================================
 def _top_k_neighbors_by_cosine(matrix: pd.DataFrame, occ: str, k: int) -> List[Tuple[str, float]]:
-    """Return k neighbors by cosine similarity (fast and stable)."""
     a = matrix.loc[occ].astype(float).values
     sims: List[Tuple[str, float]] = []
     for other in matrix.index:
@@ -406,10 +423,6 @@ def _top_k_neighbors_by_cosine(matrix: pd.DataFrame, occ: str, k: int) -> List[T
 
 
 def build_transition_graph(matrix: pd.DataFrame, k_neighbors: int = 5) -> Dict[str, List[Tuple[str, float]]]:
-    """
-    Build a sparse kNN graph using cosine similarity.
-    Edge cost = 1 - max(0, cosine_sim)  (lower is better)
-    """
     graph: Dict[str, List[Tuple[str, float]]] = {}
     for occ in matrix.index.astype(str):
         neigh = _top_k_neighbors_by_cosine(matrix, occ, k_neighbors)
@@ -428,10 +441,6 @@ def find_pivot_path(
     k_neighbors: int = 5,
     max_steps: int = 4,
 ) -> dict[str, Any]:
-    """
-    Plan a multi-step pivot route using Dijkstra on a kNN graph.
-    Returns a path + step costs.
-    """
     if start_occ not in matrix.index:
         raise ValueError(f"Start occupation not found: {start_occ}")
     if target_occ not in matrix.index:
@@ -439,7 +448,6 @@ def find_pivot_path(
 
     graph = build_transition_graph(matrix, k_neighbors=k_neighbors)
 
-    # Dijkstra
     start = str(start_occ)
     target = str(target_occ)
 
@@ -447,7 +455,6 @@ def find_pivot_path(
     prev: Dict[str, str] = {}
     visited: set[str] = set()
 
-    # simple priority queue (small graph)
     while True:
         candidates = [(node, d) for node, d in dist.items() if node not in visited]
         if not candidates:
@@ -472,20 +479,17 @@ def find_pivot_path(
             "notes": "Target not reachable in kNN graph. Increase k_neighbors.",
         }
 
-    # reconstruct
     path = [target]
     while path[-1] != start:
         path.append(prev[path[-1]])
     path.reverse()
 
-    # enforce max_steps (nodes count)
     if len(path) > max_steps:
         path = path[:max_steps]
         truncated = True
     else:
         truncated = False
-        
-    # If truncated, we may no longer reach the target (decision-support correctness)
+
     if truncated and path[-1] != target:
         return {
             "path": path,
@@ -498,7 +502,6 @@ def find_pivot_path(
             "notes": "Path exists but was truncated by max_steps before reaching target. Increase max_steps.",
         }
 
-    # compute per-step costs
     step_costs = []
     for i in range(len(path) - 1):
         u, v = path[i], path[i + 1]
@@ -535,10 +538,6 @@ def robustness_analysis(
     noise_std: float = 0.05,
     seed: int = 42,
 ) -> dict[str, Any]:
-    """
-    Monte Carlo stability: add Gaussian noise to skill vectors and recompute hybrid score.
-    Map proximity is fixed (artifact); we precompute it once for speed + determinism.
-    """
     rng = np.random.default_rng(seed)
 
     a0 = matrix.loc[current_occ].astype(float).values
@@ -573,10 +572,10 @@ def robustness_analysis(
         "notes": "Monte Carlo stability on skill vectors (Gaussian noise). Map part fixed (artifact).",
     }
 
+
 # ============================================================
 # Decision Brief: risk-aware ranking + pareto frontier + counterfactual uplift
 # ============================================================
-
 def _hybrid_score_from_vectors(
     a: np.ndarray,
     b: np.ndarray,
@@ -590,10 +589,6 @@ def _hybrid_score_from_vectors(
 
 
 def _cvar_left_tail(scores: np.ndarray, alpha: float = 0.05) -> float:
-    """
-    CVaR (left tail) = expected value in worst alpha-fraction of outcomes.
-    For "risk" we want downside robustness => higher CVaR is better.
-    """
     if scores.size == 0:
         return float("nan")
     a = float(alpha)
@@ -616,11 +611,6 @@ def compute_all_targets_robustness(
     noise_std: float,
     seed: int = 42,
 ) -> pd.DataFrame:
-    """
-    For each target occupation (except current), compute risk-aware distribution of hybrid score under noise.
-    Returns columns:
-      occupation, mean, std, q05, q95, cvar05, map_part
-    """
     rng = np.random.default_rng(seed)
     a0 = matrix.loc[current_occ].astype(float).values
 
@@ -666,17 +656,15 @@ def compute_effort_metrics(
     path_cost_weight: float = 1.0,
     path_cost: float | None = None,
 ) -> dict[str, float]:
-    """
-    Effort proxy = mix of:
-      A) weighted skill gaps: sum(max(0, gap) * target_importance)
-      B) path cost: dijkstra total_cost (lower is easier)
-    """
     gap_df = compute_gap_df(matrix, current_occ, target_occ)
     missing = gap_df[gap_df["gap"] > 0].copy()
     gap_effort = float(np.sum(missing["gap"].values * missing["target_importance"].values)) if not missing.empty else 0.0
 
-    pc = float(path_cost) if path_cost is not None and not (isinstance(path_cost, float) and np.isnan(path_cost)) else float("nan")
-    # mix (unscaled); caller can use relative rankings
+    pc = (
+        float(path_cost)
+        if path_cost is not None and not (isinstance(path_cost, float) and np.isnan(path_cost))
+        else float("nan")
+    )
     mix = float(skill_gap_weight * gap_effort + path_cost_weight * (pc if np.isfinite(pc) else gap_effort))
 
     return {"gap_effort": gap_effort, "path_cost": pc, "effort_mix": mix}
@@ -688,14 +676,6 @@ def pareto_frontier_flags(
     maximize_cols: list[str],
     minimize_cols: list[str],
 ) -> pd.Series:
-    """
-    Returns boolean Series: True if row is Pareto-efficient (not dominated).
-
-    A dominates B if:
-      - for all maximize_cols: A >= B
-      - for all minimize_cols: A <= B
-      - and at least one strict inequality holds
-    """
     if df.empty:
         return pd.Series(dtype=bool)
 
@@ -714,7 +694,6 @@ def pareto_frontier_flags(
             if not efficient[i]:
                 break
 
-            # j dominates i?
             cond_max = True
             cond_min = True
             strict = False
@@ -726,7 +705,6 @@ def pareto_frontier_flags(
                     strict = True
 
             if Xmin.shape[1] > 0:
-                # handle nan in minimize cols: treat as not comparable => cannot dominate
                 if np.any(~np.isfinite(Xmin[j])) or np.any(~np.isfinite(Xmin[i])):
                     cond_min = False
                 else:
@@ -754,20 +732,10 @@ def counterfactual_uplift_greedy(
     top_k: int = 3,
     max_skills: int = 3,
 ) -> dict[str, Any]:
-    """
-    Greedy counterfactual:
-      - choose up to max_skills missing skills
-      - "uplift" means: set current skill importance up to target importance for that skill (close gap fully)
-    Goal:
-      - threshold: reach hybrid score >= score_threshold for the chosen target
-      - topk: make target appear in Top-K under modified current vector (single deterministic eval)
-    """
-    # vectors
     a_base = matrix.loc[current_occ].astype(float).values.copy()
     b_target = matrix.loc[target_occ].astype(float).values.copy()
     skills = matrix.columns.astype(str).tolist()
 
-    # precompute map parts for ranking
     max_dist = _precompute_map_maxdist(coords)
     map_parts = {
         occ: _map_proximity(coords, current_occ, str(occ), max_dist)
@@ -775,7 +743,6 @@ def counterfactual_uplift_greedy(
         if str(occ) != current_occ
     }
 
-    # missing skills candidates
     gap_df = compute_gap_df(matrix, current_occ, target_occ)
     candidates = gap_df[gap_df["gap"] > 0].copy()
     if candidates.empty:
@@ -812,7 +779,6 @@ def counterfactual_uplift_greedy(
     a = a_base.copy()
     selected: list[str] = []
 
-    # if already met, return early
     if _goal_met(a):
         return {
             "selected_skills": [],
@@ -822,7 +788,6 @@ def counterfactual_uplift_greedy(
             "notes": "Goal already met with current skills (under this dataset/model).",
         }
 
-    # Greedy loop
     for _step in range(int(max_skills)):
         best_skill = None
         best_gain = -1e9
@@ -835,7 +800,6 @@ def counterfactual_uplift_greedy(
             if skill in selected:
                 continue
 
-            # uplift: set current skill to target level (close gap)
             j = skills.index(skill)
             a_try = a.copy()
             a_try[j] = max(a_try[j], b_target[j])
@@ -843,7 +807,6 @@ def counterfactual_uplift_greedy(
             s_try = float(_score_for_target(a_try))
             gain = s_try - base_score
 
-            # for topk goal, give a big bonus if it flips to success
             if goal_mode == "topk":
                 if (not _target_in_topk(a)) and _target_in_topk(a_try):
                     gain += 1000.0

@@ -2,12 +2,12 @@
   "n_components": 2,
   "random_state": 42,
   "explained_variance_ratio": [
-    0.25456178836076665,
-    0.22876587160879044
+    0.3671656414892208,
+    0.1486568086770642
   ],
   "singular_values": [
-    5.243345605904956,
-    4.970584888496462
+    197.63927730962854,
+    125.75771645476931
   ],
   "notes": "PCA run on standardized skill features (StandardScaler)."
 }

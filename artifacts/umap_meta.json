@@ -1,0 +1,8 @@
+{
+  "n_components": 2,
+  "n_neighbors": 20,
+  "min_dist": 0.15,
+  "metric": "cosine",
+  "random_state": 42,
+  "notes": "UMAP run on standardized skill features (StandardScaler)."
+}

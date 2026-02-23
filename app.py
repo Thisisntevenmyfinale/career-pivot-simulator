@@ -1,10 +1,10 @@
-# app.py
 from __future__ import annotations
 
 from collections import Counter
+from typing import Any
 
-import pandas as pd
 import numpy as np
+import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
@@ -12,18 +12,13 @@ import streamlit as st
 from src.model_logic import (
     load_runtime_artifacts,
     compute_gap_df,
-    compute_match_score_hybrid,
-    compute_match_score_cosine,
     compute_skill_contributions,
     generate_learning_plan,
-    recommend_similar_roles,
     compute_confidence_score,
     find_pivot_path,
-    robustness_analysis,
     compute_group_gap_df,
     filter_missing_skills_by_group,
     format_cluster_theme,
-    compute_all_targets_robustness,
     compute_effort_metrics,
     pareto_frontier_flags,
     counterfactual_uplift_greedy,
@@ -37,12 +32,11 @@ st.caption(
     "Artifacts are precomputed offline and loaded at runtime (deploy-ready)."
 )
 
-
 # -----------------------------
 # Load artifacts
 # -----------------------------
 @st.cache_data(show_spinner=False)
-def load_artifacts():
+def load_artifacts() -> Any:
     return load_runtime_artifacts("artifacts")
 
 
@@ -50,18 +44,27 @@ try:
     art = load_artifacts()
 except Exception as e:
     st.error("Missing or invalid runtime artifacts.")
-    st.info("Run: `python scripts/preprocess_dummy.py --input data/skills_long.csv --out artifacts`")
+    st.info("Run: `python scripts/preprocess_onet.py` to generate artifacts.")
     st.exception(e)
     st.stop()
 
-mat = art.matrix
-coords = art.coords
+mat: pd.DataFrame = art.matrix
+coords_pca: pd.DataFrame = art.coords
+
+# Optional UMAP (may be empty)
+coords_umap: pd.DataFrame = art.umap_coords if hasattr(art, "umap_coords") else pd.DataFrame(columns=["occupation", "x", "y"])
+umap_meta: dict[str, Any] = art.umap_meta if hasattr(art, "umap_meta") and isinstance(art.umap_meta, dict) else {}
+
 occupations = mat.index.astype(str).tolist()
 
-clusters = getattr(art, "clusters", {}) or {}
-cluster_themes = getattr(art, "cluster_themes", {}) or {}
-skill_taxonomy = getattr(art, "skill_taxonomy", {}) or {}
-group_meta = getattr(art, "group_meta", {}) or {}
+clusters: dict[str, int] = art.clusters if hasattr(art, "clusters") and isinstance(art.clusters, dict) else {}
+cluster_themes: dict[str, Any] = (
+    art.cluster_themes if hasattr(art, "cluster_themes") and isinstance(art.cluster_themes, dict) else {}
+)
+skill_taxonomy: dict[str, str] = (
+    art.skill_taxonomy if hasattr(art, "skill_taxonomy") and isinstance(art.skill_taxonomy, dict) else {}
+)
+group_meta: dict[str, Any] = art.group_meta if hasattr(art, "group_meta") and isinstance(art.group_meta, dict) else {}
 
 # -----------------------------
 # Session state
@@ -75,28 +78,55 @@ if "__target_override__" not in st.session_state:
 # -----------------------------
 # Helpers (runtime-only)
 # -----------------------------
+def _coords_is_valid(df: pd.DataFrame) -> bool:
+    return (
+        isinstance(df, pd.DataFrame)
+        and (not df.empty)
+        and {"occupation", "x", "y"}.issubset(df.columns)
+        and df["occupation"].astype(str).nunique() >= 2
+    )
+
+
 @st.cache_data(show_spinner=False)
-def _precompute_map_maxdist(coords_df: pd.DataFrame) -> float:
-    all_xy = coords_df[["x", "y"]].to_numpy(dtype=float)
-    if len(all_xy) < 2:
-        return 0.0
-    max_dist = 0.0
-    for i in range(len(all_xy)):
-        for j in range(i + 1, len(all_xy)):
-            d = float(np.linalg.norm(all_xy[i] - all_xy[j]))
-            if d > max_dist:
-                max_dist = d
-    return float(max_dist)
+def _precompute_map_context(coords_df: pd.DataFrame) -> dict[str, Any]:
+    """
+    Precompute fast map lookup + max_dist normalization.
+    Uses bounding-box diagonal for max_dist (O(n), stable, no SciPy).
+    """
+    df = coords_df.copy()
+    df["occupation"] = df["occupation"].astype(str)
+
+    # Keep only first occurrence per occupation (defensive)
+    df = df.dropna(subset=["occupation", "x", "y"])
+    df = df.drop_duplicates(subset=["occupation"], keep="first").reset_index(drop=True)
+
+    xy = df[["x", "y"]].to_numpy(dtype=float)
+    if xy.shape[0] < 2:
+        max_dist = 0.0
+    else:
+        xmin, ymin = np.min(xy, axis=0)
+        xmax, ymax = np.max(xy, axis=0)
+        max_dist = float(np.linalg.norm([xmax - xmin, ymax - ymin]))
+
+    # Dict lookup occupation -> (x,y)
+    occ_to_xy: dict[str, tuple[float, float]] = {}
+    for occ, x, y in df[["occupation", "x", "y"]].itertuples(index=False, name=None):
+        occ_to_xy[str(occ)] = (float(x), float(y))
+
+    return {"df": df, "xy": xy, "max_dist": float(max_dist), "occ_to_xy": occ_to_xy}
 
 
-def _map_proximity(coords_df: pd.DataFrame, occ_a: str, occ_b: str, max_dist: float) -> float:
-    a_xy = coords_df.loc[coords_df["occupation"] == occ_a, ["x", "y"]].to_numpy(dtype=float)
-    b_xy = coords_df.loc[coords_df["occupation"] == occ_b, ["x", "y"]].to_numpy(dtype=float)
-    if len(a_xy) == 0 or len(b_xy) == 0:
+def _map_proximity_precomputed(ctx: dict[str, Any], occ_a: str, occ_b: str) -> float:
+    occ_to_xy: dict[str, tuple[float, float]] = ctx["occ_to_xy"]
+    max_dist: float = float(ctx["max_dist"])
+
+    a = occ_to_xy.get(str(occ_a))
+    b = occ_to_xy.get(str(occ_b))
+    if a is None or b is None:
         return 0.0
-    if max_dist <= 0:
+    if max_dist <= 0.0:
         return 1.0
-    dist = float(np.linalg.norm(a_xy[0] - b_xy[0]))
+    dist = float(np.linalg.norm(np.array(a) - np.array(b)))
     return float(np.clip(1.0 - dist / max_dist, 0.0, 1.0))
 
 
@@ -107,16 +137,165 @@ def _cosine(a: np.ndarray, b: np.ndarray) -> float:
     return float(np.dot(a, b) / denom)
 
 
-def _hybrid_score_from_vectors(
-    a: np.ndarray,
-    b: np.ndarray,
-    map_part: float,
+def _hybrid_score_from_vectors(a: np.ndarray, b: np.ndarray, map_part: float, w_cosine: float, w_map: float) -> float:
+    cos = max(0.0, _cosine(a, b))  # 0..1
+    score = 100.0 * (w_cosine * cos + w_map * float(map_part))
+    return float(np.clip(score, 0.0, 100.0))
+
+
+@st.cache_data(show_spinner=False)
+def _map_parts_from_current(coords_df: pd.DataFrame, current_occ: str) -> dict[str, float]:
+    """
+    Vectorized map proximity current -> all (O(n)).
+    """
+    ctx = _precompute_map_context(coords_df)
+    df = ctx["df"]
+    xy = ctx["xy"]
+    max_dist = float(ctx["max_dist"])
+
+    if df.empty or xy.shape[0] == 0:
+        return {}
+
+    # Find current index
+    occs = df["occupation"].astype(str).to_numpy()
+    cur_mask = occs == str(current_occ)
+    if not np.any(cur_mask):
+        return {}
+
+    cur_xy = xy[np.argmax(cur_mask)]
+    if max_dist <= 0.0:
+        return {str(o): 1.0 for o in occs}
+
+    d = np.linalg.norm(xy - cur_xy, axis=1)
+    prox = np.clip(1.0 - d / max_dist, 0.0, 1.0)
+
+    return {str(o): float(p) for o, p in zip(occs, prox)}
+
+
+@st.cache_data(show_spinner=False)
+def _recommend_similar_roles_fast(
+    matrix: pd.DataFrame,
+    coords_df: pd.DataFrame,
+    current_occ: str,
+    *,
+    top_k: int,
     w_cosine: float,
     w_map: float,
-) -> float:
-    cos = max(0.0, _cosine(a, b))  # 0..1
-    score = 100.0 * (w_cosine * cos + w_map * map_part)
-    return float(np.clip(score, 0.0, 100.0))
+) -> pd.DataFrame:
+    a = matrix.loc[current_occ].astype(float).to_numpy()
+    map_parts = _map_parts_from_current(coords_df, current_occ)
+
+    rows: list[tuple[str, float]] = []
+    for occ in matrix.index.astype(str):
+        if occ == current_occ:
+            continue
+        b = matrix.loc[occ].astype(float).to_numpy()
+        mp = float(map_parts.get(occ, 0.0))
+        s = _hybrid_score_from_vectors(a, b, mp, float(w_cosine), float(w_map))
+        rows.append((occ, s))
+
+    out = (
+        pd.DataFrame(rows, columns=["occupation", "match_score"])
+        .sort_values("match_score", ascending=False)
+        .head(int(top_k))
+        .reset_index(drop=True)
+    )
+    return out
+
+
+@st.cache_data(show_spinner=False)
+def _robustness_analysis_fast(
+    matrix: pd.DataFrame,
+    coords_df: pd.DataFrame,
+    current_occ: str,
+    target_occ: str,
+    *,
+    w_cosine: float,
+    w_map: float,
+    n_samples: int,
+    noise_std: float,
+    seed: int,
+) -> dict[str, Any]:
+    rng = np.random.default_rng(int(seed))
+    a0 = matrix.loc[current_occ].astype(float).to_numpy()
+    b0 = matrix.loc[target_occ].astype(float).to_numpy()
+
+    map_parts = _map_parts_from_current(coords_df, current_occ)
+    map_part = float(map_parts.get(str(target_occ), 0.0))
+
+    scores: list[float] = []
+    for _ in range(int(n_samples)):
+        a = np.clip(a0 + rng.normal(0.0, float(noise_std), size=a0.shape), 0.0, None)
+        b = np.clip(b0 + rng.normal(0.0, float(noise_std), size=b0.shape), 0.0, None)
+        s = _hybrid_score_from_vectors(a, b, map_part, float(w_cosine), float(w_map))
+        scores.append(s)
+
+    arr = np.array(scores, dtype=float)
+    return {
+        "n_samples": int(n_samples),
+        "noise_std": float(noise_std),
+        "mean": float(np.mean(arr)) if arr.size else float("nan"),
+        "std": float(np.std(arr)) if arr.size else float("nan"),
+        "ci95_low": float(np.quantile(arr, 0.025)) if arr.size else float("nan"),
+        "ci95_high": float(np.quantile(arr, 0.975)) if arr.size else float("nan"),
+        "scores": scores,
+        "notes": "Monte Carlo stability on skill vectors (Gaussian noise). Map part fixed from selected embedding.",
+    }
+
+
+@st.cache_data(show_spinner=False)
+def _compute_all_targets_robustness_fast(
+    matrix: pd.DataFrame,
+    coords_df: pd.DataFrame,
+    current_occ: str,
+    *,
+    w_cosine: float,
+    w_map: float,
+    n_samples: int,
+    noise_std: float,
+    seed: int,
+) -> pd.DataFrame:
+    rng = np.random.default_rng(int(seed))
+    a0 = matrix.loc[current_occ].astype(float).to_numpy()
+
+    map_parts = _map_parts_from_current(coords_df, current_occ)
+
+    rows: list[dict[str, Any]] = []
+    for occ in matrix.index.astype(str):
+        if occ == current_occ:
+            continue
+
+        b0 = matrix.loc[occ].astype(float).to_numpy()
+        mp = float(map_parts.get(occ, 0.0))
+
+        scores = []
+        for _ in range(int(n_samples)):
+            a = np.clip(a0 + rng.normal(0.0, float(noise_std), size=a0.shape), 0.0, None)
+            b = np.clip(b0 + rng.normal(0.0, float(noise_std), size=b0.shape), 0.0, None)
+            s = _hybrid_score_from_vectors(a, b, mp, float(w_cosine), float(w_map))
+            scores.append(s)
+
+        arr = np.array(scores, dtype=float)
+        if arr.size == 0:
+            continue
+
+        q05 = float(np.quantile(arr, 0.05))
+        tail = arr[arr <= q05]
+        cvar05 = float(np.mean(tail)) if tail.size else q05
+
+        rows.append(
+            {
+                "occupation": occ,
+                "mean": float(np.mean(arr)),
+                "std": float(np.std(arr)),
+                "q05": q05,
+                "q95": float(np.quantile(arr, 0.95)),
+                "cvar05": cvar05,
+                "map_part": float(mp),
+            }
+        )
+
+    return pd.DataFrame(rows).sort_values("mean", ascending=False).reset_index(drop=True)
 
 
 @st.cache_data(show_spinner=False)
@@ -129,25 +308,16 @@ def _what_if_sweep(
     mc_per_cell: int,
     seed: int,
 ) -> pd.DataFrame:
-    """
-    Sweep across weight and noise to estimate mean hybrid score for ALL target roles.
-    Output columns: w_cosine, w_map, noise_std, occupation, mean_score
-    """
-    rng = np.random.default_rng(seed)
+    rng = np.random.default_rng(int(seed))
     a0 = matrix.loc[current_occ].astype(float).to_numpy()
 
     w0, w1, wn = grid_w_cosine
     n0, n1, nn = grid_noise
 
-    w_vals = np.linspace(w0, w1, wn)
-    n_vals = np.linspace(n0, n1, nn)
+    w_vals = np.linspace(float(w0), float(w1), int(wn))
+    n_vals = np.linspace(float(n0), float(n1), int(nn))
 
-    max_dist = _precompute_map_maxdist(coords_df)
-
-    # Fixed map proximity current->other
-    map_part = {}
-    for occ in matrix.index.astype(str):
-        map_part[occ] = _map_proximity(coords_df, current_occ, occ, max_dist)
+    map_parts = _map_parts_from_current(coords_df, current_occ)
 
     records = []
     for w in w_vals:
@@ -159,12 +329,13 @@ def _what_if_sweep(
                 if occ == current_occ:
                     continue
                 b0 = matrix.loc[occ].astype(float).to_numpy()
+                mp = float(map_parts.get(occ, 0.0))
 
                 scores = []
-                for _ in range(mc_per_cell):
+                for _ in range(int(mc_per_cell)):
                     a = np.clip(a0 + rng.normal(0.0, noise, size=a0.shape), 0.0, None)
                     b = np.clip(b0 + rng.normal(0.0, noise, size=b0.shape), 0.0, None)
-                    s = _hybrid_score_from_vectors(a, b, map_part[occ], w, w_map)
+                    s = _hybrid_score_from_vectors(a, b, mp, w, w_map)
                     scores.append(s)
 
                 records.append(
@@ -173,7 +344,7 @@ def _what_if_sweep(
                         "w_map": w_map,
                         "noise_std": noise,
                         "occupation": occ,
-                        "mean_score": float(np.mean(scores)),
+                        "mean_score": float(np.mean(scores)) if scores else float("nan"),
                     }
                 )
 
@@ -185,14 +356,7 @@ def _ranking_stability(
     sweep_df: pd.DataFrame,
     target_occ: str,
     top_k: int = 3,
-) -> dict:
-    """
-    Stability metrics:
-    - target_in_topk_rate
-    - distribution of target rank across configs
-    - frequency of roles in Top-K across configs
-    - most common Top-K set + its share
-    """
+) -> dict[str, Any]:
     group_cols = ["w_cosine", "w_map", "noise_std"]
     ranks_frames = []
     topk_lists = []
@@ -203,7 +367,7 @@ def _ranking_stability(
         g2["rank"] = np.arange(1, len(g2) + 1)
         ranks_frames.append(g2)
 
-        topk = tuple(g2.head(top_k)["occupation"].tolist())
+        topk = tuple(g2.head(int(top_k))["occupation"].tolist())
         topk_lists.append(topk)
 
         tr = g2.loc[g2["occupation"] == target_occ, "rank"]
@@ -215,9 +379,8 @@ def _ranking_stability(
     ranks_df = pd.concat(ranks_frames, ignore_index=True) if ranks_frames else pd.DataFrame()
     target_ranks_arr = np.array([r for r in target_ranks if not (isinstance(r, float) and np.isnan(r))], dtype=int)
 
-    in_topk = float(np.mean(target_ranks_arr <= top_k)) if len(target_ranks_arr) else 0.0
+    in_topk = float(np.mean(target_ranks_arr <= int(top_k))) if len(target_ranks_arr) else 0.0
 
-    # frequency of roles appearing in Top-K
     freq = Counter()
     for t in topk_lists:
         for occ in t:
@@ -230,7 +393,6 @@ def _ranking_stability(
     )
     freq_df["share"] = freq_df["count"] / max(1, len(topk_lists))
 
-    # mode of Top-K sets using Counter (robust)
     topk_mode = None
     topk_mode_share = 0.0
     if topk_lists:
@@ -250,6 +412,12 @@ def _ranking_stability(
     }
 
 
+def _pick_coords(choice: str, coords_umap_df: pd.DataFrame, coords_pca_df: pd.DataFrame) -> tuple[pd.DataFrame, str]:
+    if choice == "UMAP" and _coords_is_valid(coords_umap_df):
+        return coords_umap_df.copy(), "UMAP"
+    return coords_pca_df.copy(), "PCA"
+
+
 # -----------------------------
 # Sidebar: controls
 # -----------------------------
@@ -266,15 +434,18 @@ with st.sidebar:
         if st.session_state["__target_override__"]:
             target = st.session_state["__target_override__"]
 
+        if current == target:
+            st.warning("Current and Target are identical. Pick a different target to see meaningful results.")
+
     with st.expander("2) Scoring knobs (optional)", expanded=False):
         st.caption("Default is fine. Only change to explore trade-offs.")
         w_cosine = st.slider("Skill similarity weight", 0.0, 1.0, 0.65, 0.05)
         w_map = st.slider("Map proximity weight", 0.0, 1.0, 0.35, 0.05)
-        s = w_cosine + w_map
-        if s == 0:
+        s = float(w_cosine + w_map)
+        if s <= 0:
             w_cosine, w_map = 1.0, 0.0
         else:
-            w_cosine, w_map = w_cosine / s, w_map / s
+            w_cosine, w_map = float(w_cosine / s), float(w_map / s)
 
     with st.expander("3) Planning & robustness knobs", expanded=False):
         st.subheader("Path planning")
@@ -286,8 +457,16 @@ with st.sidebar:
         noise_std = st.slider("Noise level (std)", 0.00, 0.20, 0.05, 0.01)
 
     with st.expander("Advanced visualization", expanded=False):
-        show_map = st.toggle("Show PCA map (advanced)", value=False)
+        embed_options = ["PCA"]
+        if _coords_is_valid(coords_umap):
+            embed_options.append("UMAP")
+
+        embedding_choice = st.selectbox("Embedding for map + proximity", options=embed_options, index=0)
+        show_map = st.toggle("Show map tab (advanced)", value=False)
         color_by_cluster = st.toggle("Color by clusters", value=bool(clusters))
+
+        if embedding_choice == "UMAP" and not _coords_is_valid(coords_umap):
+            st.warning("UMAP not available (missing artifacts). Falling back to PCA.")
 
     st.divider()
     run = st.button("🚀 Run pivot analysis", use_container_width=True)
@@ -339,7 +518,7 @@ This uses classic ML techniques (no deep learning required):
 
 - **Feature representation:** occupation = skill-importance vector  
 - **Similarity model:** cosine similarity (embedding-style matching)  
-- **Dimensionality reduction:** PCA (optional map)  
+- **Dimensionality reduction:** PCA / UMAP (optional map)  
 - **Clustering:** KMeans (career neighborhoods)  
 - **Planning:** kNN graph + Dijkstra shortest path  
 - **Uncertainty:** Monte Carlo perturbation (stability metrics)  
@@ -352,30 +531,44 @@ This uses classic ML techniques (no deep learning required):
 
 
 # -----------------------------
+# Choose embedding (PCA vs UMAP)
+# -----------------------------
+coords, coords_label = _pick_coords(embedding_choice, coords_umap, coords_pca)
+
+# -----------------------------
 # Core AI outputs
 # -----------------------------
 gap_df = compute_gap_df(mat, current, target)
-match_score = compute_match_score_hybrid(mat, coords, current, target, w_cosine=w_cosine, w_map=w_map)
-cosine_score = compute_match_score_cosine(mat, current, target)
+
+# Compute hybrid score with fast precomputed map-part (no model_logic maxdist loop)
+map_parts_current = _map_parts_from_current(coords, current)
+map_part_ct = float(map_parts_current.get(str(target), 0.0))
+a_vec = mat.loc[current].astype(float).to_numpy()
+b_vec = mat.loc[target].astype(float).to_numpy()
+match_score = _hybrid_score_from_vectors(a_vec, b_vec, map_part_ct, float(w_cosine), float(w_map))
+
+# Keep cosine score for transparency
+cosine_score = float(np.clip(max(0.0, _cosine(a_vec, b_vec)) * 100.0, 0.0, 100.0))
+
 contrib = compute_skill_contributions(gap_df)
 plan = generate_learning_plan(gap_df)
 conf = compute_confidence_score(mat, art.pca_meta, current, target)
 
-path_out = find_pivot_path(mat, current, target, k_neighbors=k_neighbors, max_steps=max_steps)
-rob = robustness_analysis(
+path_out = find_pivot_path(mat, current, target, k_neighbors=int(k_neighbors), max_steps=int(max_steps))
+
+rob = _robustness_analysis_fast(
     mat,
     coords,
     current,
     target,
-    w_cosine=w_cosine,
-    w_map=w_map,
-    n_samples=n_samples,
-    noise_std=noise_std,
+    w_cosine=float(w_cosine),
+    w_map=float(w_map),
+    n_samples=int(n_samples),
+    noise_std=float(noise_std),
     seed=42,
 )
 
 group_gap_df = compute_group_gap_df(mat, skill_taxonomy, group_meta, current, target)
-
 
 # -----------------------------
 # Overview
@@ -402,15 +595,12 @@ elif ci_width <= 18:
 else:
     stability_label = "Sensitive / unstable"
 
-st.success(f"**{pivot_label}** • **{stability_label}**")
+st.success(f"**{pivot_label}** • **{stability_label}** • Map embedding: **{coords_label}**")
 
 with st.expander("Under the hood: score breakdown (transparent)", expanded=False):
-    max_dist = _precompute_map_maxdist(coords)
-    map_part = _map_proximity(coords, current, target, max_dist)  # 0..1
-
     st.markdown("### Components")
     st.write(f"- Cosine-based score: **{cosine_score:.1f}/100** (vector similarity)")
-    st.write(f"- Map proximity (0..1): **{map_part:.2f}** (from PCA coords; weak prior)")
+    st.write(f"- Map proximity (0..1): **{map_part_ct:.2f}** (from {coords_label} coords; weak prior)")
     st.write(f"- Weights: `w_cosine={w_cosine:.2f}`, `w_map={w_map:.2f}`")
     st.code("score = 100 * (w_cosine * max(0, cosine_similarity) + w_map * map_proximity)")
 
@@ -439,7 +629,6 @@ with st.expander("Under the hood: score breakdown (transparent)", expanded=False
                 use_container_width=True,
             )
 
-
 # -----------------------------
 # Main: Neighborhood + Plan
 # -----------------------------
@@ -449,7 +638,7 @@ with left:
     st.subheader("Career neighborhood (actionable)")
     st.caption("Closest roles to your current occupation + one-click stepping-stones.")
 
-    rec_df = recommend_similar_roles(mat, coords, current, top_k=6, w_cosine=w_cosine, w_map=w_map)
+    rec_df = _recommend_similar_roles_fast(mat, coords, current, top_k=6, w_cosine=float(w_cosine), w_map=float(w_map))
     st.dataframe(rec_df, use_container_width=True, hide_index=True)
 
     st.markdown("**Use a recommended role as new target:**")
@@ -459,14 +648,14 @@ with left:
             st.write(f"**{row['occupation']}** — {row['match_score']:.0f}/100")
         with c2:
             if st.button("Use", key=f"use_{row['occupation']}"):
-                st.session_state["__target_override__"] = row["occupation"]
+                st.session_state["__target_override__"] = str(row["occupation"])
                 st.session_state["__has_run__"] = True
                 st.rerun()
 
     if clusters:
         st.divider()
         st.markdown("**Career neighborhood theme (cluster)**")
-        cur_cluster = clusters.get(current, None)
+        cur_cluster = clusters.get(str(current), None)
         if cur_cluster is None:
             st.info("No cluster found for current role.")
         else:
@@ -521,7 +710,6 @@ with right:
         st.markdown("**Advanced**")
         for b in plan["Advanced"]:
             st.write("- " + b)
-
 
 # -----------------------------
 # Tabs (deep dives)
@@ -583,12 +771,12 @@ with tabs[0]:
         k_neigh: int,
         max_steps_: int,
     ) -> pd.DataFrame:
-        base = compute_all_targets_robustness(
+        base = _compute_all_targets_robustness_fast(
             matrix,
             coords_df,
             current_occ,
-            w_cosine=w_cos,
-            w_map=w_m,
+            w_cosine=float(w_cos),
+            w_map=float(w_m),
             n_samples=int(n_samp),
             noise_std=float(noise),
             seed=42,
@@ -629,7 +817,7 @@ with tabs[0]:
     )
 
     gated = df.copy()
-    # simple per-target confidence proxy: overlap jaccard between current and each candidate target
+
     @st.cache_data(show_spinner=False)
     def _confidence_table(matrix: pd.DataFrame, current_occ: str) -> pd.DataFrame:
         a = matrix.loc[current_occ].astype(float).values
@@ -774,6 +962,7 @@ with tabs[0]:
     )
     st.caption(str(cf.get("notes", "")))
 
+
 # ---- What-If Lab
 with tabs[1]:
     st.subheader("What-If Sensitivity Lab (overkill mode)")
@@ -798,10 +987,8 @@ with tabs[1]:
             seed = st.number_input("Seed", value=42, step=1)
 
         if w_max < w_min:
-            st.warning("w_cosine max < min. Swapping.")
             w_min, w_max = w_max, w_min
         if n_max < n_min:
-            st.warning("noise max < min. Swapping.")
             n_min, n_max = n_max, n_min
 
     sweep = _what_if_sweep(
@@ -842,7 +1029,7 @@ with tabs[1]:
                 st.write(f"{100*float(r['share']):.0f}%")
             with c3:
                 if st.button("Use", key=f"whatif_use_{r['occupation']}"):
-                    st.session_state["__target_override__"] = r["occupation"]
+                    st.session_state["__target_override__"] = str(r["occupation"])
                     st.session_state["__has_run__"] = True
                     st.rerun()
 
@@ -857,7 +1044,7 @@ with tabs[1]:
             x=[f"{x:.2f}" for x in pivot.columns.tolist()],
             y=[f"{y:.2f}" for y in pivot.index.tolist()],
             labels={"x": "w_cosine", "y": "noise_std", "color": "mean score"},
-            title="Mean hybrid score for selected target across weight/noise sweep",
+            title=f"Mean hybrid score for selected target across weight/noise sweep ({coords_label})",
             aspect="auto",
         )
         fig.update_layout(height=520)
@@ -891,6 +1078,7 @@ with tabs[1]:
         f"Interpretation: If your target is rarely in Top-{topk} across plausible configurations, it's a risky choice. "
         f"If it stays Top-{topk} across most configs, it's robust."
     )
+
 
 # ---- Explain
 with tabs[2]:
@@ -928,6 +1116,7 @@ with tabs[2]:
                 use_container_width=True,
                 hide_index=True,
             )
+
 
 # ---- Skill Groups
 with tabs[3]:
@@ -972,6 +1161,7 @@ with tabs[3]:
                     hide_index=True,
                 )
 
+
 # ---- Robustness
 with tabs[4]:
     st.subheader("Robustness (stability under noise)")
@@ -979,9 +1169,16 @@ with tabs[4]:
     m1.metric("Mean score", f"{rob['mean']:.1f}")
     m2.metric("Std dev", f"{rob['std']:.1f}")
     m3.metric("95% CI", f"[{rob['ci95_low']:.1f}, {rob['ci95_high']:.1f}]")
-    fig = px.histogram(pd.DataFrame({"score": rob["scores"]}), x="score", nbins=20, title="Score distribution (Monte Carlo)")
+
+    fig = px.histogram(
+        pd.DataFrame({"score": rob["scores"]}),
+        x="score",
+        nbins=20,
+        title=f"Score distribution (Monte Carlo) — map={coords_label}",
+    )
     fig.update_layout(height=420)
     st.plotly_chart(fig, use_container_width=True)
+
 
 # ---- Skill Gap
 with tabs[5]:
@@ -997,6 +1194,7 @@ with tabs[5]:
             hide_index=True,
         )
 
+
 # ---- Radar
 with tabs[6]:
     st.subheader("Radar chart (current vs target)")
@@ -1007,6 +1205,7 @@ with tabs[6]:
     fig.add_trace(go.Scatterpolar(r=radar_df["target_importance"], theta=categories, fill="toself", name="Target"))
     fig.update_layout(height=520, polar=dict(radialaxis=dict(visible=True)))
     st.plotly_chart(fig, use_container_width=True)
+
 
 # ---- Export
 with tabs[7]:
@@ -1019,6 +1218,7 @@ with tabs[7]:
     export_df.insert(4, "robust_mean_score", round(rob["mean"], 2))
     export_df.insert(5, "robust_ci95_low", round(rob["ci95_low"], 2))
     export_df.insert(6, "robust_ci95_high", round(rob["ci95_high"], 2))
+    export_df.insert(7, "map_embedding", coords_label)
 
     if not group_gap_df.empty:
         for _, r in group_gap_df.iterrows():
@@ -1033,63 +1233,78 @@ with tabs[7]:
         mime="text/csv",
     )
 
+
 # ---- Map (advanced)
 with tabs[8]:
-    st.subheader("PCA map (advanced)")
-    st.caption("PCA axes are not semantic. Use only for rough neighborhood intuition.")
+    st.subheader(f"Map (advanced) — {coords_label}")
+    st.caption("The map is for intuition only. Axes are not semantic.")
+
     if not show_map:
-        st.info("Enable **Show PCA map (advanced)** in the sidebar to display this.")
+        st.info("Enable **Show map tab (advanced)** in the sidebar to display this.")
     else:
-        coords_plot = coords.copy()
-        coords_plot["selected"] = "Other"
-        coords_plot.loc[coords_plot["occupation"] == current, "selected"] = "Current"
-        coords_plot.loc[coords_plot["occupation"] == target, "selected"] = "Target"
+        try:
+            coords_plot = coords.copy()
+            coords_plot["occupation"] = coords_plot["occupation"].astype(str)
 
-        if clusters:
-            coords_plot["cluster_id"] = coords_plot["occupation"].map(lambda o: clusters.get(str(o), -1))
-            coords_plot["cluster_theme"] = coords_plot["cluster_id"].map(lambda c_: format_cluster_theme(c_, cluster_themes))
-        else:
-            coords_plot["cluster_id"] = -1
-            coords_plot["cluster_theme"] = ""
+            coords_plot["selected"] = "Other"
+            coords_plot.loc[coords_plot["occupation"] == str(current), "selected"] = "Current"
+            coords_plot.loc[coords_plot["occupation"] == str(target), "selected"] = "Target"
 
-        if color_by_cluster and clusters:
-            fig = px.scatter(
-                coords_plot,
-                x="x",
-                y="y",
-                hover_name="occupation",
-                color="cluster_id",
-                symbol="selected",
-                hover_data={"cluster_id": True, "cluster_theme": True, "x": False, "y": False},
-                title="Clustered PCA map (career neighborhoods).",
-            )
-        else:
-            fig = px.scatter(
-                coords_plot,
-                x="x",
-                y="y",
-                hover_name="occupation",
-                color="selected",
-                title="PCA map (unclustered).",
-            )
-
-        if path_out.get("reachable") and len(path_out.get("path", [])) >= 2:
-            path = path_out["path"]
-            sub = coords.set_index("occupation").loc[path][["x", "y"]].reset_index()
-            fig.add_trace(
-                go.Scatter(
-                    x=sub["x"],
-                    y=sub["y"],
-                    mode="lines+markers",
-                    name="Pivot path",
-                    hovertext=sub["occupation"],
+            if clusters:
+                coords_plot["cluster_id"] = coords_plot["occupation"].map(lambda o: clusters.get(str(o), -1))
+                coords_plot["cluster_theme"] = coords_plot["cluster_id"].map(
+                    lambda c_: format_cluster_theme(c_, cluster_themes)
                 )
-            )
+            else:
+                coords_plot["cluster_id"] = -1
+                coords_plot["cluster_theme"] = ""
 
-        fig.update_layout(height=620)
-        st.plotly_chart(fig, use_container_width=True)
+            if color_by_cluster and clusters:
+                fig = px.scatter(
+                    coords_plot,
+                    x="x",
+                    y="y",
+                    hover_name="occupation",
+                    color="cluster_id",
+                    symbol="selected",
+                    hover_data={"cluster_id": True, "cluster_theme": True, "x": False, "y": False},
+                    title=f"Clustered {coords_label} map (career neighborhoods).",
+                )
+            else:
+                fig = px.scatter(
+                    coords_plot,
+                    x="x",
+                    y="y",
+                    hover_name="occupation",
+                    color="selected",
+                    title=f"{coords_label} map (unclustered).",
+                )
+
+            # Path overlay (only if all path nodes exist in coords)
+            if path_out.get("reachable") and len(path_out.get("path", [])) >= 2:
+                path = [str(p) for p in path_out.get("path", [])]
+                coords_idx = coords_plot.set_index("occupation")
+                if all(p in coords_idx.index for p in path):
+                    sub = coords_idx.loc[path][["x", "y"]].reset_index()
+                    fig.add_trace(
+                        go.Scatter(
+                            x=sub["x"],
+                            y=sub["y"],
+                            mode="lines+markers",
+                            name="Pivot path",
+                            hovertext=sub["occupation"],
+                        )
+                    )
+
+            fig.update_layout(height=620)
+            st.plotly_chart(fig, use_container_width=True)
+
+        except Exception as e:
+            st.error("Map rendering failed (the rest of the app is still usable).")
+            with st.expander("Details (traceback)"):
+                st.exception(e)
 
 st.caption(
-    "Engineering note: runtime loads precomputed artifacts (matrix + PCA coords + clusters + taxonomy). "
+    "Engineering note: runtime loads precomputed artifacts (matrix + PCA/UMAP coords + clusters + taxonomy). "
     "This prototype adds decision robustness via what-if sensitivity sweeps."
 )
