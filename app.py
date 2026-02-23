@@ -572,60 +572,90 @@ def _robustness_monte_carlo(
 # ============================================================
 with st.sidebar:
     st.header("Controls")
+
+    # --- Mode switch (Guided vs Research)
+    # segmented_control exists only in newer Streamlit -> fallback to radio
+    if hasattr(st, "segmented_control"):
+        view_mode = st.segmented_control(
+            "Mode",
+            options=["Guided", "Research"],
+            default="Guided",
+        )
+    else:
+        view_mode = st.radio("Mode", options=["Guided", "Research"], index=0)
+
+    guided = (view_mode == "Guided")
+
     st.write("Pick a pivot → run analysis → explore deep dives on demand.")
     st.divider()
 
+    # --- Pivot selection
     with st.expander("1) Choose your pivot", expanded=True):
         current = st.selectbox("Current occupation", options=occupations, index=0)
         default_target_idx = 1 if len(occupations) > 1 else 0
         target = st.selectbox("Target occupation", options=occupations, index=default_target_idx)
 
-        if st.session_state["__target_override__"]:
+        if st.session_state.get("__target_override__"):
             target = st.session_state["__target_override__"]
 
         if current == target:
-            st.warning("Current and Target are identical. Pick a different target to see meaningful results.")
+            st.warning("Current and Target are identical. Pick a different target.")
 
-    with st.expander("2) Scoring knobs (recommended defaults)", expanded=True):
-        st.caption("We show a calibrated decision score by default (percentile). Raw score stays available for transparency.")
-        w_cosine = st.slider("Skill similarity weight", 0.0, 1.0, 0.65, 0.05)
-        w_map = st.slider("Map proximity weight", 0.0, 1.0, 0.35, 0.05)
-        s = float(w_cosine + w_map)
-        if s <= 0:
-            w_cosine, w_map = 1.0, 0.0
-        else:
-            w_cosine, w_map = float(w_cosine / s), float(w_map / s)
-
+    # --- Scoring (minimal in Guided, full in Research)
+    with st.expander("2) Scoring (recommended)", expanded=True):
         use_idf = st.toggle("Downweight common skills (IDF)", value=True)
+
         score_mode = st.radio(
             "Score mode (shown in Overview)",
             options=["Calibrated percentile (recommended)", "Raw hybrid"],
             index=0,
         )
 
-        st.caption("Plausibility gate: if two roles share too few non-zero skills, the final score is reduced.")
         min_overlap = st.slider("Min overlap (Jaccard) for full score", 0.00, 0.30, 0.08, 0.01)
 
-    with st.expander("3) Planning & robustness knobs", expanded=False):
-        st.subheader("Path planning (fast)")
-        k_neighbors = st.slider("kNN neighbors", 2, 12, 5, 1)
-        max_steps = st.slider("Max steps", 2, 8, 4, 1)
+        if guided:
+            # one slider = clean UI
+            w_cosine = st.slider("Skill similarity weight", 0.0, 1.0, 0.65, 0.05)
+            w_map = 1.0 - w_cosine
+        else:
+            w_cosine = st.slider("Skill similarity weight", 0.0, 1.0, 0.65, 0.05)
+            w_map = st.slider("Map proximity weight", 0.0, 1.0, 0.35, 0.05)
 
-        st.subheader("Robustness (runs on-demand)")
-        n_samples = st.slider("Monte Carlo samples", 50, 600, 200, 50)
-        noise_std = st.slider("Noise level (std)", 0.00, 0.20, 0.05, 0.01)
+        # normalize weights
+        s = float(w_cosine + w_map)
+        if s <= 0:
+            w_cosine, w_map = 1.0, 0.0
+        else:
+            w_cosine, w_map = float(w_cosine / s), float(w_map / s)
 
-    with st.expander("Advanced visualization", expanded=False):
-        embed_options = ["PCA"]
-        if _coords_is_valid(coords_umap):
-            embed_options.append("UMAP")
+    # --- Planning/robustness knobs only in Research
+    if not guided:
+        with st.expander("3) Planning & robustness knobs", expanded=False):
+            st.subheader("Path planning (fast)")
+            k_neighbors = st.slider("kNN neighbors", 2, 12, 5, 1)
+            max_steps = st.slider("Max steps", 2, 8, 4, 1)
 
-        embedding_choice = st.selectbox("Embedding for map + proximity", options=embed_options, index=0)
-        show_map = st.toggle("Show map tab (advanced)", value=False)
-        color_by_cluster = st.toggle("Color by clusters", value=bool(clusters))
+            st.subheader("Robustness (runs on-demand)")
+            n_samples = st.slider("Monte Carlo samples", 50, 600, 200, 50)
+            noise_std = st.slider("Noise level (std)", 0.00, 0.20, 0.05, 0.01)
 
-        if embedding_choice == "UMAP" and not _coords_is_valid(coords_umap):
-            st.warning("UMAP not available (missing artifacts). Falling back to PCA.")
+        with st.expander("Advanced visualization", expanded=False):
+            embed_options = ["PCA"]
+            if _coords_is_valid(coords_umap):
+                embed_options.append("UMAP")
+
+            embedding_choice = st.selectbox("Embedding for map + proximity", options=embed_options, index=0)
+            show_map = st.toggle("Show map tab (advanced)", value=False)
+            color_by_cluster = st.toggle("Color by clusters", value=bool(clusters))
+    else:
+        # Guided defaults (keep UI clean)
+        k_neighbors = 5
+        max_steps = 4
+        n_samples = 200
+        noise_std = 0.05
+        embedding_choice = "PCA"
+        show_map = False
+        color_by_cluster = False
 
     st.divider()
     run = st.button("🚀 Run pivot analysis", use_container_width=True)
