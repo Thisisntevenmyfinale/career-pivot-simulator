@@ -121,7 +121,7 @@ def _offline_learning_plan_markdown(
 ) -> str:
     """
     Deterministic offline fallback.
-    Uses the same missing-skill selection logic as the online prompt.
+    English-only by project requirement.
     Never calls external services.
     """
     cur = _sanitize_role_name(current_role)
@@ -130,90 +130,58 @@ def _offline_learning_plan_markdown(
     miss = _pick_missing_skills_for_llm(gap_df, max_n=max_missing)
 
     if miss.empty:
-        if language.lower().startswith("en"):
-            return (
-                "🧰 **Learning Plan (Offline-Fallback):**\n\n"
-                "✅ In dieser Pivot-Konfiguration gibt es nach Filtern keine klar prioritären Skill-Gaps.\n\n"
-                "**Empfohlener Fokus (8–14 Tage):**\n"
-                "- 1 Portfolio-Projekt, das deinen Pivot plausibel macht (Output: Repo + kurze Demo).\n"
-                "- CV/LinkedIn: 3 transferierbare Stories (Problem → Aktion → Ergebnis).\n"
-                "- 6 Zielrollen-Interviewfragen üben (STAR + Zahlen/Impact).\n"
-            )
         return (
-            "🧰 **Learning Plan (Offline fallback):**\n\n"
-            "✅ After filtering, there are no clear priority skill gaps for this pivot.\n\n"
+            "🧰 **Learning Plan (Offline fallback, deterministic):**\n\n"
+            "✅ After filtering, there are no clear high-priority skill gaps for this pivot.\n\n"
             "**Focus (8–14 days):**\n"
-            "- One portfolio project (repo + short demo).\n"
-            "- Resume/LinkedIn: 3 transferable stories (problem → action → impact).\n"
+            "- Build 1 portfolio artifact that makes the pivot plausible (repo + short demo).\n"
+            "- Rewrite your resume/LinkedIn using 3 transferable stories (problem → action → impact).\n"
             "- Practice 6 target-role interview questions (STAR + metrics).\n"
         )
 
     skills = miss["skill"].astype(str).tolist()
 
-    # simple 3-phase split (deterministic, stable)
+    # Deterministic 3-phase split
     n = len(skills)
     a = max(1, n // 3)
     b = max(1, n // 3)
+
     foundations = skills[:a]
     intermediate = skills[a : a + b]
     advanced = skills[a + b :]
 
-    def bullets(phase_skills: list[str]) -> str:
-        return "\n".join([f"- **{s}** → 2×/Woche Übungsblock + 1 messbarer Output" for s in phase_skills]) if phase_skills else "- (keine weiteren prioritären Skills)"
-
-    if language.lower().startswith("en"):
-        return (
-            "🧰 **Learning Plan (Offline-Fallback, deterministisch):**\n"
-            "_OpenAI nicht verfügbar (kein Key/Quota/Netz/Dependency) – Plan wird lokal erzeugt._\n\n"
-            f"**Pivot:** {cur} → {tgt}\n\n"
-            "## 1) Foundations (2–3 Wochen)\n"
-            f"{bullets(foundations)}\n\n"
-            "**Mini-Projekt:** 1 kleines Artefakt, das **2 Foundations-Skills** sichtbar macht (Repo + Readme + 1 Demo-Screenshot).\n\n"
-            "## 2) Intermediate (3–6 Wochen)\n"
-            f"{bullets(intermediate)}\n\n"
-            "**Mini-Projekt:** 1 Case-Study (Problem → Ansatz → Ergebnis) als Blogpost/Notion/README.\n\n"
-            "## 3) Advanced (6–10 Wochen)\n"
-            f"{bullets(advanced)}\n\n"
-            "**Mini-Projekt:** 1 “realistischeres” Projekt (mehr Constraints, Tests/Quality, kurze Präsentation).\n\n"
-            "## Interview-Fragen (Zielrolle)\n"
-            f"- Welche 2–3 Kernprobleme löst ein(e) **{tgt}** im Alltag?\n"
-            "- Erzähle von einem Projekt, das unklare Anforderungen hatte – wie bist du vorgegangen?\n"
-            "- Wie misst du Qualität/Erfolg (Metriken, Tests, Feedback-Loops)?\n"
-            "- Wo gehst du bewusst Trade-offs ein (Zeit vs Qualität vs Scope)?\n"
-            "- Wie gehst du mit Stakeholdern/Konflikten/Scope-Creep um?\n"
-            "- Was war dein größter Lernsprung – und wie hast du ihn erreicht?\n\n"
-            "## 3 typische Fehler beim Pivot\n"
-            "- Zu viel “Konsum” (Kurse) ohne Output – **Portfolio schlägt Zertifikate**.\n"
-            "- Skills isoliert lernen statt entlang eines Problems – **Problem-First**.\n"
-            "- Unklare Narrative – du brauchst 3 klare Stories (Transfer, Motivation, Beleg).\n"
-        )
+    def _bullets(items: list[str], flavor: str) -> str:
+        if not items:
+            return "- (No additional priority skills detected in this dataset.)"
+        if flavor == "foundation":
+            return "\n".join([f"- **{s}** → 2 practice blocks/week + 1 measurable output" for s in items])
+        if flavor == "intermediate":
+            return "\n".join([f"- **{s}** → applied practice + 1 deliverable (write-up, dashboard, case study)" for s in items])
+        return "\n".join([f"- **{s}** → realistic constraints + a quality bar (tests, review, iteration)" for s in items])
 
     return (
         "🧰 **Learning Plan (Offline fallback, deterministic):**\n"
-        "_OpenAI unavailable (no key/quota/network/dependency) – generated locally._\n\n"
+        "_OpenAI unavailable (no key/quota/network/dependency) — generated locally._\n\n"
         f"**Pivot:** {cur} → {tgt}\n\n"
         "## 1) Foundations (2–3 weeks)\n"
-        + "\n".join([f"- **{s}** → 2 practice blocks/week + one measurable output" for s in foundations])
-        + "\n\n"
-        "**Mini-project:** one small artifact demonstrating **2 foundations skills** (repo + README + demo).\n\n"
+        f"{_bullets(foundations, 'foundation')}\n\n"
+        "**Mini-project:** One small artifact demonstrating **2 foundation skills** (repo + README + demo).\n\n"
         "## 2) Intermediate (3–6 weeks)\n"
-        + "\n".join([f"- **{s}** → applied practice + one deliverable" for s in intermediate])
-        + "\n\n"
-        "**Mini-project:** one case study (problem → approach → outcome) as a short write-up.\n\n"
+        f"{_bullets(intermediate, 'intermediate')}\n\n"
+        "**Mini-project:** One case study (problem → approach → outcome) as a short write-up.\n\n"
         "## 3) Advanced (6–10 weeks)\n"
-        + "\n".join([f"- **{s}** → realistic constraints + quality bar" for s in advanced])
-        + "\n\n"
-        "**Mini-project:** one more realistic project (constraints, tests/quality, short presentation).\n\n"
+        f"{_bullets(advanced, 'advanced')}\n\n"
+        "**Mini-project:** One realistic project (constraints, evaluation, iteration) + 5-slide summary.\n\n"
         "## Interview questions (target role)\n"
-        f"- What are the 2–3 core problems a **{tgt}** solves day-to-day?\n"
+        f"- What are the 2–3 core problems a **{tgt}** solves day-to-day? (Give examples.)\n"
         "- Tell me about a project with ambiguous requirements — how did you proceed?\n"
         "- How do you measure quality/success (metrics, tests, feedback loops)?\n"
         "- Where do you intentionally make trade-offs (time vs quality vs scope)?\n"
         "- How do you handle stakeholders/conflict/scope creep?\n"
         "- What was your biggest learning jump — and how did you achieve it?\n\n"
         "## 3 common pivot mistakes\n"
-        "- Too much consumption (courses) without output — **portfolio beats certificates**.\n"
-        "- Learning skills in isolation instead of around a problem — **problem-first**.\n"
+        "- Consuming courses without shipping outputs — **portfolio beats certificates**.\n"
+        "- Learning skills in isolation instead of around problems — **problem-first**.\n"
         "- Unclear narrative — you need 3 crisp stories (transfer, motivation, evidence).\n"
     )
 
@@ -232,7 +200,7 @@ def generate_learning_plan_markdown(
     Single entry-point:
     - tries OpenAI if possible
     - otherwise deterministic offline fallback
-    ALWAYS English unless language starts with 'de'
+    ENGLISH ONLY
     """
 
     fallback = _offline_learning_plan_markdown(
@@ -270,25 +238,26 @@ def generate_learning_plan_markdown(
 
     # ===== LANGUAGE SWITCH (CLEAN) =====
     if language.lower().startswith("de"):
-
+           
         instructions = (
-            "Du bist ein pragmatischer Career-Coach. "
-            "Keine Floskeln. Keine Übertreibung. "
-            "Nur umsetzbare, job-relevante Schritte. "
-            "Markdown-Struktur verwenden."
+            "You are a pragmatic career coach. "
+            "No fluff. No exaggeration. "
+            "Only actionable, job-relevant steps. "
+            "Return clean Markdown. "
+            "Respond strictly in English."
         )
 
         user_text = (
-            f"Aktueller Job: {cur}\n"
-            f"Zieljob: {tgt}\n\n"
+            f"Current role: {cur}\n"
+            f"Target role: {tgt}\n\n"
             "Top Missing Skills:\n"
             + "\n".join(bullets)
             + "\n\n"
-            "Erstelle:\n"
-            "1) 3-Phasen Lernplan (Foundations / Intermediate / Advanced)\n"
-            "2) Pro Phase 1 Mini-Projekt\n"
-            "3) 6 Interviewfragen + 1 Satz Hinweis\n"
-            "4) 3 typische Fehler\n"
+            "Create:\n"
+            "1) A 3-phase plan (Foundations / Intermediate / Advanced)\n"
+            "2) One mini-project per phase\n"
+            "3) 6 interview questions + 1 guidance sentence each\n"
+            "4) 3 common pivot mistakes\n"
         )
 
     else:
