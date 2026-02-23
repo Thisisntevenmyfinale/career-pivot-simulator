@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import Counter
-from typing import Any
+from typing import Any, Dict, List, Tuple
 
 import numpy as np
 import pandas as pd
@@ -15,7 +15,6 @@ from src.model_logic import (
     compute_skill_contributions,
     generate_learning_plan,
     compute_confidence_score,
-    find_pivot_path,
     compute_group_gap_df,
     filter_missing_skills_by_group,
     format_cluster_theme,
@@ -36,12 +35,12 @@ st.caption(
 # Load artifacts
 # -----------------------------
 @st.cache_data(show_spinner=False)
-def load_artifacts() -> Any:
+def _load_artifacts_cached() -> Any:
     return load_runtime_artifacts("artifacts")
 
 
 try:
-    art = load_artifacts()
+    art = _load_artifacts_cached()
 except Exception as e:
     st.error("Missing or invalid runtime artifacts.")
     st.info("Run: `python scripts/preprocess_onet.py` to generate artifacts.")
@@ -51,10 +50,14 @@ except Exception as e:
 mat: pd.DataFrame = art.matrix
 coords_pca: pd.DataFrame = art.coords
 
-coords_umap: pd.DataFrame = art.umap_coords if hasattr(art, "umap_coords") else pd.DataFrame(columns=["occupation", "x", "y"])
-umap_meta: dict[str, Any] = art.umap_meta if hasattr(art, "umap_meta") and isinstance(art.umap_meta, dict) else {}
-
-occupations = mat.index.astype(str).tolist()
+coords_umap: pd.DataFrame = (
+    art.umap_coords
+    if hasattr(art, "umap_coords") and isinstance(art.umap_coords, pd.DataFrame)
+    else pd.DataFrame(columns=["occupation", "x", "y"])
+)
+umap_meta: dict[str, Any] = (
+    art.umap_meta if hasattr(art, "umap_meta") and isinstance(art.umap_meta, dict) else {}
+)
 
 clusters: dict[str, int] = art.clusters if hasattr(art, "clusters") and isinstance(art.clusters, dict) else {}
 cluster_themes: dict[str, Any] = (
@@ -65,6 +68,8 @@ skill_taxonomy: dict[str, str] = (
 )
 group_meta: dict[str, Any] = art.group_meta if hasattr(art, "group_meta") and isinstance(art.group_meta, dict) else {}
 
+occupations: list[str] = mat.index.astype(str).tolist()
+
 # -----------------------------
 # Session state
 # -----------------------------
@@ -73,14 +78,15 @@ if "__has_run__" not in st.session_state:
 if "__target_override__" not in st.session_state:
     st.session_state["__target_override__"] = None
 
-# cache buckets for heavy computations
+# caches for heavy computations
 if "__cache__" not in st.session_state:
     st.session_state["__cache__"] = {
         "robustness": {},     # key -> rob dict
         "decision_brief": {}, # key -> df
         "whatif": {},         # key -> (sweep_df, stab_dict)
+        "knn_graph": {},      # k -> graph adjacency
+        "map_ctx": {},        # label -> map context dict
     }
-
 
 # -----------------------------
 # Helpers
@@ -88,23 +94,67 @@ if "__cache__" not in st.session_state:
 def _coords_is_valid(df: pd.DataFrame) -> bool:
     return (
         isinstance(df, pd.DataFrame)
-        and (not df.empty)
+        and not df.empty
         and {"occupation", "x", "y"}.issubset(df.columns)
         and df["occupation"].astype(str).nunique() >= 2
     )
 
 
-@st.cache_data(show_spinner=False)
-def _precompute_map_context(coords_df: pd.DataFrame) -> dict[str, Any]:
+def _pick_coords(choice: str) -> tuple[pd.DataFrame, str]:
+    if choice == "UMAP" and _coords_is_valid(coords_umap):
+        return coords_umap.copy(), "UMAP"
+    return coords_pca.copy(), "PCA"
+
+
+def _cache_key(*parts: Any) -> str:
+    return "|".join([str(p) for p in parts])
+
+
+def _ensure_core_arrays() -> None:
     """
-    Fast map normalization:
-    max_dist = bounding box diagonal (O(n)).
-    Also builds lookup occupation -> (x,y).
+    Precompute arrays that make everything fast:
+    - X (n_roles, n_skills)
+    - occ list + occ_to_idx
+    - cosine similarity matrix (n_roles, n_roles)
     """
+    if "__core__" in st.session_state:
+        return
+
+    X = mat.to_numpy(dtype=float)
+    occs = mat.index.astype(str).tolist()
+    occ_to_idx = {o: i for i, o in enumerate(occs)}
+
+    norms = np.linalg.norm(X, axis=1)
+    norms_safe = np.where(norms == 0.0, 1.0, norms)
+    Xn = X / norms_safe[:, None]  # normalized rows
+
+    # cosine matrix via BLAS (fast)
+    cos_mat = Xn @ Xn.T  # [-1, 1]
+    cos_mat = np.clip(cos_mat, -1.0, 1.0)
+
+    st.session_state["__core__"] = {
+        "X": X,
+        "Xn": Xn,
+        "cos_mat": cos_mat,
+        "occs": occs,
+        "occ_to_idx": occ_to_idx,
+    }
+
+
+def _get_map_ctx(coords_df: pd.DataFrame, label: str) -> dict[str, Any]:
+    """
+    Build lightweight map context (no Streamlit cache, no hashing big DF).
+    Stored in session_state by label (PCA/UMAP).
+    """
+    cache = st.session_state["__cache__"]["map_ctx"]
+    if label in cache:
+        return cache[label]
+
     df = coords_df.copy()
+    df = df.dropna(subset=["occupation", "x", "y"]).copy()
     df["occupation"] = df["occupation"].astype(str)
-    df = df.dropna(subset=["occupation", "x", "y"])
-    df = df.drop_duplicates(subset=["occupation"], keep="first").reset_index(drop=True)
+    df = df.drop_duplicates(subset=["occupation"], keep="first")
+    df = df.sort_values("occupation").reset_index(drop=True)
 
     xy = df[["x", "y"]].to_numpy(dtype=float)
     if xy.shape[0] < 2:
@@ -118,17 +168,21 @@ def _precompute_map_context(coords_df: pd.DataFrame) -> dict[str, Any]:
     for occ, x, y in df[["occupation", "x", "y"]].itertuples(index=False, name=None):
         occ_to_xy[str(occ)] = (float(x), float(y))
 
-    return {"df": df, "xy": xy, "max_dist": float(max_dist), "occ_to_xy": occ_to_xy}
+    ctx = {"df": df, "xy": xy, "max_dist": float(max_dist), "occ_to_xy": occ_to_xy}
+    cache[label] = ctx
+    return ctx
 
 
-@st.cache_data(show_spinner=False)
-def _map_parts_from_current(coords_df: pd.DataFrame, current_occ: str) -> dict[str, float]:
-    ctx = _precompute_map_context(coords_df)
-    df = ctx["df"]
-    xy = ctx["xy"]
-    max_dist = float(ctx["max_dist"])
+def _map_parts_from_current(ctx: dict[str, Any], current_occ: str) -> dict[str, float]:
+    """
+    Vectorized distance → proximity.
+    Returns: occupation -> proximity (0..1)
+    """
+    df: pd.DataFrame = ctx["df"]
+    xy: np.ndarray = ctx["xy"]
+    max_dist: float = float(ctx["max_dist"])
 
-    if df.empty or xy.shape[0] == 0:
+    if df.empty or xy.shape[0] < 1:
         return {}
 
     occs = df["occupation"].astype(str).to_numpy()
@@ -136,7 +190,7 @@ def _map_parts_from_current(coords_df: pd.DataFrame, current_occ: str) -> dict[s
     if not np.any(cur_mask):
         return {}
 
-    cur_xy = xy[np.argmax(cur_mask)]
+    cur_xy = xy[int(np.argmax(cur_mask))]
     if max_dist <= 0.0:
         return {str(o): 1.0 for o in occs}
 
@@ -145,56 +199,185 @@ def _map_parts_from_current(coords_df: pd.DataFrame, current_occ: str) -> dict[s
     return {str(o): float(p) for o, p in zip(occs, prox)}
 
 
-def _cosine(a: np.ndarray, b: np.ndarray) -> float:
-    denom = float(np.linalg.norm(a) * np.linalg.norm(b))
-    if denom == 0.0:
-        return 0.0
-    return float(np.dot(a, b) / denom)
+def _hybrid_score_from_cos_map(cos: float, map_part: float, w_cos: float, w_map: float) -> float:
+    cos01 = max(0.0, float(cos))
+    return float(np.clip(100.0 * (w_cos * cos01 + w_map * float(map_part)), 0.0, 100.0))
 
 
-def _hybrid_score_from_vectors(a: np.ndarray, b: np.ndarray, map_part: float, w_cosine: float, w_map: float) -> float:
-    cos = max(0.0, _cosine(a, b))  # 0..1
-    return float(np.clip(100.0 * (w_cosine * cos + w_map * float(map_part)), 0.0, 100.0))
-
-
-@st.cache_data(show_spinner=False)
 def _recommend_similar_roles_fast(
-    matrix: pd.DataFrame,
-    coords_df: pd.DataFrame,
     current_occ: str,
+    coords_label: str,
+    coords_df: pd.DataFrame,
     *,
     top_k: int,
     w_cosine: float,
     w_map: float,
 ) -> pd.DataFrame:
-    a = matrix.loc[current_occ].astype(float).to_numpy()
-    map_parts = _map_parts_from_current(coords_df, current_occ)
+    """
+    Uses precomputed cosine matrix and vectorized scoring.
+    """
+    _ensure_core_arrays()
+    core = st.session_state["__core__"]
+    occs: list[str] = core["occs"]
+    occ_to_idx: dict[str, int] = core["occ_to_idx"]
+    cos_mat: np.ndarray = core["cos_mat"]
 
-    rows: list[tuple[str, float]] = []
-    for occ in matrix.index.astype(str):
+    if current_occ not in occ_to_idx:
+        return pd.DataFrame(columns=["occupation", "match_score"])
+
+    ctx = _get_map_ctx(coords_df, coords_label)
+    map_parts = _map_parts_from_current(ctx, current_occ)
+
+    i = occ_to_idx[current_occ]
+    cos_row = cos_mat[i].copy()  # cosine to all
+
+    # scores for all roles
+    scores = np.zeros(len(occs), dtype=float)
+    for j, occ in enumerate(occs):
         if occ == current_occ:
+            scores[j] = -1.0
             continue
-        b = matrix.loc[occ].astype(float).to_numpy()
         mp = float(map_parts.get(occ, 0.0))
-        s = _hybrid_score_from_vectors(a, b, mp, float(w_cosine), float(w_map))
-        rows.append((occ, s))
+        scores[j] = _hybrid_score_from_cos_map(float(cos_row[j]), mp, float(w_cosine), float(w_map))
 
-    return (
-        pd.DataFrame(rows, columns=["occupation", "match_score"])
-        .sort_values("match_score", ascending=False)
-        .head(int(top_k))
-        .reset_index(drop=True)
-    )
+    idx = np.argsort(scores)[::-1]
+    out_rows = []
+    for j in idx[: int(top_k)]:
+        if scores[j] < 0:
+            continue
+        out_rows.append((occs[j], float(scores[j])))
 
-
-def _pick_coords(choice: str) -> tuple[pd.DataFrame, str]:
-    if choice == "UMAP" and _coords_is_valid(coords_umap):
-        return coords_umap.copy(), "UMAP"
-    return coords_pca.copy(), "PCA"
+    return pd.DataFrame(out_rows, columns=["occupation", "match_score"]).reset_index(drop=True)
 
 
-def _cache_key(*parts: Any) -> str:
-    return "|".join([str(p) for p in parts])
+def _build_knn_graph(k_neighbors: int) -> dict[str, list[tuple[str, float]]]:
+    """
+    Build kNN graph using cosine matrix (fast) and cache by k in session_state.
+    Edge cost = 1 - max(0, cosine)
+    """
+    cache = st.session_state["__cache__"]["knn_graph"]
+    k = int(k_neighbors)
+    if k in cache:
+        return cache[k]
+
+    _ensure_core_arrays()
+    core = st.session_state["__core__"]
+    occs: list[str] = core["occs"]
+    cos_mat: np.ndarray = core["cos_mat"]
+
+    n = len(occs)
+    graph: dict[str, list[tuple[str, float]]] = {}
+
+    # for each node, pick top-k neighbors by cosine (excluding self)
+    for i, occ in enumerate(occs):
+        row = cos_mat[i].copy()
+        row[i] = -np.inf
+
+        kk = min(k, n - 1)
+        # argpartition for top kk indices then sort them
+        cand = np.argpartition(row, -kk)[-kk:]
+        cand = cand[np.argsort(row[cand])[::-1]]
+
+        edges: list[tuple[str, float]] = []
+        for j in cand:
+            sim = float(row[j])
+            cost = 1.0 - max(0.0, sim)
+            edges.append((occs[int(j)], float(np.clip(cost, 0.0, 1.0))))
+        graph[occ] = edges
+
+    cache[k] = graph
+    return graph
+
+
+def _find_pivot_path_fast(
+    start_occ: str,
+    target_occ: str,
+    *,
+    k_neighbors: int,
+    max_steps: int,
+) -> dict[str, Any]:
+    """
+    Dijkstra on cached kNN graph. Truncation rules consistent with previous behavior.
+    """
+    if start_occ == target_occ:
+        return {"path": [start_occ], "reachable": True, "notes": "Start equals target."}
+
+    graph = _build_knn_graph(int(k_neighbors))
+
+    start = str(start_occ)
+    target = str(target_occ)
+
+    dist: dict[str, float] = {start: 0.0}
+    prev: dict[str, str] = {}
+    visited: set[str] = set()
+
+    while True:
+        candidates = [(node, d) for node, d in dist.items() if node not in visited]
+        if not candidates:
+            break
+        node, dmin = min(candidates, key=lambda x: x[1])
+
+        if node == target:
+            break
+
+        visited.add(node)
+
+        for neigh, cost in graph.get(node, []):
+            nd = dmin + float(cost)
+            if neigh not in dist or nd < dist[neigh]:
+                dist[neigh] = nd
+                prev[neigh] = node
+
+    if target not in dist:
+        return {
+            "path": [start],
+            "reachable": False,
+            "notes": "Target not reachable in kNN graph. Increase k_neighbors.",
+        }
+
+    path = [target]
+    while path[-1] != start:
+        path.append(prev[path[-1]])
+    path.reverse()
+
+    truncated = False
+    if len(path) > int(max_steps):
+        path = path[: int(max_steps)]
+        truncated = True
+
+    if truncated and path[-1] != target:
+        return {
+            "path": path,
+            "reachable": False,
+            "truncated": True,
+            "k_neighbors": int(k_neighbors),
+            "max_steps": int(max_steps),
+            "step_costs": [],
+            "total_cost": float(dist.get(target, np.nan)),
+            "notes": "Path exists but was truncated by max_steps before reaching target. Increase max_steps.",
+        }
+
+    # step costs
+    step_costs = []
+    for i in range(len(path) - 1):
+        u, v = path[i], path[i + 1]
+        cost = None
+        for neigh, c in graph.get(u, []):
+            if neigh == v:
+                cost = c
+                break
+        step_costs.append(float(cost) if cost is not None else np.nan)
+
+    return {
+        "path": path,
+        "reachable": True,
+        "truncated": truncated,
+        "k_neighbors": int(k_neighbors),
+        "max_steps": int(max_steps),
+        "step_costs": step_costs,
+        "total_cost": float(dist.get(target, np.nan)),
+        "notes": "Edge cost is 1 - max(0, cosine_sim). Lower cost means easier transition.",
+    }
 
 
 # -----------------------------
@@ -227,9 +410,9 @@ with st.sidebar:
             w_cosine, w_map = float(w_cosine / s), float(w_map / s)
 
     with st.expander("3) Planning & robustness knobs", expanded=False):
-        st.subheader("Path planning")
-        k_neighbors = st.slider("kNN neighbors", 2, 10, 5, 1)
-        max_steps = st.slider("Max steps", 2, 6, 4, 1)
+        st.subheader("Path planning (fast)")
+        k_neighbors = st.slider("kNN neighbors", 2, 12, 5, 1)
+        max_steps = st.slider("Max steps", 2, 8, 4, 1)
 
         st.subheader("Robustness (runs on-demand)")
         n_samples = st.slider("Monte Carlo samples", 50, 600, 200, 50)
@@ -264,37 +447,48 @@ if not st.session_state["__has_run__"]:
 
 coords, coords_label = _pick_coords(embedding_choice)
 
+# Ensure fast arrays exist
+_ensure_core_arrays()
+core = st.session_state["__core__"]
+occs = core["occs"]
+occ_to_idx = core["occ_to_idx"]
+cos_mat = core["cos_mat"]
+
+# Map context (fast lookup)
+map_ctx = _get_map_ctx(coords, coords_label)
+map_parts_current = _map_parts_from_current(map_ctx, current)
+map_part_ct = float(map_parts_current.get(str(target), 0.0))
+
+# fast cosine current-target
+i_cur = occ_to_idx.get(str(current), None)
+i_tgt = occ_to_idx.get(str(target), None)
+cos_ct = float(cos_mat[i_cur, i_tgt]) if (i_cur is not None and i_tgt is not None) else 0.0
+match_score = _hybrid_score_from_cos_map(cos_ct, map_part_ct, float(w_cosine), float(w_map))
+cosine_score = float(np.clip(max(0.0, cos_ct) * 100.0, 0.0, 100.0))
+
 # -----------------------------
-# Fast core outputs (no heavy Monte Carlo here)
+# Fast core outputs
 # -----------------------------
 gap_df = compute_gap_df(mat, current, target)
 contrib = compute_skill_contributions(gap_df)
 plan = generate_learning_plan(gap_df)
 conf = compute_confidence_score(mat, art.pca_meta, current, target)
-path_out = find_pivot_path(mat, current, target, k_neighbors=int(k_neighbors), max_steps=int(max_steps))
 group_gap_df = compute_group_gap_df(mat, skill_taxonomy, group_meta, current, target)
 
-# fast score (no loops over all pairs)
-a_vec = mat.loc[current].astype(float).to_numpy()
-b_vec = mat.loc[target].astype(float).to_numpy()
-map_parts_current = _map_parts_from_current(coords, current)
-map_part_ct = float(map_parts_current.get(str(target), 0.0))
-match_score = _hybrid_score_from_vectors(a_vec, b_vec, map_part_ct, float(w_cosine), float(w_map))
-cosine_score = float(np.clip(max(0.0, _cosine(a_vec, b_vec)) * 100.0, 0.0, 100.0))
+# FAST path finder (cached kNN graph)
+path_out = _find_pivot_path_fast(current, target, k_neighbors=int(k_neighbors), max_steps=int(max_steps))
 
 # -----------------------------
-# Overview (FAST)
+# Overview
 # -----------------------------
 st.subheader("Overview")
 
-# robustness placeholder (computed on-demand)
 rob_key = _cache_key("rob", coords_label, current, target, w_cosine, w_map, n_samples, noise_std)
 rob_cached = st.session_state["__cache__"]["robustness"].get(rob_key)
 
 m1, m2, m3, m4 = st.columns(4)
 m1.metric("Match score (hybrid)", f"{match_score:.0f}/100")
 m2.metric("Confidence (coverage)", f"{conf['confidence_score']:.0f}/100")
-
 if isinstance(rob_cached, dict):
     m3.metric("Robust mean", f"{rob_cached['mean']:.1f}")
     m4.metric("Robust 95% CI width", f"{(rob_cached['ci95_high'] - rob_cached['ci95_low']):.1f}")
@@ -302,7 +496,7 @@ else:
     m3.metric("Robust mean", "—")
     m4.metric("Robust 95% CI width", "—")
 
-st.success(f"Map embedding: **{coords_label}** • Map proximity: **{map_part_ct:.2f}**")
+st.success(f"Map embedding: **{coords_label}** • Cosine: **{cosine_score:.1f}/100** • Map proximity: **{map_part_ct:.2f}**")
 
 with st.expander("Under the hood: score breakdown (transparent)", expanded=False):
     st.write(f"- Cosine-based score: **{cosine_score:.1f}/100**")
@@ -311,13 +505,20 @@ with st.expander("Under the hood: score breakdown (transparent)", expanded=False
     st.code("score = 100 * (w_cosine * max(0, cosine_similarity) + w_map * map_proximity)")
 
 # -----------------------------
-# Main: Neighborhood + Plan (FAST)
+# Main: Neighborhood + Plan
 # -----------------------------
 left, right = st.columns([1.1, 1.4], gap="large")
 
 with left:
     st.subheader("Career neighborhood (actionable)")
-    rec_df = _recommend_similar_roles_fast(mat, coords, current, top_k=6, w_cosine=float(w_cosine), w_map=float(w_map))
+    rec_df = _recommend_similar_roles_fast(
+        current,
+        coords_label,
+        coords,
+        top_k=6,
+        w_cosine=float(w_cosine),
+        w_map=float(w_map),
+    )
     st.dataframe(rec_df, use_container_width=True, hide_index=True)
 
     st.markdown("**Use a recommended role as new target:**")
@@ -379,7 +580,15 @@ with right:
 # -----------------------------
 st.divider()
 tabs = st.tabs(
-    ["Explain", "Skill Groups", "Robustness (on-demand)", "Decision Brief (on-demand)", "What-If Lab (on-demand)", "Map (advanced)", "Export"]
+    [
+        "Explain",
+        "Skill Groups",
+        "Robustness (on-demand)",
+        "Decision Brief (on-demand)",
+        "What-If Lab (on-demand)",
+        "Map (advanced)",
+        "Export",
+    ]
 )
 
 # ---- Explain
@@ -455,7 +664,7 @@ with tabs[1]:
 # ---- Robustness (on-demand)
 with tabs[2]:
     st.subheader("Robustness (stability under noise) — on-demand")
-    st.caption("This is expensive. Click to run Monte Carlo and cache results for this configuration.")
+    st.caption("Runs Monte Carlo for this pivot/config and caches the result.")
 
     if st.button("Run robustness (Monte Carlo)", key="run_robustness"):
         with st.spinner("Running Monte Carlo robustness..."):
@@ -468,7 +677,12 @@ with tabs[2]:
             for _ in range(int(n_samples)):
                 a = np.clip(a0 + rng.normal(0.0, float(noise_std), size=a0.shape), 0.0, None)
                 b = np.clip(b0 + rng.normal(0.0, float(noise_std), size=b0.shape), 0.0, None)
-                s = _hybrid_score_from_vectors(a, b, mp, float(w_cosine), float(w_map))
+                s = _hybrid_score_from_cos_map(
+                    float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b) + 1e-12)),
+                    mp,
+                    float(w_cosine),
+                    float(w_map),
+                )
                 scores.append(s)
 
             arr = np.array(scores, dtype=float)
@@ -492,14 +706,19 @@ with tabs[2]:
         m2.metric("Std dev", f"{rob_cached['std']:.1f}")
         m3.metric("95% CI", f"[{rob_cached['ci95_low']:.1f}, {rob_cached['ci95_high']:.1f}]")
 
-        fig = px.histogram(pd.DataFrame({"score": rob_cached["scores"]}), x="score", nbins=20, title=f"Score distribution — map={coords_label}")
+        fig = px.histogram(
+            pd.DataFrame({"score": rob_cached["scores"]}),
+            x="score",
+            nbins=20,
+            title=f"Score distribution — map={coords_label}",
+        )
         fig.update_layout(height=420)
         st.plotly_chart(fig, use_container_width=True)
 
 # ---- Decision Brief (on-demand)
 with tabs[3]:
     st.subheader("Decision Brief — on-demand (very expensive)")
-    st.caption("This computes robust stats for all targets + path costs. Use only when needed.")
+    st.caption("Computes robust stats for all targets + path costs. Use only when needed.")
 
     risk_options = ["Risk-averse (CVaR)", "Balanced", "Risk-seeking (Mean)"]
     try:
@@ -514,7 +733,7 @@ with tabs[3]:
     df_cached = st.session_state["__cache__"]["decision_brief"].get(db_key)
 
     if st.button("Compute Decision Brief", key="run_decision_brief"):
-        with st.spinner("Computing Decision Brief (robust all-target ranking + effort + pareto)..."):
+        with st.spinner("Computing Decision Brief..."):
             rng = np.random.default_rng(42)
             a0 = mat.loc[current].astype(float).to_numpy()
             map_parts = map_parts_current
@@ -531,7 +750,8 @@ with tabs[3]:
                 for _ in range(int(n_samples)):
                     a = np.clip(a0 + rng.normal(0.0, float(noise_std), size=a0.shape), 0.0, None)
                     b = np.clip(b0 + rng.normal(0.0, float(noise_std), size=b0.shape), 0.0, None)
-                    s = _hybrid_score_from_vectors(a, b, mp, float(w_cosine), float(w_map))
+                    cos = float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b) + 1e-12))
+                    s = _hybrid_score_from_cos_map(cos, mp, float(w_cosine), float(w_map))
                     scores.append(s)
 
                 arr = np.array(scores, dtype=float)
@@ -539,7 +759,7 @@ with tabs[3]:
                 tail = arr[arr <= q05]
                 cvar05 = float(np.mean(tail)) if tail.size else q05
 
-                po = find_pivot_path(mat, current, occ, k_neighbors=int(k_neighbors), max_steps=int(max_steps))
+                po = _find_pivot_path_fast(current, occ, k_neighbors=int(k_neighbors), max_steps=int(max_steps))
                 pc = po.get("total_cost", np.nan) if po.get("reachable") else np.nan
 
                 em = compute_effort_metrics(mat, current, occ, path_cost=pc)
@@ -725,11 +945,18 @@ with tabs[4]:
                         for _ in range(int(mc)):
                             a = np.clip(a0 + rng.normal(0.0, noise, size=a0.shape), 0.0, None)
                             b = np.clip(b0 + rng.normal(0.0, noise, size=b0.shape), 0.0, None)
-                            s = _hybrid_score_from_vectors(a, b, mp, w, w_map_local)
+                            cos = float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b) + 1e-12))
+                            s = _hybrid_score_from_cos_map(cos, mp, w, w_map_local)
                             scores.append(s)
 
                         records.append(
-                            {"w_cosine": w, "w_map": w_map_local, "noise_std": noise, "occupation": occ, "mean_score": float(np.mean(scores))}
+                            {
+                                "w_cosine": w,
+                                "w_map": w_map_local,
+                                "noise_std": noise,
+                                "occupation": occ,
+                                "mean_score": float(np.mean(scores)),
+                            }
                         )
 
             sweep_df = pd.DataFrame(records)
@@ -754,13 +981,17 @@ with tabs[4]:
             for t in topk_lists:
                 for occ in t:
                     freq[occ] += 1
-            freq_df = pd.DataFrame({"occupation": list(freq.keys()), "count": list(freq.values())}).sort_values("count", ascending=False)
+            freq_df = (
+                pd.DataFrame({"occupation": list(freq.keys()), "count": list(freq.values())})
+                .sort_values("count", ascending=False)
+                .reset_index(drop=True)
+            )
             freq_df["share"] = freq_df["count"] / max(1, len(topk_lists))
 
             stab = {
                 "target_in_topk_rate": in_topk_rate,
                 "target_rank_values": ranks_arr.tolist(),
-                "topk_freq_df": freq_df.reset_index(drop=True),
+                "topk_freq_df": freq_df,
                 "n_configs": int(len(topk_lists)),
             }
 
@@ -771,7 +1002,7 @@ with tabs[4]:
         st.info("Not computed yet. Click **Run What-If Sweep**.")
     else:
         sweep_df, stab = cached
-        st.metric(f"Target in Top-{topk}", f"{100*stab['target_in_topk_rate']:.0f}%")
+        st.metric(f"Target in Top-{topk}", f"{100 * stab['target_in_topk_rate']:.0f}%")
 
         target_df = sweep_df[sweep_df["occupation"] == target].copy()
         if not target_df.empty:
@@ -811,7 +1042,9 @@ with tabs[5]:
 
             if clusters:
                 coords_plot["cluster_id"] = coords_plot["occupation"].map(lambda o: clusters.get(str(o), -1))
-                coords_plot["cluster_theme"] = coords_plot["cluster_id"].map(lambda c_: format_cluster_theme(c_, cluster_themes))
+                coords_plot["cluster_theme"] = coords_plot["cluster_id"].map(
+                    lambda c_: format_cluster_theme(c_, cluster_themes)
+                )
             else:
                 coords_plot["cluster_id"] = -1
                 coords_plot["cluster_theme"] = ""
@@ -843,7 +1076,15 @@ with tabs[5]:
                 coords_idx = coords_plot.set_index("occupation")
                 if all(p in coords_idx.index for p in path):
                     sub = coords_idx.loc[path][["x", "y"]].reset_index()
-                    fig.add_trace(go.Scatter(x=sub["x"], y=sub["y"], mode="lines+markers", name="Pivot path", hovertext=sub["occupation"]))
+                    fig.add_trace(
+                        go.Scatter(
+                            x=sub["x"],
+                            y=sub["y"],
+                            mode="lines+markers",
+                            name="Pivot path",
+                            hovertext=sub["occupation"],
+                        )
+                    )
 
             fig.update_layout(height=620)
             st.plotly_chart(fig, use_container_width=True)
@@ -871,4 +1112,4 @@ with tabs[6]:
         mime="text/csv",
     )
 
-st.caption("Note: Heavy computations are on-demand to keep the prototype fast and usable.")
+st.caption("Engineering note: heavy computations are on-demand; core scoring + path are optimized for fast interaction.")
