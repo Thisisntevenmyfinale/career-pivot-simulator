@@ -41,7 +41,7 @@ _PHYSICAL_SENSORY_PATTERNS = [
     r"\bdepth\s+perception\b",
     r"\bperipheral\s+vision\b",
     r"\bvisual\s+color\s+discrimination\b",
-    r"\bglare\s+sensitivity\b",
+    r"\bglare\sensitivity\b",
     r"\bhearing\s+sensitivity\b",
     r"\bsound\s+localization\b",
     r"\bauditory\s+attention\b",
@@ -156,7 +156,9 @@ def _offline_learning_plan_markdown(
         if flavor == "foundation":
             return "\n".join([f"- **{s}** → 2 practice blocks/week + 1 measurable output" for s in items])
         if flavor == "intermediate":
-            return "\n".join([f"- **{s}** → applied practice + 1 deliverable (write-up, dashboard, case study)" for s in items])
+            return "\n".join(
+                [f"- **{s}** → applied practice + 1 deliverable (write-up, dashboard, case study)" for s in items]
+            )
         return "\n".join([f"- **{s}** → realistic constraints + a quality bar (tests, review, iteration)" for s in items])
 
     return (
@@ -236,52 +238,27 @@ def generate_learning_plan_markdown(
             f"- {r['skill']} (gap={float(r['gap']):.2f}, target={float(r['target_importance']):.1f}, current={float(r['current_importance']):.1f})"
         )
 
-    # ===== LANGUAGE SWITCH (CLEAN) =====
-    if language.lower().startswith("de"):
-           
-        instructions = (
-            "You are a pragmatic career coach. "
-            "No fluff. No exaggeration. "
-            "Only actionable, job-relevant steps. "
-            "Return clean Markdown. "
-            "Respond strictly in English."
-        )
+    # ===== PROMPT (ENGLISH ONLY) =====
+    instructions = (
+        "You are a pragmatic career coach. "
+        "No fluff. No exaggeration. "
+        "Only actionable, job-relevant steps. "
+        "Return clean Markdown. "
+        "Respond strictly in English."
+    )
 
-        user_text = (
-            f"Current role: {cur}\n"
-            f"Target role: {tgt}\n\n"
-            "Top Missing Skills:\n"
-            + "\n".join(bullets)
-            + "\n\n"
-            "Create:\n"
-            "1) A 3-phase plan (Foundations / Intermediate / Advanced)\n"
-            "2) One mini-project per phase\n"
-            "3) 6 interview questions + 1 guidance sentence each\n"
-            "4) 3 common pivot mistakes\n"
-        )
-
-    else:
-
-        instructions = (
-            "You are a pragmatic career coach. "
-            "No fluff. No exaggeration. "
-            "Only actionable, job-relevant steps. "
-            "Return clean Markdown. "
-            "Respond strictly in English."
-        )
-
-        user_text = (
-            f"Current role: {cur}\n"
-            f"Target role: {tgt}\n\n"
-            "Top Missing Skills:\n"
-            + "\n".join(bullets)
-            + "\n\n"
-            "Create:\n"
-            "1) A 3-phase plan (Foundations / Intermediate / Advanced)\n"
-            "2) One mini-project per phase\n"
-            "3) 6 interview questions + 1 guidance sentence each\n"
-            "4) 3 common pivot mistakes\n"
-        )
+    user_text = (
+        f"Current role: {cur}\n"
+        f"Target role: {tgt}\n\n"
+        "Top Missing Skills:\n"
+        + "\n".join(bullets)
+        + "\n\n"
+        "Create:\n"
+        "1) A 3-phase plan (Foundations / Intermediate / Advanced)\n"
+        "2) One mini-project per phase\n"
+        "3) 6 interview questions + 1 guidance sentence each\n"
+        "4) 3 common pivot mistakes\n"
+    )
 
     try:
         client = OpenAI(api_key=key)
