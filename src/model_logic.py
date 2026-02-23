@@ -11,6 +11,12 @@ import pandas as pd
 
 @dataclass(frozen=True)
 class RuntimeArtifacts:
+    """Bundle of precomputed, runtime-ready artifacts loaded from disk.
+
+    The app treats these as immutable inputs. Keeping this structure stable makes it easier
+    to evolve the preprocessing pipeline without changing runtime code paths.
+    """
+
     matrix: pd.DataFrame
     coords: pd.DataFrame
     pca_meta: dict[str, Any]
@@ -25,12 +31,21 @@ class RuntimeArtifacts:
 
 
 def _read_json_if_exists(path: Path, default: Any) -> Any:
+    """Read a JSON file if it exists, otherwise return a provided default.
+
+    This is intentionally tolerant: missing optional metadata should not break the app.
+    """
     if path.exists():
         return json.loads(path.read_text(encoding="utf-8"))
     return default
 
 
 def load_runtime_artifacts(artifact_dir: str | Path = "artifacts") -> RuntimeArtifacts:
+    """Load the full runtime artifact set from a directory.
+
+    The parquet files are required for core functionality; JSON metadata is optional and
+    defaults safely when missing.
+    """
     artifact_dir = Path(artifact_dir)
 
     matrix_path = artifact_dir / "occupation_skill_matrix.parquet"
@@ -47,6 +62,7 @@ def load_runtime_artifacts(artifact_dir: str | Path = "artifacts") -> RuntimeArt
     umap_coords_path = artifact_dir / "umap_coords.parquet"
     umap_meta_path = artifact_dir / "umap_meta.json"
 
+    # These are hard requirements: the app cannot score or display the core map without them.
     if not matrix_path.exists():
         raise FileNotFoundError(
             f"Missing artifact: {matrix_path}. Run preprocessing: python scripts/preprocess_dummy.py or preprocess_onet.py"
@@ -57,6 +73,7 @@ def load_runtime_artifacts(artifact_dir: str | Path = "artifacts") -> RuntimeArt
         )
 
     matrix = pd.read_parquet(matrix_path)
+    # Support both "occupation" column and already-indexed parquet formats.
     if "occupation" in matrix.columns:
         matrix = matrix.set_index("occupation")
 
@@ -71,6 +88,7 @@ def load_runtime_artifacts(artifact_dir: str | Path = "artifacts") -> RuntimeArt
     skill_taxonomy = _read_json_if_exists(taxonomy_path, {})
     group_meta = _read_json_if_exists(group_meta_path, {})
 
+    # UMAP artifacts are optional; treat them as a best-effort enhancement.
     umap_coords = pd.DataFrame(columns=["occupation", "x", "y"])
     if umap_coords_path.exists():
         try:
@@ -78,13 +96,16 @@ def load_runtime_artifacts(artifact_dir: str | Path = "artifacts") -> RuntimeArt
             if "occupation" in tmp.columns and {"x", "y"}.issubset(tmp.columns):
                 umap_coords = tmp[["occupation", "x", "y"]].copy()
         except Exception:
+            # Be resilient to schema changes or partial writes during artifact generation.
             umap_coords = pd.DataFrame(columns=["occupation", "x", "y"])
 
     umap_meta = _read_json_if_exists(umap_meta_path, {})
 
+    # Validate early: downstream code assumes these columns exist.
     if "occupation" not in coords.columns or not {"x", "y"}.issubset(coords.columns):
         raise ValueError("pca_coords.parquet must contain columns: occupation, x, y")
 
+    # Sorting ensures deterministic UI ordering and stable results across runs.
     matrix = matrix.sort_index(axis=0).sort_index(axis=1)
     coords = coords.sort_values("occupation").reset_index(drop=True)
 
@@ -107,17 +128,24 @@ def load_runtime_artifacts(artifact_dir: str | Path = "artifacts") -> RuntimeArt
 
 
 def _cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
+    """Cosine similarity with a safe zero-vector guard."""
     denom = float(np.linalg.norm(a) * np.linalg.norm(b))
     if denom == 0.0:
+        # If either vector has no magnitude, treat similarity as zero rather than NaN/inf.
         return 0.0
     return float(np.dot(a, b) / denom)
 
 
 def _precompute_map_maxdist(coords: pd.DataFrame) -> float:
+    """Compute the maximum pairwise distance in the embedding space.
+
+    Used to normalize distances into a [0, 1] proximity score without hardcoding a scale.
+    """
     all_xy = coords[["x", "y"]].to_numpy(dtype=float)
     if len(all_xy) < 2:
         return 0.0
     max_dist = 0.0
+    # O(n^2) but typically small enough for embedding-sized datasets; kept explicit for transparency.
     for i in range(len(all_xy)):
         diffs = all_xy[i + 1 :] - all_xy[i]
         if len(diffs) == 0:
@@ -130,17 +158,21 @@ def _precompute_map_maxdist(coords: pd.DataFrame) -> float:
 
 
 def _map_proximity(coords: pd.DataFrame, occ_a: str, occ_b: str, max_dist: float) -> float:
+    """Convert 2D embedding distance into a normalized proximity score in [0, 1]."""
     a_xy = coords.loc[coords["occupation"] == occ_a, ["x", "y"]].to_numpy(dtype=float)
     b_xy = coords.loc[coords["occupation"] == occ_b, ["x", "y"]].to_numpy(dtype=float)
     if len(a_xy) == 0 or len(b_xy) == 0:
+        # Missing coordinates should not crash scoring; treat as no proximity signal.
         return 0.0
     if max_dist <= 0.0:
+        # Degenerate embedding (single point or identical coords): treat as maximally close.
         return 1.0
     dist = float(np.linalg.norm(a_xy[0] - b_xy[0]))
     return float(np.clip(1.0 - dist / max_dist, 0.0, 1.0))
 
 
 def compute_gap_df(matrix: pd.DataFrame, current_occ: str, target_occ: str) -> pd.DataFrame:
+    """Compute per-skill gaps and transfer proxies between two occupations."""
     if current_occ not in matrix.index:
         raise ValueError(f"Current occupation not found: {current_occ}")
     if target_occ not in matrix.index:
@@ -158,12 +190,15 @@ def compute_gap_df(matrix: pd.DataFrame, current_occ: str, target_occ: str) -> p
             "gap": gap.values,
         }
     )
+    # Keep both signed and absolute gap forms; different panels rank on different notions of "need".
     df["abs_gap"] = df["gap"].abs()
+    # Simple interaction term: highlights skills that matter in both roles (transfer leverage).
     df["transfer_strength"] = df["current_importance"] * df["target_importance"]
     return df
 
 
 def compute_match_score_cosine(matrix: pd.DataFrame, current_occ: str, target_occ: str) -> float:
+    """Cosine-based match score in [0, 100], clipped to non-negative similarity."""
     a = matrix.loc[current_occ].astype(float).values
     b = matrix.loc[target_occ].astype(float).values
     sim = _cosine_similarity(a, b)
@@ -178,6 +213,7 @@ def compute_match_score_hybrid(
     w_cosine: float = 0.65,
     w_map: float = 0.35,
 ) -> float:
+    """Hybrid score mixing skill-vector similarity with embedding proximity."""
     cosine_part = compute_match_score_cosine(matrix, current_occ, target_occ) / 100.0
     max_dist = _precompute_map_maxdist(coords)
     map_part = _map_proximity(coords, current_occ, target_occ, max_dist)
@@ -186,17 +222,22 @@ def compute_match_score_hybrid(
 
 
 def compute_skill_contributions(gap_df: pd.DataFrame) -> dict[str, pd.DataFrame]:
+    """Derive compact, high-signal tables explaining match drivers and gaps."""
     df = gap_df.copy()
 
+    # Overlap is the shared mass between profiles; useful as an intuitive transfer signal.
     df["overlap"] = np.minimum(df["current_importance"], df["target_importance"])
+    # Weight overlap by importance to emphasize skills that matter in both roles.
     df["match_driver_score"] = df["overlap"] * (df["target_importance"] + df["current_importance"]) / 2.0
     match_drivers = df.sort_values("match_driver_score", ascending=False).head(10)
 
     missing = df[df["gap"] > 0].copy()
+    # Prioritize skills that are both missing and important for the target role.
     missing["missing_priority"] = missing["gap"] * missing["target_importance"]
     missing_drivers = missing.sort_values(["missing_priority", "gap"], ascending=False).head(10)
 
     surplus = df[df["gap"] < 0].copy()
+    # Surplus can be used as a narrative tool (strengths), not necessarily a penalty.
     surplus["surplus_magnitude"] = (-surplus["gap"]) * surplus["current_importance"]
     surplus_skills = surplus.sort_values(["surplus_magnitude"], ascending=False).head(10)
 
@@ -208,6 +249,10 @@ def compute_skill_contributions(gap_df: pd.DataFrame) -> dict[str, pd.DataFrame]
 
 
 def generate_learning_plan(gap_df: pd.DataFrame) -> dict[str, list[str]]:
+    """Generate a simple three-phase plan from missing skills.
+
+    This is a deterministic fallback used when an external plan generator is unavailable.
+    """
     missing = gap_df[gap_df["gap"] > 0].copy()
     if missing.empty:
         return {
@@ -223,6 +268,7 @@ def generate_learning_plan(gap_df: pd.DataFrame) -> dict[str, list[str]]:
 
     skills = missing["skill"].tolist()
     n = len(skills)
+    # Split into roughly equal thirds while ensuring each phase has at least one item when possible.
     a = max(1, n // 3)
     b = max(1, n // 3)
 
@@ -231,6 +277,7 @@ def generate_learning_plan(gap_df: pd.DataFrame) -> dict[str, list[str]]:
     advanced = skills[a + b :]
 
     def bullets(phase_skills: list[str], label: str) -> list[str]:
+        # Keep messaging consistent even when a phase ends up empty due to small n.
         if not phase_skills:
             return [f"No additional {label.lower()} skills identified in this dataset."]
         return [
@@ -246,6 +293,7 @@ def generate_learning_plan(gap_df: pd.DataFrame) -> dict[str, list[str]]:
 
 
 def _get_group_order(group_meta: dict[str, Any]) -> list[str]:
+    """Extract an explicit group ordering list when provided by metadata."""
     order = group_meta.get("group_order", [])
     if isinstance(order, list) and all(isinstance(x, str) for x in order):
         return order
@@ -259,13 +307,16 @@ def compute_group_gap_df(
     current_occ: str,
     target_occ: str,
 ) -> pd.DataFrame:
+    """Aggregate per-skill gaps into taxonomy groups for higher-level reporting."""
     if not skill_taxonomy:
+        # Without a taxonomy, grouping would be misleading; return an empty frame with expected columns.
         return pd.DataFrame(columns=["group", "current_importance", "target_importance", "gap"])
 
     current = matrix.loc[current_occ].astype(float)
     target = matrix.loc[target_occ].astype(float)
 
     skills = matrix.columns.astype(str).tolist()
+    # Default to "Other" to keep unknown skills visible rather than dropping them.
     groups = [skill_taxonomy.get(s, "Other") for s in skills]
 
     cur_df = pd.DataFrame({"group": groups, "value": current.values})
@@ -274,14 +325,17 @@ def compute_group_gap_df(
     cur_agg = cur_df.groupby("group", as_index=False)["value"].sum().rename(columns={"value": "current_importance"})
     tgt_agg = tgt_df.groupby("group", as_index=False)["value"].sum().rename(columns={"value": "target_importance"})
 
+    # Outer merge ensures groups present in only one side still appear with 0 on the other side.
     out = cur_agg.merge(tgt_agg, on="group", how="outer").fillna(0.0)
     out["gap"] = out["target_importance"] - out["current_importance"]
 
     order = _get_group_order(group_meta)
     if order:
+        # Keep a stable, metadata-driven ordering when available; unknown groups go last.
         out["__ord__"] = out["group"].apply(lambda g: order.index(g) if g in order else 10_000)
         out = out.sort_values(["__ord__", "group"]).drop(columns=["__ord__"])
     else:
+        # Default ordering emphasizes where the target role differs most from the current role.
         out = out.sort_values("gap", ascending=False)
 
     return out.reset_index(drop=True)
@@ -293,6 +347,7 @@ def filter_missing_skills_by_group(
     group_name: str,
     top_n: int = 20,
 ) -> pd.DataFrame:
+    """Return the top missing skills within a specific taxonomy group."""
     if gap_df.empty or not skill_taxonomy:
         return pd.DataFrame(columns=gap_df.columns)
 
@@ -304,11 +359,13 @@ def filter_missing_skills_by_group(
 
 
 def format_cluster_theme(cluster_id: int | str, cluster_themes: dict[str, Any]) -> str:
+    """Format a concise, user-facing theme string for a cluster."""
     key = str(cluster_id)
     info = cluster_themes.get(key, {})
     if isinstance(info, dict):
         skills = info.get("top_skills", [])
         if isinstance(skills, list) and skills:
+            # Keep the label compact; it is typically used in UI badges/tooltips.
             return ", ".join([str(s) for s in skills[:6]])
     return ""
 
@@ -321,6 +378,7 @@ def recommend_similar_roles(
     w_cosine: float = 0.65,
     w_map: float = 0.35,
 ) -> pd.DataFrame:
+    """Recommend roles similar to the current occupation using the hybrid score."""
     max_dist = _precompute_map_maxdist(coords)
     a = matrix.loc[current_occ].astype(float).values
 
@@ -345,18 +403,25 @@ def recommend_similar_roles(
 def compute_confidence_score(
     matrix: pd.DataFrame, pca_meta: dict[str, Any], current_occ: str, target_occ: str
 ) -> dict[str, Any]:
+    """Compute a heuristic confidence score for a pivot result.
+
+    This is intentionally not a probability: it combines coverage overlap, dataset density,
+    and how well the 2D embedding explains variance, to provide an at-a-glance reliability cue.
+    """
     X = matrix.to_numpy(dtype=float)
     density = float((X > 0).mean()) if X.size else 0.0
 
     a = matrix.loc[current_occ].astype(float).values
     b = matrix.loc[target_occ].astype(float).values
 
+    # Binary support overlap approximates how comparable the profiles are given sparse skill signals.
     a_nz = a > 0
     b_nz = b > 0
     overlap = float((a_nz & b_nz).mean()) if len(a_nz) else 0.0
     union = float((a_nz | b_nz).mean()) if len(a_nz) else 0.0
     jacc = 0.0 if union == 0.0 else overlap / union
 
+    # The embedding EVR acts as a proxy for how meaningful "map distance" is in this dataset.
     evr = pca_meta.get("explained_variance_ratio", [0.0, 0.0])
     evr2 = float(sum(evr[:2])) if isinstance(evr, list) else 0.0
 
@@ -375,6 +440,7 @@ def compute_confidence_score(
 
 
 def _top_k_neighbors_by_cosine(matrix: pd.DataFrame, occ: str, k: int) -> List[Tuple[str, float]]:
+    """Return the k nearest neighbors by cosine similarity (descending)."""
     a = matrix.loc[occ].astype(float).values
     sims: List[Tuple[str, float]] = []
     for other in matrix.index:
@@ -388,11 +454,13 @@ def _top_k_neighbors_by_cosine(matrix: pd.DataFrame, occ: str, k: int) -> List[T
 
 
 def build_transition_graph(matrix: pd.DataFrame, k_neighbors: int = 5) -> Dict[str, List[Tuple[str, float]]]:
+    """Build a directed kNN graph where edge weights represent transition "cost"."""
     graph: Dict[str, List[Tuple[str, float]]] = {}
     for occ in matrix.index.astype(str):
         neigh = _top_k_neighbors_by_cosine(matrix, occ, k_neighbors)
         edges: List[Tuple[str, float]] = []
         for n, sim in neigh:
+            # Convert similarity into a bounded cost to support shortest-path style search.
             cost = 1.0 - max(0.0, sim)
             edges.append((n, float(np.clip(cost, 0.0, 1.0))))
         graph[occ] = edges
@@ -406,6 +474,11 @@ def find_pivot_path(
     k_neighbors: int = 5,
     max_steps: int = 4,
 ) -> dict[str, Any]:
+    """Find a stepping-stone route on the kNN graph using a Dijkstra-like search.
+
+    The graph is sparse (k neighbors per node), so this approach is usually fast enough
+    without additional priority-queue machinery.
+    """
     if start_occ not in matrix.index:
         raise ValueError(f"Start occupation not found: {start_occ}")
     if target_occ not in matrix.index:
@@ -421,6 +494,7 @@ def find_pivot_path(
     visited: set[str] = set()
 
     while True:
+        # Select the unvisited node with the smallest current distance (Dijkstra step).
         candidates = [(node, d) for node, d in dist.items() if node not in visited]
         if not candidates:
             break
@@ -446,11 +520,13 @@ def find_pivot_path(
 
     path = [target]
     while path[-1] != start:
+        # This assumes 'prev' is complete along the best-known path to target.
         path.append(prev[path[-1]])
     path.reverse()
 
     truncated = len(path) > int(max_steps)
     if truncated:
+        # Truncation is a UI/product constraint, not a graph constraint.
         path = path[: int(max_steps)]
 
     if truncated and path[-1] != target:
@@ -469,6 +545,7 @@ def find_pivot_path(
     for i in range(len(path) - 1):
         u, v = path[i], path[i + 1]
         cost = np.nan
+        # Edge weights are stored on outgoing adjacency lists; scan to recover step costs.
         for neigh, c in graph.get(u, []):
             if neigh == v:
                 cost = c
@@ -498,6 +575,10 @@ def robustness_analysis(
     noise_std: float = 0.05,
     seed: int = 42,
 ) -> dict[str, Any]:
+    """Estimate score stability under Gaussian noise on skill vectors.
+
+    The map component is held fixed to isolate sensitivity to the skill profile inputs.
+    """
     rng = np.random.default_rng(seed)
 
     a0 = matrix.loc[current_occ].astype(float).values
@@ -508,6 +589,7 @@ def robustness_analysis(
 
     scores: list[float] = []
     for _ in range(int(n_samples)):
+        # Clip at 0 to avoid creating negative "skill weights" after perturbation.
         a = np.clip(a0 + rng.normal(0.0, noise_std, size=a0.shape), 0.0, None)
         b = np.clip(b0 + rng.normal(0.0, noise_std, size=b0.shape), 0.0, None)
 
@@ -540,12 +622,14 @@ def _hybrid_score_from_vectors(
     w_cosine: float,
     w_map: float,
 ) -> float:
+    """Compute the hybrid score directly from vectors and a precomputed map component."""
     sim = max(0.0, _cosine_similarity(a, b))
     score = 100.0 * (w_cosine * sim + w_map * float(map_part))
     return float(np.clip(score, 0.0, 100.0))
 
 
 def _cvar_left_tail(scores: np.ndarray, alpha: float = 0.05) -> float:
+    """Compute left-tail CVaR (expected value in the worst alpha-quantile)."""
     if scores.size == 0:
         return float("nan")
     a = float(alpha)
@@ -566,6 +650,7 @@ def compute_all_targets_robustness(
     noise_std: float,
     seed: int = 42,
 ) -> pd.DataFrame:
+    """Run robustness simulation for all targets from a single current occupation."""
     rng = np.random.default_rng(seed)
     a0 = matrix.loc[current_occ].astype(float).values
 
@@ -610,12 +695,14 @@ def compute_effort_metrics(
     path_cost_weight: float = 1.0,
     path_cost: float | None = None,
 ) -> dict[str, float]:
+    """Compute simple effort proxies from skill gaps and (optional) path cost."""
     gap_df = compute_gap_df(matrix, current_occ, target_occ)
     missing = gap_df[gap_df["gap"] > 0].copy()
     gap_effort = (
         float(np.sum(missing["gap"].values * missing["target_importance"].values)) if not missing.empty else 0.0
     )
 
+    # Keep NaN path costs explicit; callers may want to distinguish "unknown" from "zero".
     pc = (
         float(path_cost)
         if path_cost is not None and not (isinstance(path_cost, float) and np.isnan(path_cost))
@@ -632,6 +719,11 @@ def pareto_frontier_flags(
     maximize_cols: list[str],
     minimize_cols: list[str],
 ) -> pd.Series:
+    """Return a boolean mask indicating Pareto-efficient rows.
+
+    A row is marked inefficient if another row is at least as good in all objectives and
+    strictly better in at least one, with special care for non-finite minimize objectives.
+    """
     if df.empty:
         return pd.Series(dtype=bool)
 
@@ -661,6 +753,7 @@ def pareto_frontier_flags(
                     strict = True
 
             if Xmin.shape[1] > 0:
+                # Non-finite values are treated as incomparable rather than dominating.
                 if np.any(~np.isfinite(Xmin[j])) or np.any(~np.isfinite(Xmin[i])):
                     cond_min = False
                 else:
@@ -688,11 +781,16 @@ def counterfactual_uplift_greedy(
     top_k: int = 3,
     max_skills: int = 3,
 ) -> dict[str, Any]:
+    """Greedy counterfactual: raise a small set of missing skills to target levels.
+
+    This produces a "what would I need to improve?" narrative under the vector scoring model.
+    """
     a_base = matrix.loc[current_occ].astype(float).values.copy()
     b_target = matrix.loc[target_occ].astype(float).values.copy()
     skills = matrix.columns.astype(str).tolist()
 
     max_dist = _precompute_map_maxdist(coords)
+    # Cache per-occupation map parts to avoid recomputing distances inside scoring loops.
     map_parts = {
         occ: _map_proximity(coords, current_occ, str(occ), max_dist)
         for occ in matrix.index.astype(str)
@@ -752,6 +850,7 @@ def counterfactual_uplift_greedy(
             if skill in selected:
                 continue
 
+            # The model vector is aligned to matrix columns; update by column index.
             j = skills.index(skill)
             a_try = a.copy()
             a_try[j] = max(a_try[j], b_target[j])
@@ -759,6 +858,7 @@ def counterfactual_uplift_greedy(
             s_try = float(_score_for_target(a_try))
             gain = s_try - base_score
 
+            # For ranking goals, crossing into top-k is treated as a qualitative "win".
             if goal_mode == "topk" and (not _target_in_topk(a)) and _target_in_topk(a_try):
                 gain += 1000.0
 

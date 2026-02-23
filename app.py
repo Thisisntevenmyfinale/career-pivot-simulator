@@ -20,12 +20,12 @@ from src.ai_coach import generate_learning_plan_markdown
 # ============================================================
 # Page config
 # ============================================================
+# Streamlit config must be set before most other Streamlit calls.
 st.set_page_config(page_title="Career Pivot Simulator", page_icon="🧭", layout="wide")
 
 
-
-
-
+# Global CSS to align the app look-and-feel with a card-based UI.
+# Intent: keep the UI predictable across Streamlit versions by overriding key BaseWeb tokens.
 st.markdown(
     """
 <style>
@@ -41,7 +41,7 @@ st.markdown(
   --shadow: 0 1px 1px rgba(0,0,0,0.04);
 }
 
-/* remove streamlit chrome */
+/* Remove Streamlit chrome */
 [data-testid="stHeader"]{ height:0px !important; background:transparent !important; }
 [data-testid="stToolbar"]{ display:none !important; }
 #MainMenu{ visibility:hidden; }
@@ -58,7 +58,7 @@ html, body, .stApp{
   padding-bottom: 28px !important;
 }
 
-/* cards */
+/* Cards */
 div[data-testid="stVerticalBlockBorderWrapper"]{
   background: var(--li-card) !important;
   border: 1px solid var(--li-border-soft) !important;
@@ -74,9 +74,7 @@ section[data-testid="stSidebar"] div[data-testid="stVerticalBlockBorderWrapper"]
   padding: 12px !important;
 }
 
-/* ====== FIX 1: force BLUE radio + switch (BaseWeb + Streamlit tokens) ====== */
-
-/* Force Streamlit theme tokens (some versions drive red from these) */
+/* Controls: force blue radio + switch (BaseWeb + Streamlit tokens) */
 :root{
   --primary-color: #0A66C2 !important;
   --primaryColor: #0A66C2 !important;
@@ -90,7 +88,7 @@ section[data-testid="stSidebar"] div[data-testid="stVerticalBlockBorderWrapper"]
   --primaryColorHover: #004182 !important;
 }
 
-/* RADIO: hit BaseWeb SVG + checked state */
+/* RADIO: BaseWeb SVG + checked state */
 [data-baseweb="radio"] svg{
   color: var(--li-blue) !important;
   fill: var(--li-blue) !important;
@@ -99,12 +97,11 @@ section[data-testid="stSidebar"] div[data-testid="stVerticalBlockBorderWrapper"]
   color: var(--li-blue) !important;
   fill: var(--li-blue) !important;
 }
-/* Some builds use pseudo elements / borders instead of accent-color */
 [data-baseweb="radio"] [aria-checked="true"]{
   border-color: var(--li-blue) !important;
 }
 
-/* SWITCH: hit track + knob (BaseWeb) */
+/* SWITCH: track + knob (BaseWeb) */
 [data-baseweb="switch"] [role="switch"][aria-checked="true"]{
   background-color: rgba(10,102,194,0.35) !important;
   border-color: rgba(10,102,194,0.35) !important;
@@ -113,15 +110,13 @@ section[data-testid="stSidebar"] div[data-testid="stVerticalBlockBorderWrapper"]
   background: var(--li-blue) !important;
 }
 
-/* ====== FIX 2: buttons - remove outer boxes everywhere ====== */
-/* remove outer Streamlit wrapper box but keep layout intact */
+/* Buttons: remove wrapper boxes */
 .stButton > div,
 .stDownloadButton > div{
   background: transparent !important;
   border: none !important;
   box-shadow: none !important;
 }
-/* BaseWeb button root wrappers */
 [data-baseweb="button"]{
   background: transparent !important;
   border: none !important;
@@ -133,7 +128,7 @@ section[data-testid="stSidebar"] div[data-testid="stVerticalBlockBorderWrapper"]
   box-shadow: none !important;
 }
 
-/* actual button */
+/* Actual button */
 .stButton > button, .stDownloadButton > button{
   background: var(--li-blue) !important;
   border: 1px solid var(--li-blue) !important;
@@ -145,8 +140,8 @@ section[data-testid="stSidebar"] div[data-testid="stVerticalBlockBorderWrapper"]
   font-size: 14px !important;
   box-shadow: none !important;
   outline: none !important;
-  white-space: nowrap !important;      /* <-- FIX generate button wrap */
-  width: auto !important;              /* <-- FIX huge button */
+  white-space: nowrap !important;
+  width: auto !important;
   max-width: 100% !important;
 }
 .stButton > button:hover, .stDownloadButton > button:hover{
@@ -158,15 +153,14 @@ section[data-testid="stSidebar"] div[data-testid="stVerticalBlockBorderWrapper"]
   outline: none !important;
 }
 
-/* ====== FIX 3: table - remove double bottom line & make lighter ====== */
+/* Table: lighter borders and avoid double bottom line */
 .li-table-wrap{
   border: 1px solid rgba(0,0,0,0.05) !important;
   border-radius: 10px !important;
   overflow: hidden !important;
   background: #fff !important;
-  margin: 10px 0 14px 0 !important;   /* <-- IMPORTANT: bottom whitespace */
+  margin: 10px 0 14px 0 !important;
 }
-/* ensure last row doesn't create a "double" bottom edge */
 .li-table tbody tr:last-child td{ border-bottom: none !important; }
 
 table.li-table{
@@ -188,14 +182,14 @@ table.li-table{
   color: rgba(0,0,0,0.88) !important;
 }
 .li-table tbody tr:last-child td{
-  border-bottom: none !important;  /* <-- kills the second line */
+  border-bottom: none !important;
 }
 .li-table .num{
   text-align: right !important;
   font-variant-numeric: tabular-nums !important;
 }
 
-/* small subtitle */
+/* Subtitle */
 .li-subtitle{
   margin-top: -4px;
   margin-bottom: 6px;
@@ -209,17 +203,19 @@ table.li-table{
 )
 
 
-
-
-
-
 def _render_table_card(
     df: pd.DataFrame,
     columns: List[str],
     headers: Optional[List[str]] = None,
     numeric_cols: Optional[List[str]] = None,
 ) -> None:
-    """Crisp HTML table (display only)."""
+    """Render a crisp HTML table (display only).
+
+    Notes:
+      - This intentionally bypasses Streamlit's dataframe renderer to keep layout stable.
+      - Values are HTML-escaped to avoid injection issues when skills/labels contain symbols.
+      - Numeric formatting is purely presentation; upstream computations remain unchanged.
+    """
     if df is None or df.empty:
         st.info("No data.")
         return
@@ -228,6 +224,7 @@ def _render_table_card(
     headers = headers or columns
     numeric_cols_set = set(numeric_cols or [])
 
+    # Format numeric columns for readability; keep blanks for NaN to avoid "nan" noise.
     for c in columns:
         if c in numeric_cols_set:
             view[c] = pd.to_numeric(view[c], errors="coerce").map(
@@ -241,6 +238,7 @@ def _render_table_card(
         for c in columns:
             val = r[c]
             cls = "num" if c in numeric_cols_set else ""
+            # Minimal escaping for safety while keeping the output lightweight.
             safe = str(val).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
             tds.append(f"<td class='{cls}'>{safe}</td>")
         rows_html.append("<tr>" + "".join(tds) + "</tr>")
@@ -272,12 +270,17 @@ with st.container(border=True):
 # ============================================================
 @st.cache_data(show_spinner=False)
 def load_artifacts_cached() -> Any:
+    """Load precomputed runtime artifacts from disk.
+
+    Cached because artifacts are typically large and immutable during an app session.
+    """
     return load_runtime_artifacts("artifacts")
 
 
 try:
     art = load_artifacts_cached()
 except Exception as e:
+    # Fail fast with a clear message; downstream code assumes artifacts are valid.
     st.error("Missing or invalid runtime artifacts.")
     st.info("Run: `python scripts/preprocess_onet.py` to generate artifacts.")
     st.exception(e)
@@ -287,6 +290,7 @@ mat: pd.DataFrame = art.matrix
 coords_pca: pd.DataFrame = art.coords
 occupations: list[str] = mat.index.astype(str).tolist()
 
+# Convert once into a contiguous float32 array; downstream scoring relies on fast linear algebra.
 X_BASE: np.ndarray = np.asarray(mat.to_numpy(), dtype=np.float32, order="C")
 OCCS: list[str] = occupations
 OCC_TO_IDX: dict[str, int] = {o: i for i, o in enumerate(OCCS)}
@@ -296,6 +300,7 @@ N_OCC: int = X_BASE.shape[0]
 # ============================================================
 # Session state
 # ============================================================
+# Session state is used to preserve user choices and results across reruns (Streamlit reruns on interaction).
 if "has_run" not in st.session_state:
     st.session_state.has_run = False
 if "target_override" not in st.session_state:
@@ -315,10 +320,17 @@ if "route_config" not in st.session_state:
 # ============================================================
 @st.cache_resource(show_spinner=False)
 def build_cosine_core(use_idf: bool) -> Dict[str, Any]:
+    """Prepare normalized vectors and optional IDF weights for cosine similarity.
+
+    Why this is cached:
+      - Computing IDF and normalized matrices is deterministic for a fixed artifact set.
+      - The normalized matrix is reused across multiple computations (distribution + neighbors).
+    """
     X = X_BASE
     n, d = X.shape
 
     if use_idf:
+        # IDF downweights ubiquitous skills so that rare differentiators matter more.
         df = np.sum(X > 0.0, axis=0).astype(np.float32, copy=False)
         idf = np.log((np.float32(n) + 1.0) / (1.0 + df)) + 1.0
         idf = np.clip(idf, 1.0, None).astype(np.float32, copy=False)
@@ -327,6 +339,7 @@ def build_cosine_core(use_idf: bool) -> Dict[str, Any]:
         idf = np.ones(d, dtype=np.float32)
         Xw = X
 
+    # Guard against zero vectors (e.g., if an occupation has no skill weights in the dataset).
     norms = np.linalg.norm(Xw, axis=1)
     norms_safe = np.where(norms == 0.0, 1.0, norms).astype(np.float32, copy=False)
     Xn = (Xw / norms_safe[:, None]).astype(np.float32, copy=False)
@@ -335,6 +348,10 @@ def build_cosine_core(use_idf: bool) -> Dict[str, Any]:
 
 
 def _percentile_from_sorted(sorted_vals: np.ndarray, x: float) -> float:
+    """Compute a midrank percentile for a value against a sorted distribution.
+
+    Midrank behavior avoids over-crediting ties while keeping percentiles stable.
+    """
     v = sorted_vals
     if v.size == 0 or not np.isfinite(x):
         return 0.0
@@ -346,6 +363,10 @@ def _percentile_from_sorted(sorted_vals: np.ndarray, x: float) -> float:
 
 
 def _midrank_percentiles(values: np.ndarray) -> np.ndarray:
+    """Compute midrank percentiles for an array, handling ties deterministically.
+
+    Uses a stable sort so that equal values receive identical percentiles.
+    """
     v = np.asarray(values, dtype=np.float32)
     n = v.size
     if n == 0:
@@ -372,6 +393,10 @@ def _midrank_percentiles(values: np.ndarray) -> np.ndarray:
 
 
 def get_score_distribution(use_idf: bool, current_occ: str) -> Dict[str, Any]:
+    """Return similarity scores for all occupations relative to the current occupation.
+
+    The distribution excludes the current occupation itself to make percentiles meaningful.
+    """
     core = build_cosine_core(bool(use_idf))
     Xn: np.ndarray = core["Xn"]
     Xn_T: np.ndarray = core["Xn_T"]
@@ -379,6 +404,7 @@ def get_score_distribution(use_idf: bool, current_occ: str) -> Dict[str, Any]:
 
     i = occ_to_idx.get(current_occ, -1)
     if i < 0:
+        # Defensive default for invalid occupation labels (e.g., artifacts mismatch).
         return {
             "scores": np.asarray([], dtype=np.float32),
             "scores_sorted": np.asarray([], dtype=np.float32),
@@ -389,6 +415,7 @@ def get_score_distribution(use_idf: bool, current_occ: str) -> Dict[str, Any]:
     sims = Xn[i] @ Xn_T
     sims = np.clip(sims, -1.0, 1.0)
 
+    # Similarities are clipped to [0, 1] to avoid negative match scores in the UI.
     raw_scores_all = np.maximum(sims, 0.0) * 100.0
     raw_scores_all = np.clip(raw_scores_all, 0.0, 100.0).astype(np.float32, copy=False)
 
@@ -402,6 +429,10 @@ def get_score_distribution(use_idf: bool, current_occ: str) -> Dict[str, Any]:
 
 
 def recommend_neighbors(use_idf: bool, current_occ: str, top_k: int = 10) -> pd.DataFrame:
+    """Return the top-k closest occupations to the current occupation.
+
+    Percentiles are computed over 'other occupations' only, matching the UI interpretation.
+    """
     dist = get_score_distribution(bool(use_idf), str(current_occ))
     scores_other: np.ndarray = dist["scores"]
     raw_all: np.ndarray = dist["raw_scores_all"]
@@ -415,10 +446,12 @@ def recommend_neighbors(use_idf: bool, current_occ: str, top_k: int = 10) -> pd.
     occ_other = np.asarray(OCCS, dtype=object)[mask_other]
     raw_other = raw_all[mask_other]
 
+    # Clamp k to the available space; keep behavior predictable for edge cases.
     k = int(min(max(int(top_k), 0), raw_other.size))
     if k == 0:
         return pd.DataFrame(columns=["occupation", "match_raw", "match_percentile"])
 
+    # Argpartition is used for top-k selection without sorting the full array.
     idx_part = np.argpartition(-raw_other, kth=k - 1)[:k]
     idx_sorted = idx_part[np.argsort(-raw_other[idx_part], kind="mergesort")]
 
@@ -445,6 +478,7 @@ with st.sidebar:
             default_target_idx = 1 if len(occupations) > 1 else 0
             target = st.selectbox("Target occupation", options=occupations, index=default_target_idx)
 
+            # Allow the main panel to "promote" a recommended neighbor into the target selector.
             if st.session_state.target_override:
                 target = st.session_state.target_override
 
@@ -470,6 +504,7 @@ with st.sidebar:
         st.divider()
         run = st.button("🚀 Run pivot analysis", use_container_width=True)
         if run:
+            # This gate prevents expensive computations before the user explicitly runs the analysis.
             st.session_state.has_run = True
 
     with st.container(border=True):
@@ -513,6 +548,7 @@ if not st.session_state.has_run:
 # ============================================================
 # Core computations
 # ============================================================
+# Compute distribution once; multiple panels reuse both raw and percentile views.
 dist = get_score_distribution(bool(use_idf), str(current))
 scores_all_sorted = dist["scores_sorted"]
 raw_all = dist["raw_scores_all"]
@@ -524,6 +560,7 @@ pct_target = _percentile_from_sorted(scores_all_sorted, float(raw_target))
 show_percentile = score_mode.startswith("Percentile")
 match_score_display = float(pct_target if show_percentile else raw_target)
 
+# "gap_df" is the shared explainability substrate; downstream modules compute contributions/confidence from it.
 gap_df = compute_gap_df(mat, str(current), str(target))
 contrib = compute_skill_contributions(gap_df)
 conf = compute_confidence_score(mat, art.pca_meta, str(current), str(target))
@@ -542,6 +579,7 @@ with st.container(border=True):
     m2.metric("Confidence", f"{conf['confidence_score']:.0f}/100")
     m3.metric("Scoring", "IDF cosine" if use_idf else "Raw cosine")
 
+    # Thresholds are product decisions; keep them stable to avoid changing user expectations.
     if match_score_display >= 70:
         st.success("Next action: Strong candidate — generate a learning plan + build 1 portfolio artifact.")
     elif match_score_display >= 45:
@@ -576,6 +614,7 @@ with left:
             if show_df.empty:
                 st.info("No recommendations available.")
             else:
+                # Maintain a stable mapping between UI labels and occupation keys.
                 label_to_occ: Dict[str, str] = {}
                 options = []
                 for _, r in show_df.head(8).iterrows():
@@ -586,6 +625,7 @@ with left:
 
                 pick = st.selectbox("Recommended targets", options=options, index=0, label_visibility="collapsed")
                 if st.button("Use as target", use_container_width=True):
+                    # Reset route because the target changed; route computations depend on start/target.
                     st.session_state.target_override = label_to_occ[pick]
                     st.session_state.has_run = True
                     st.session_state.route_result = None
@@ -603,6 +643,7 @@ with right:
                 col_a, col_b = st.columns([1, 1])
                 with col_a:
                     if st.button("Find route", use_container_width=True):
+                        # Route finding can be non-trivial; keep the UI responsive with a spinner.
                         with st.spinner("Finding a route…"):
                             st.session_state.route_result = find_pivot_path(
                                 mat,
@@ -636,6 +677,7 @@ with right:
             if not route:
                 st.info("Route not computed yet.")
             else:
+                # "reachable" is treated as the authoritative flag from the routing backend.
                 if not route.get("reachable"):
                     st.warning("No route found with the current assumptions. Try again.")
                 else:
@@ -652,6 +694,7 @@ with right:
         c1, c2 = st.columns([1, 1])
         with c1:
             if st.button("Generate plan", use_container_width=True):
+                # Generation may call an external model; keep output cached in session state to avoid repeated calls.
                 with st.spinner("Generating plan (OpenAI if available)…"):
                     md = generate_learning_plan_markdown(
                         current_role=str(current),
@@ -696,6 +739,7 @@ with st.container(border=True):
     with c1:
         st.markdown("**Top transferable skills (overlap)**")
         top_transfer = gap_df.copy()
+        # Overlap is the shared mass between profiles; it is a simple but effective transferability heuristic.
         top_transfer["overlap"] = np.minimum(top_transfer["current_importance"], top_transfer["target_importance"])
         top_transfer = top_transfer.sort_values("overlap", ascending=False).head(10)
 
@@ -744,6 +788,7 @@ It’s a heuristic “coverage” score (not a probability). It combines:
         export_df.insert(4, "use_idf", bool(use_idf))
         export_df.insert(5, "confidence_score", round(float(conf["confidence_score"]), 2))
 
+        # Export is intentionally limited to the gap table to keep downloads small and interpretable.
         csv_bytes = export_df.to_csv(index=False).encode("utf-8")
         st.download_button(
             label="Download pivot CSV",
