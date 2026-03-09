@@ -14,9 +14,13 @@ from src.model_logic import (
     compute_confidence_score,
     find_pivot_path,
 )
+from src.llm_pivot_strategy import generate_pivot_strategy_bundle
+from src.llm_portfolio import generate_portfolio_projects_bundle
+from src.skill_investment_simulator import (
+    simulate_skill_investment,
+    suggest_best_investment_skills,
+)
 from src.ai_coach import generate_learning_plan_markdown
-
-from src.llm_pivot_strategy import generate_pivot_strategy_markdown
 
 
 # ============================================================
@@ -198,7 +202,6 @@ table.li-table{
   color: var(--li-subtext);
   font-size: 13px;
 }
-
 </style>
 """,
     unsafe_allow_html=True,
@@ -317,9 +320,20 @@ if "route_config" not in st.session_state:
     st.session_state.route_config = {"k_neighbors": 10, "max_steps": 6}
 if "pivot_strategy_md" not in st.session_state:
     st.session_state.pivot_strategy_md = ""
-
 if "pivot_strategy_source" not in st.session_state:
     st.session_state.pivot_strategy_source = "—"
+if "pivot_strategy_trace" not in st.session_state:
+    st.session_state.pivot_strategy_trace = {}
+if "portfolio_projects_md" not in st.session_state:
+    st.session_state.portfolio_projects_md = ""
+if "portfolio_projects_source" not in st.session_state:
+    st.session_state.portfolio_projects_source = "—"
+if "portfolio_projects_df" not in st.session_state:
+    st.session_state.portfolio_projects_df = pd.DataFrame()
+if "portfolio_projects_trace" not in st.session_state:
+    st.session_state.portfolio_projects_trace = {}
+if "sim_result" not in st.session_state:
+    st.session_state.sim_result = None
 
 
 # ============================================================
@@ -463,7 +477,11 @@ def recommend_neighbors(use_idf: bool, current_occ: str, top_k: int = 10) -> pd.
     idx_sorted = idx_part[np.argsort(-raw_other[idx_part], kind="mergesort")]
 
     df = pd.DataFrame(
-        {"occupation": occ_other[idx_sorted], "match_raw": raw_other[idx_sorted].astype(float), "match_percentile": pct_other[idx_sorted].astype(float)}
+        {
+            "occupation": occ_other[idx_sorted],
+            "match_raw": raw_other[idx_sorted].astype(float),
+            "match_percentile": pct_other[idx_sorted].astype(float),
+        }
     ).reset_index(drop=True)
     return df
 
@@ -648,6 +666,7 @@ with right:
             if guided:
                 st.caption("Optional: find intermediate roles that make the pivot more realistic.")
                 col_a, col_b = st.columns([1, 1])
+
                 with col_a:
                     if st.button("Find route", use_container_width=True):
                         # Route finding can be non-trivial; keep the UI responsive with a spinner.
@@ -659,12 +678,14 @@ with right:
                                 k_neighbors=12,
                                 max_steps=6,
                             )
+
                 with col_b:
                     if st.button("Reset route", use_container_width=True):
                         st.session_state.route_result = None
             else:
                 st.caption("Research mode: adjust kNN neighbors and max steps in the sidebar.")
                 c1, c2 = st.columns([1, 1])
+
                 with c1:
                     if st.button("Find route (research)", use_container_width=True):
                         cfg = st.session_state.route_config
@@ -676,6 +697,7 @@ with right:
                                 k_neighbors=int(cfg["k_neighbors"]),
                                 max_steps=int(cfg["max_steps"]),
                             )
+
                 with c2:
                     if st.button("Reset route", use_container_width=True):
                         st.session_state.route_result = None
@@ -694,8 +716,6 @@ with right:
                     else:
                         st.info("Route computed, but path is empty (unexpected).")
 
-        
-        
         st.divider()
 
         st.markdown("### Career pivot strategy (LLM + O*NET evidence)")
@@ -705,10 +725,8 @@ with right:
 
         with s1:
             if st.button("Generate pivot strategy", use_container_width=True):
-
                 with st.spinner("Generating strategy..."):
-
-                    md = generate_pivot_strategy_markdown(
+                    bundle = generate_pivot_strategy_bundle(
                         current_role=str(current),
                         target_role=str(target),
                         gap_df=gap_df,
@@ -718,19 +736,112 @@ with right:
                         data_dir="data/onet_raw",
                     )
 
-                    st.session_state.pivot_strategy_md = md
-                    st.session_state.pivot_strategy_source = "OpenAI multi-step" if md.startswith("🤖") else "Offline evidence"
+                    st.session_state.pivot_strategy_md = str(bundle["markdown"])
+                    st.session_state.pivot_strategy_source = str(bundle["source"])
+                    st.session_state.pivot_strategy_trace = dict(bundle.get("trace", {}))
 
         with s2:
             if st.button("Clear strategy", use_container_width=True):
                 st.session_state.pivot_strategy_md = ""
                 st.session_state.pivot_strategy_source = "—"
-        
+                st.session_state.pivot_strategy_trace = {}
 
+        st.divider()
+
+        st.markdown("### Portfolio project generator (LLM + structured output)")
+        st.caption("Second LLM feature: generate structured portfolio projects, validate them, and score missing-skill coverage.")
+
+        p1, p2 = st.columns([1, 1])
+
+        with p1:
+            if st.button("Generate project ideas", use_container_width=True):
+                with st.spinner("Generating portfolio projects..."):
+                    bundle = generate_portfolio_projects_bundle(
+                        current_role=str(current),
+                        target_role=str(target),
+                        gap_df=gap_df,
+                        model="gpt-4o-mini",
+                        prefer_online=True,
+                        data_dir="data/onet_raw",
+                    )
+
+                    st.session_state.portfolio_projects_md = str(bundle["markdown"])
+                    st.session_state.portfolio_projects_source = str(bundle["source"])
+                    st.session_state.portfolio_projects_df = bundle.get("projects_df", pd.DataFrame())
+                    st.session_state.portfolio_projects_trace = dict(bundle.get("trace", {}))
+
+        with p2:
+            if st.button("Clear project ideas", use_container_width=True):
+                st.session_state.portfolio_projects_md = ""
+                st.session_state.portfolio_projects_source = "—"
+                st.session_state.portfolio_projects_df = pd.DataFrame()
+                st.session_state.portfolio_projects_trace = {}
+
+        st.divider()
+
+        st.markdown("### Skill investment simulator")
+        st.caption("Counterfactual analysis: simulate which skill improvements would move your match score most.")
+
+        sim_candidates_df = suggest_best_investment_skills(gap_df, top_k=8)
+
+        if sim_candidates_df.empty:
+            st.info("No positive skill gaps available for simulation.")
+        else:
+            skill_options = sim_candidates_df["skill"].astype(str).tolist()
+            default_pick = skill_options[: min(3, len(skill_options))]
+
+            selected_sim_skills = st.multiselect(
+                "Choose skills to improve",
+                options=skill_options,
+                default=default_pick,
+            )
+
+            uplift_ratio = st.slider(
+                "How much of each gap do you close?",
+                min_value=0.10,
+                max_value=1.00,
+                value=0.50,
+                step=0.05,
+            )
+
+            q1, q2 = st.columns([1, 1])
+
+            with q1:
+                if st.button("Run skill simulation", use_container_width=True):
+                    st.session_state.sim_result = simulate_skill_investment(
+                        mat,
+                        current_role=str(current),
+                        target_role=str(target),
+                        selected_skills=selected_sim_skills,
+                        uplift_ratio=float(uplift_ratio),
+                    )
+
+            with q2:
+                if st.button("Clear simulation", use_container_width=True):
+                    st.session_state.sim_result = None
+
+            sim_result = st.session_state.sim_result
+            if sim_result:
+                r1, r2, r3 = st.columns([1, 1, 1])
+                r1.metric("Before", f"{float(sim_result['before_score']):.1f}/100")
+                r2.metric("After", f"{float(sim_result['after_score']):.1f}/100")
+                r3.metric("Uplift", f"{float(sim_result['uplift']):+.1f}")
+
+                sim_df = sim_result.get("details_df", pd.DataFrame())
+                if isinstance(sim_df, pd.DataFrame) and not sim_df.empty:
+                    _render_table_card(
+                        sim_df,
+                        columns=["skill", "current_before", "target_value", "current_after", "delta_applied"],
+                        headers=["Skill", "Current (before)", "Target", "Current (after)", "Applied delta"],
+                        numeric_cols=["current_before", "target_value", "current_after", "delta_applied"],
+                    )
+
+        st.divider()
 
         st.markdown("### Learning plan (3 phases)")
 
         c1, c2 = st.columns([1, 1])
+
         with c1:
             if st.button("Generate plan", use_container_width=True):
                 # Generation may call an external model; keep output cached in session state to avoid repeated calls.
@@ -764,17 +875,154 @@ if plan_md:
         st.subheader("Learning plan preview")
         st.caption(f"Source: {st.session_state.learning_plan_source} • Output is Markdown.")
         st.markdown(plan_md)
-        
+
 # ============================================================
 # Pivot strategy preview
 # ============================================================
 strategy_md = (st.session_state.pivot_strategy_md or "").strip()
-
 if strategy_md:
     with st.container(border=True):
         st.subheader("Career pivot strategy")
         st.caption(f"Source: {st.session_state.pivot_strategy_source}")
         st.markdown(strategy_md)
+
+# ============================================================
+# Portfolio project preview
+# ============================================================
+portfolio_md = (st.session_state.portfolio_projects_md or "").strip()
+if portfolio_md:
+    with st.container(border=True):
+        st.subheader("Portfolio project ideas")
+        st.caption(f"Source: {st.session_state.portfolio_projects_source}")
+        st.markdown(portfolio_md)
+
+        portfolio_df = st.session_state.portfolio_projects_df
+        if isinstance(portfolio_df, pd.DataFrame) and not portfolio_df.empty:
+            _render_table_card(
+                portfolio_df,
+                columns=[
+                    "title",
+                    "difficulty",
+                    "estimated_hours",
+                    "portfolio_signal",
+                    "covered_missing_skills",
+                    "missing_skill_coverage",
+                ],
+                headers=[
+                    "Project",
+                    "Difficulty",
+                    "Hours",
+                    "Signal",
+                    "Missing skills covered",
+                    "Coverage",
+                ],
+                numeric_cols=[
+                    "estimated_hours",
+                    "portfolio_signal",
+                    "covered_missing_skills",
+                    "missing_skill_coverage",
+                ],
+            )
+
+
+# ============================================================
+# LLM trace / system transparency
+# ============================================================
+with st.expander("LLM system trace (advanced)", expanded=False):
+    st.markdown(
+        """
+This panel exposes the non-trivial LLM workflow:
+- retrieval from O*NET evidence
+- structured planning
+- Python validation
+- optional repair call
+- structured project generation
+        """
+    )
+
+    st.markdown("### Strategy trace")
+    strategy_trace = st.session_state.pivot_strategy_trace or {}
+
+    if strategy_trace:
+        st.write(
+            {
+                "mode": strategy_trace.get("mode", ""),
+                "repair_attempted": strategy_trace.get("repair_attempted", False),
+                "validation_errors": strategy_trace.get("validation_errors", []),
+                "soc_codes": strategy_trace.get("soc_codes", []),
+                "job_zone": strategy_trace.get("job_zone", None),
+                "missing_skills": strategy_trace.get("missing_skills", []),
+                "transfer_skills": strategy_trace.get("transfer_skills", []),
+            }
+        )
+
+        retrieved_evidence = strategy_trace.get("retrieved_evidence", [])
+        if retrieved_evidence:
+            ev_df = pd.DataFrame(retrieved_evidence)
+            if not ev_df.empty:
+                _render_table_card(
+                    ev_df,
+                    columns=["evidence_id", "kind", "text"],
+                    headers=["Evidence ID", "Kind", "Text"],
+                    numeric_cols=[],
+                )
+
+        cleaned_strategy = strategy_trace.get("cleaned_strategy", {})
+        if cleaned_strategy:
+            st.markdown("**Validated structured strategy JSON**")
+            st.json(cleaned_strategy)
+
+        if strategy_trace.get("planner_raw"):
+            st.markdown("**Planner raw output**")
+            st.code(strategy_trace["planner_raw"], language="json")
+
+        if strategy_trace.get("repair_raw"):
+            st.markdown("**Repair raw output**")
+            st.code(strategy_trace["repair_raw"], language="json")
+    else:
+        st.info("No strategy trace available yet.")
+
+    st.divider()
+
+    st.markdown("### Portfolio trace")
+    portfolio_trace = st.session_state.portfolio_projects_trace or {}
+
+    if portfolio_trace:
+        st.write(
+            {
+                "mode": portfolio_trace.get("mode", ""),
+                "validation_errors": portfolio_trace.get("validation_errors", []),
+                "missing_skills": portfolio_trace.get("missing_skills", []),
+                "transfer_skills": portfolio_trace.get("transfer_skills", []),
+                "allowed_skills": portfolio_trace.get("allowed_skills", []),
+            }
+        )
+
+        retrieved_evidence = portfolio_trace.get("retrieved_evidence", [])
+        if retrieved_evidence:
+            ev_df = pd.DataFrame(retrieved_evidence)
+            if not ev_df.empty:
+                _render_table_card(
+                    ev_df,
+                    columns=["evidence_id", "kind", "text"],
+                    headers=["Evidence ID", "Kind", "Text"],
+                    numeric_cols=[],
+                )
+
+        cleaned_projects = portfolio_trace.get("cleaned_projects", [])
+        if cleaned_projects:
+            st.markdown("**Validated structured portfolio JSON**")
+            st.json({"projects": cleaned_projects})
+
+        if portfolio_trace.get("planner_raw"):
+            st.markdown("**Project planner raw output**")
+            st.code(portfolio_trace["planner_raw"], language="json")
+
+        if portfolio_trace.get("repair_raw"):
+            st.markdown("**Project repair raw output**")
+            st.code(portfolio_trace["repair_raw"], language="json")
+    else:
+        st.info("No portfolio trace available yet.")
 
 
 # ============================================================

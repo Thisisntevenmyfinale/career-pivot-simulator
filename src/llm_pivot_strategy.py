@@ -1,10 +1,9 @@
-# src/llm_pivot_strategy.py
 from __future__ import annotations
 
 import json
 import os
 import re
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -13,10 +12,12 @@ import pandas as pd
 
 
 # ============================================================
-# Small data classes
+# Data classes
 # ============================================================
 @dataclass(frozen=True)
 class EvidenceItem:
+    """One retrieved piece of target-role evidence."""
+
     evidence_id: str
     kind: str
     text: str
@@ -25,6 +26,8 @@ class EvidenceItem:
 
 @dataclass(frozen=True)
 class RetrievedEvidence:
+    """Container for retrieved O*NET evidence tied to a target occupation."""
+
     target_role: str
     soc_codes: List[str]
     items: List[EvidenceItem]
@@ -32,22 +35,35 @@ class RetrievedEvidence:
 
 
 # ============================================================
-# Utilities
+# Utility helpers
 # ============================================================
 def _get_api_key_optional() -> str:
-    return os.getenv("OPENAI_API_KEY", "").strip()
+    """Return an OpenAI API key from env or Streamlit secrets if available."""
+    key = os.getenv("OPENAI_API_KEY", "").strip()
+    if key:
+        return key
+
+    try:
+        import streamlit as st
+
+        return str(st.secrets.get("OPENAI_API_KEY", "")).strip()
+    except Exception:
+        return ""
 
 
 def _sanitize_text(s: str, max_len: int = 500) -> str:
+    """Normalize whitespace and keep text bounded for prompts and UI."""
     s = re.sub(r"\s+", " ", str(s)).strip()
     return s[:max_len]
 
 
 def _sanitize_role_name(s: str) -> str:
+    """Short role-name sanitizer for prompts and titles."""
     return _sanitize_text(s, max_len=120)
 
 
 def _normalize_title(s: str) -> str:
+    """Normalize job titles for fuzzy matching."""
     s = str(s).strip().lower()
     s = re.sub(r"[^a-z0-9\s/&-]", "", s)
     s = re.sub(r"\s+", " ", s).strip()
@@ -55,6 +71,7 @@ def _normalize_title(s: str) -> str:
 
 
 def _safe_read_tsv(path: Path) -> pd.DataFrame:
+    """Read a TSV file if present, otherwise return an empty frame."""
     if not path.exists():
         return pd.DataFrame()
     try:
@@ -64,24 +81,23 @@ def _safe_read_tsv(path: Path) -> pd.DataFrame:
 
 
 def _extract_json_object(text: str) -> Dict[str, Any]:
+    """Extract a JSON object from model text, even if wrapped in prose."""
     if not text or not text.strip():
         raise ValueError("Empty LLM output.")
 
-    text = text.strip()
+    raw = text.strip()
 
-    # Direct parse
     try:
-        obj = json.loads(text)
+        obj = json.loads(raw)
         if isinstance(obj, dict):
             return obj
     except Exception:
         pass
 
-    # Fallback: find the first JSON object in the text
-    start = text.find("{")
-    end = text.rfind("}")
+    start = raw.find("{")
+    end = raw.rfind("}")
     if start >= 0 and end > start:
-        snippet = text[start : end + 1]
+        snippet = raw[start : end + 1]
         obj = json.loads(snippet)
         if isinstance(obj, dict):
             return obj
@@ -90,6 +106,7 @@ def _extract_json_object(text: str) -> Dict[str, Any]:
 
 
 def _score_overlap(text: str, query_terms: List[str]) -> int:
+    """Simple lexical retrieval score used to prioritize evidence snippets."""
     t = _normalize_title(text)
     score = 0
     for q in query_terms:
@@ -109,19 +126,20 @@ def _score_overlap(text: str, query_terms: List[str]) -> int:
 # ============================================================
 @lru_cache(maxsize=1)
 def _load_onet_tables(data_dir: str = "data/onet_raw") -> Dict[str, pd.DataFrame]:
+    """Load a lightweight subset of O*NET tables used at runtime."""
     root = Path(data_dir)
 
-    tables = {
+    return {
         "occupation_data": _safe_read_tsv(root / "Occupation Data.txt"),
         "task_statements": _safe_read_tsv(root / "Task Statements.txt"),
         "technology_skills": _safe_read_tsv(root / "Technology Skills.txt"),
         "work_activities": _safe_read_tsv(root / "Work Activities.txt"),
         "job_zones": _safe_read_tsv(root / "Job Zones.txt"),
     }
-    return tables
 
 
 def _resolve_soc_codes_for_title(role_title: str, data_dir: str = "data/onet_raw") -> List[str]:
+    """Resolve an occupation title to one or more O*NET SOC codes."""
     tables = _load_onet_tables(data_dir)
     occ = tables["occupation_data"]
     if occ.empty or "Title" not in occ.columns or "O*NET-SOC Code" not in occ.columns:
@@ -131,16 +149,25 @@ def _resolve_soc_codes_for_title(role_title: str, data_dir: str = "data/onet_raw
     occ = occ.copy()
     occ["__title_norm__"] = occ["Title"].astype(str).map(_normalize_title)
 
-    exact = occ.loc[occ["__title_norm__"] == title_norm, "O*NET-SOC Code"].dropna().astype(str).unique().tolist()
+    exact = (
+        occ.loc[occ["__title_norm__"] == title_norm, "O*NET-SOC Code"]
+        .dropna()
+        .astype(str)
+        .unique()
+        .tolist()
+    )
     if exact:
         return exact
 
-    partial = occ.loc[occ["__title_norm__"].str.contains(re.escape(title_norm), na=False), "O*NET-SOC Code"]
-    partial_codes = partial.dropna().astype(str).unique().tolist()
-    return partial_codes[:5]
+    partial = occ.loc[
+        occ["__title_norm__"].str.contains(re.escape(title_norm), na=False),
+        "O*NET-SOC Code",
+    ]
+    return partial.dropna().astype(str).unique().tolist()[:5]
 
 
 def _get_job_zone_text(soc_codes: List[str], data_dir: str = "data/onet_raw") -> Optional[str]:
+    """Build a short human-readable job-zone summary."""
     tables = _load_onet_tables(data_dir)
     jz = tables["job_zones"]
     if jz.empty or "O*NET-SOC Code" not in jz.columns:
@@ -150,28 +177,28 @@ def _get_job_zone_text(soc_codes: List[str], data_dir: str = "data/onet_raw") ->
     if sub.empty:
         return None
 
-    cols = set(sub.columns)
     bits: List[str] = []
+    cols = set(sub.columns)
 
     for _, row in sub.head(2).iterrows():
-        part: List[str] = []
+        parts: List[str] = []
         if "Job Zone" in cols:
-            part.append(f"Job Zone {row.get('Job Zone', '')}")
+            parts.append(f"Job Zone {row.get('Job Zone', '')}")
         if "Education" in cols:
-            part.append(f"Education: {row.get('Education', '')}")
+            parts.append(f"Education: {row.get('Education', '')}")
         if "Related Experience" in cols:
-            part.append(f"Experience: {row.get('Related Experience', '')}")
+            parts.append(f"Experience: {row.get('Related Experience', '')}")
         if "Job Training" in cols:
-            part.append(f"Training: {row.get('Job Training', '')}")
+            parts.append(f"Training: {row.get('Job Training', '')}")
 
-        joined = "; ".join([_sanitize_text(x, 180) for x in part if str(x).strip()])
+        joined = "; ".join([_sanitize_text(x, 180) for x in parts if str(x).strip()])
         if joined:
             bits.append(joined)
 
     return " | ".join(bits) if bits else None
 
 
-def _retrieve_target_evidence(
+def retrieve_target_evidence(
     role_title: str,
     candidate_terms: List[str],
     *,
@@ -180,13 +207,19 @@ def _retrieve_target_evidence(
     max_tech: int = 6,
     max_activities: int = 6,
 ) -> RetrievedEvidence:
+    """Retrieve target-role evidence from O*NET tables.
+
+    This is the retrieval stage of the RAG-style workflow.
+    """
     tables = _load_onet_tables(data_dir)
     soc_codes = _resolve_soc_codes_for_title(role_title, data_dir=data_dir)
 
     items: List[EvidenceItem] = []
     next_id = 1
 
-    # Task Statements
+    # ---------------------------
+    # Task statements
+    # ---------------------------
     tasks = tables["task_statements"]
     if not tasks.empty and "O*NET-SOC Code" in tasks.columns:
         sub = tasks[tasks["O*NET-SOC Code"].astype(str).isin(soc_codes)].copy()
@@ -207,12 +240,15 @@ def _retrieve_target_evidence(
                 )
                 next_id += 1
 
-    # Technology Skills
+    # ---------------------------
+    # Technology skills
+    # ---------------------------
     tech = tables["technology_skills"]
     if not tech.empty and "O*NET-SOC Code" in tech.columns:
         sub = tech[tech["O*NET-SOC Code"].astype(str).isin(soc_codes)].copy()
         possible_cols = [c for c in ["Example", "Commodity Title", "Hot Technology"] if c in sub.columns]
         if possible_cols:
+
             def row_to_text(row: pd.Series) -> str:
                 parts = []
                 for c in possible_cols:
@@ -238,17 +274,16 @@ def _retrieve_target_evidence(
                     )
                     next_id += 1
 
-    # Work Activities
+    # ---------------------------
+    # Work activities
+    # ---------------------------
     wa = tables["work_activities"]
     if not wa.empty and "O*NET-SOC Code" in wa.columns:
         sub = wa[wa["O*NET-SOC Code"].astype(str).isin(soc_codes)].copy()
         if "Scale ID" in sub.columns:
             sub = sub[sub["Scale ID"].astype(str) == "IM"].copy()
         if "Element Name" in sub.columns:
-            if "Data Value" in sub.columns:
-                sub["__dv__"] = pd.to_numeric(sub["Data Value"], errors="coerce").fillna(0.0)
-            else:
-                sub["__dv__"] = 0.0
+            sub["__dv__"] = pd.to_numeric(sub.get("Data Value", 0.0), errors="coerce").fillna(0.0)
             sub["__text__"] = sub["Element Name"].astype(str).map(lambda x: _sanitize_text(x, 180))
             sub["__score__"] = sub["__text__"].map(lambda t: _score_overlap(t, candidate_terms))
             sub = sub.sort_values(["__score__", "__dv__", "__text__"], ascending=[False, False, True]).head(max_activities)
@@ -264,6 +299,9 @@ def _retrieve_target_evidence(
                 )
                 next_id += 1
 
+    # ---------------------------
+    # Job zone
+    # ---------------------------
     job_zone = _get_job_zone_text(soc_codes, data_dir=data_dir)
     if job_zone:
         items.append(
@@ -314,7 +352,8 @@ _PHYSICAL_SENSORY_PATTERNS = [
 _EXCLUSION_RE = re.compile("(" + "|".join(_PHYSICAL_SENSORY_PATTERNS) + ")", flags=re.IGNORECASE)
 
 
-def _top_missing_skills(gap_df: pd.DataFrame, max_n: int = 6) -> List[str]:
+def top_missing_skills(gap_df: pd.DataFrame, max_n: int = 6) -> List[str]:
+    """Return the highest-priority missing skills for prompting and UI."""
     df = gap_df.copy()
     for col in ["gap", "current_importance", "target_importance"]:
         df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0.0)
@@ -330,7 +369,8 @@ def _top_missing_skills(gap_df: pd.DataFrame, max_n: int = 6) -> List[str]:
     return df["skill"].head(int(max_n)).tolist()
 
 
-def _top_transferable_skills(gap_df: pd.DataFrame, max_n: int = 5) -> List[str]:
+def top_transferable_skills(gap_df: pd.DataFrame, max_n: int = 5) -> List[str]:
+    """Return strongest overlap skills between current and target profiles."""
     df = gap_df.copy()
     for col in ["current_importance", "target_importance"]:
         df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0.0)
@@ -353,16 +393,14 @@ def _offline_strategy_markdown(
     evidence: RetrievedEvidence,
     route: Optional[Dict[str, Any]],
 ) -> str:
+    """Offline fallback used when OpenAI is unavailable."""
     route_line = "Direct pivot recommended."
     if route and route.get("reachable") and route.get("path"):
         path = route.get("path", [])
         if len(path) >= 3:
             route_line = "Suggested stepping-stone route: " + " → ".join(path)
 
-    ev_lines = []
-    for item in evidence.items[:5]:
-        ev_lines.append(f"- **{item.kind}**: {item.text}")
-
+    ev_lines = [f"- **{item.kind}**: {item.text}" for item in evidence.items[:5]]
     ms = missing_skills[:4] or ["No clear high-priority missing skills found."]
     ts = transfer_skills[:4] or ["No clear transferable anchors found."]
 
@@ -396,9 +434,16 @@ def _validate_strategy_json(
     allowed_transfer: List[str],
     allowed_evidence_ids: List[str],
 ) -> tuple[bool, List[str], Dict[str, Any]]:
+    """Validate and sanitize structured planner JSON."""
     errors: List[str] = []
 
-    required_top = ["pivot_summary", "prioritized_missing_skills", "transferable_strengths", "milestones", "project_ideas"]
+    required_top = [
+        "pivot_summary",
+        "prioritized_missing_skills",
+        "transferable_strengths",
+        "milestones",
+        "project_ideas",
+    ]
     for key in required_top:
         if key not in obj:
             errors.append(f"Missing top-level key: {key}")
@@ -415,7 +460,6 @@ def _validate_strategy_json(
         "interview_story_angles": obj.get("interview_story_angles", []),
     }
 
-    # missing skills
     for item in obj.get("prioritized_missing_skills", []):
         skill = str(item.get("skill", "")).strip()
         if skill not in allowed_missing:
@@ -431,7 +475,6 @@ def _validate_strategy_json(
             }
         )
 
-    # transfer strengths
     for item in obj.get("transferable_strengths", []):
         skill = str(item.get("skill", "")).strip()
         if skill not in allowed_transfer:
@@ -445,7 +488,6 @@ def _validate_strategy_json(
             }
         )
 
-    # milestones
     for item in obj.get("milestones", []):
         eids = [str(x) for x in item.get("evidence_ids", []) if str(x) in allowed_evidence_ids]
         cleaned["milestones"].append(
@@ -457,9 +499,12 @@ def _validate_strategy_json(
             }
         )
 
-    # projects
     for item in obj.get("project_ideas", []):
-        skills = [str(x) for x in item.get("skills", []) if str(x) in allowed_missing or str(x) in allowed_transfer]
+        skills = [
+            str(x)
+            for x in item.get("skills", [])
+            if str(x) in allowed_missing or str(x) in allowed_transfer
+        ]
         eids = [str(x) for x in item.get("evidence_ids", []) if str(x) in allowed_evidence_ids]
         cleaned["project_ideas"].append(
             {
@@ -484,10 +529,8 @@ def _validate_strategy_json(
 # Prompt builders
 # ============================================================
 def _build_evidence_text(evidence: RetrievedEvidence) -> str:
-    lines = []
-    for item in evidence.items:
-        lines.append(f"{item.evidence_id} | {item.kind} | {item.text}")
-    return "\n".join(lines)
+    """Serialize evidence into prompt-friendly lines."""
+    return "\n".join([f"{item.evidence_id} | {item.kind} | {item.text}" for item in evidence.items])
 
 
 def _planner_prompt(
@@ -499,6 +542,7 @@ def _planner_prompt(
     evidence: RetrievedEvidence,
     route: Optional[Dict[str, Any]],
 ) -> str:
+    """Prompt for the structured planning step."""
     route_text = "No route computed."
     if route:
         if route.get("reachable") and route.get("path"):
@@ -574,6 +618,7 @@ Hard rules:
 
 
 def _repair_prompt(original_text: str, errors: List[str]) -> str:
+    """Prompt for the repair step if validation fails."""
     return f"""
 The previous JSON was invalid.
 
@@ -594,6 +639,7 @@ def _writer_prompt(
     cleaned_strategy: Dict[str, Any],
     evidence: RetrievedEvidence,
 ) -> str:
+    """Prompt that turns validated structured data into user-facing Markdown."""
     return f"""
 You are a pragmatic career strategist.
 
@@ -626,9 +672,9 @@ Rules:
 
 
 # ============================================================
-# LLM orchestration
+# Public orchestration API
 # ============================================================
-def generate_pivot_strategy_markdown(
+def generate_pivot_strategy_bundle(
     *,
     current_role: str,
     target_role: str,
@@ -637,15 +683,22 @@ def generate_pivot_strategy_markdown(
     model: str = "gpt-4o-mini",
     prefer_online: bool = True,
     data_dir: str = "data/onet_raw",
-) -> str:
+) -> Dict[str, Any]:
+    """Run the full strategy pipeline and return a rich result bundle.
+
+    This function powers:
+      - the final user-facing Markdown
+      - the visible LLM trace panel
+      - structured downstream logic
+    """
     cur = _sanitize_role_name(current_role)
     tgt = _sanitize_role_name(target_role)
 
-    missing_skills = _top_missing_skills(gap_df, max_n=6)
-    transfer_skills = _top_transferable_skills(gap_df, max_n=5)
+    missing_skills = top_missing_skills(gap_df, max_n=6)
+    transfer_skills = top_transferable_skills(gap_df, max_n=5)
 
     candidate_terms = list(dict.fromkeys(missing_skills + transfer_skills + [tgt]))
-    evidence = _retrieve_target_evidence(
+    evidence = retrieve_target_evidence(
         tgt,
         candidate_terms=candidate_terms,
         data_dir=data_dir,
@@ -654,7 +707,22 @@ def generate_pivot_strategy_markdown(
         max_activities=6,
     )
 
-    offline = _offline_strategy_markdown(
+    trace: Dict[str, Any] = {
+        "mode": "offline",
+        "planner_raw": "",
+        "repair_raw": "",
+        "writer_raw": "",
+        "repair_attempted": False,
+        "validation_errors": [],
+        "retrieved_evidence": [asdict(x) for x in evidence.items],
+        "soc_codes": list(evidence.soc_codes),
+        "job_zone": evidence.job_zone,
+        "missing_skills": missing_skills,
+        "transfer_skills": transfer_skills,
+        "cleaned_strategy": {},
+    }
+
+    offline_md = _offline_strategy_markdown(
         current_role=cur,
         target_role=tgt,
         missing_skills=missing_skills,
@@ -664,25 +732,40 @@ def generate_pivot_strategy_markdown(
     )
 
     if not prefer_online:
-        return offline
+        return {
+            "markdown": offline_md,
+            "source": "Offline evidence",
+            "trace": trace,
+            "cleaned_strategy": {},
+            "evidence": evidence,
+        }
 
     api_key = _get_api_key_optional()
     if not api_key:
-        return offline
+        return {
+            "markdown": offline_md,
+            "source": "Offline evidence",
+            "trace": trace,
+            "cleaned_strategy": {},
+            "evidence": evidence,
+        }
 
     try:
         from openai import OpenAI
     except Exception:
-        return offline
+        return {
+            "markdown": offline_md,
+            "source": "Offline evidence",
+            "trace": trace,
+            "cleaned_strategy": {},
+            "evidence": evidence,
+        }
 
     allowed_evidence_ids = [item.evidence_id for item in evidence.items]
 
     try:
         client = OpenAI(api_key=api_key)
 
-        # ---------------------------
-        # Call 1: structured planner
-        # ---------------------------
         planner_resp = client.responses.create(
             model=model,
             instructions="Return strictly valid JSON and nothing else.",
@@ -696,6 +779,7 @@ def generate_pivot_strategy_markdown(
             ),
         )
         planner_text = (planner_resp.output_text or "").strip()
+        trace["planner_raw"] = planner_text
         planner_obj = _extract_json_object(planner_text)
 
         valid, errors, cleaned = _validate_strategy_json(
@@ -704,18 +788,18 @@ def generate_pivot_strategy_markdown(
             allowed_transfer=transfer_skills,
             allowed_evidence_ids=allowed_evidence_ids,
         )
+        trace["validation_errors"] = list(errors)
 
-        # ---------------------------
-        # Call 2: repair if needed
-        # ---------------------------
         if not valid:
+            trace["repair_attempted"] = True
             repair_resp = client.responses.create(
                 model=model,
                 instructions="Return strictly valid JSON and nothing else.",
                 input=_repair_prompt(planner_text, errors),
             )
-            repaired_text = (repair_resp.output_text or "").strip()
-            repaired_obj = _extract_json_object(repaired_text)
+            repair_text = (repair_resp.output_text or "").strip()
+            trace["repair_raw"] = repair_text
+            repaired_obj = _extract_json_object(repair_text)
 
             valid, errors, cleaned = _validate_strategy_json(
                 repaired_obj,
@@ -723,13 +807,20 @@ def generate_pivot_strategy_markdown(
                 allowed_transfer=transfer_skills,
                 allowed_evidence_ids=allowed_evidence_ids,
             )
+            trace["validation_errors"] = list(errors)
 
             if not valid:
-                return offline
+                return {
+                    "markdown": offline_md,
+                    "source": "Offline evidence",
+                    "trace": trace,
+                    "cleaned_strategy": {},
+                    "evidence": evidence,
+                }
 
-        # ---------------------------
-        # Call 3: user-facing brief
-        # ---------------------------
+        trace["cleaned_strategy"] = cleaned
+        trace["mode"] = "online"
+
         writer_resp = client.responses.create(
             model=model,
             instructions="Write concise Markdown for a Streamlit UI.",
@@ -741,10 +832,54 @@ def generate_pivot_strategy_markdown(
             ),
         )
         writer_text = (writer_resp.output_text or "").strip()
+        trace["writer_raw"] = writer_text
+
         if not writer_text:
-            return offline
+            return {
+                "markdown": offline_md,
+                "source": "Offline evidence",
+                "trace": trace,
+                "cleaned_strategy": cleaned,
+                "evidence": evidence,
+            }
 
-        return "🤖 " + writer_text
+        return {
+            "markdown": "🤖 " + writer_text,
+            "source": "OpenAI multi-step",
+            "trace": trace,
+            "cleaned_strategy": cleaned,
+            "evidence": evidence,
+        }
 
-    except Exception:
-        return offline
+    except Exception as e:
+        trace["validation_errors"] = [f"Exception: {repr(e)}"]
+        return {
+            "markdown": offline_md,
+            "source": "Offline evidence",
+            "trace": trace,
+            "cleaned_strategy": {},
+            "evidence": evidence,
+        }
+
+
+def generate_pivot_strategy_markdown(
+    *,
+    current_role: str,
+    target_role: str,
+    gap_df: pd.DataFrame,
+    route: Optional[Dict[str, Any]] = None,
+    model: str = "gpt-4o-mini",
+    prefer_online: bool = True,
+    data_dir: str = "data/onet_raw",
+) -> str:
+    """Backward-compatible wrapper returning only Markdown."""
+    bundle = generate_pivot_strategy_bundle(
+        current_role=current_role,
+        target_role=target_role,
+        gap_df=gap_df,
+        route=route,
+        model=model,
+        prefer_online=prefer_online,
+        data_dir=data_dir,
+    )
+    return str(bundle["markdown"])
