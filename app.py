@@ -16,6 +16,8 @@ from src.model_logic import (
 )
 from src.ai_coach import generate_learning_plan_markdown
 
+from src.llm_pivot_strategy import generate_pivot_strategy_markdown
+
 
 # ============================================================
 # Page config
@@ -313,6 +315,11 @@ if "route_result" not in st.session_state:
     st.session_state.route_result = None
 if "route_config" not in st.session_state:
     st.session_state.route_config = {"k_neighbors": 10, "max_steps": 6}
+if "pivot_strategy_md" not in st.session_state:
+    st.session_state.pivot_strategy_md = ""
+
+if "pivot_strategy_source" not in st.session_state:
+    st.session_state.pivot_strategy_source = "—"
 
 
 # ============================================================
@@ -687,7 +694,39 @@ with right:
                     else:
                         st.info("Route computed, but path is empty (unexpected).")
 
+        
+        
         st.divider()
+
+        st.markdown("### Career pivot strategy (LLM + O*NET evidence)")
+        st.caption("Multi-step workflow: retrieve target-role evidence → structured plan → validation → final brief.")
+
+        s1, s2 = st.columns([1, 1])
+
+        with s1:
+            if st.button("Generate pivot strategy", use_container_width=True):
+
+                with st.spinner("Generating strategy..."):
+
+                    md = generate_pivot_strategy_markdown(
+                        current_role=str(current),
+                        target_role=str(target),
+                        gap_df=gap_df,
+                        route=st.session_state.route_result,
+                        model="gpt-4o-mini",
+                        prefer_online=True,
+                        data_dir="data/onet_raw",
+                    )
+
+                    st.session_state.pivot_strategy_md = md
+                    st.session_state.pivot_strategy_source = "OpenAI multi-step" if md.startswith("🤖") else "Offline evidence"
+
+        with s2:
+            if st.button("Clear strategy", use_container_width=True):
+                st.session_state.pivot_strategy_md = ""
+                st.session_state.pivot_strategy_source = "—"
+        
+
 
         st.markdown("### Learning plan (3 phases)")
 
@@ -725,6 +764,17 @@ if plan_md:
         st.subheader("Learning plan preview")
         st.caption(f"Source: {st.session_state.learning_plan_source} • Output is Markdown.")
         st.markdown(plan_md)
+        
+# ============================================================
+# Pivot strategy preview
+# ============================================================
+strategy_md = (st.session_state.pivot_strategy_md or "").strip()
+
+if strategy_md:
+    with st.container(border=True):
+        st.subheader("Career pivot strategy")
+        st.caption(f"Source: {st.session_state.pivot_strategy_source}")
+        st.markdown(strategy_md)
 
 
 # ============================================================
