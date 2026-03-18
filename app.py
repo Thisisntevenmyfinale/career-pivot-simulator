@@ -22,6 +22,19 @@ from src.skill_investment_simulator import (
 )
 from src.ai_coach import generate_learning_plan_markdown
 
+# Am Anfang von app.py, nach bestehenden Imports:
+
+# 🆕 NEW IMPORTS FOR ASSIGNMENT 2
+from src.llm_review_board import (
+    generate_all_strategies,
+    evaluate_strategies_by_reviewers,
+)
+from src.review_aggregation import (
+    compute_consensus,
+    generate_judge_memo,
+    rerank_after_skill_investment,
+)
+
 
 # ============================================================
 # Page config
@@ -334,6 +347,20 @@ if "portfolio_projects_trace" not in st.session_state:
     st.session_state.portfolio_projects_trace = {}
 if "sim_result" not in st.session_state:
     st.session_state.sim_result = None
+    
+# Im bestehenden Session-State-Block, nach allen anderen if-Checks:
+
+# 🆕 NEW STATE FOR REVIEW BOARD (Assignment 2)
+if "review_board_strategies" not in st.session_state:
+    st.session_state.review_board_strategies = None
+if "review_board_evaluations" not in st.session_state:
+    st.session_state.review_board_evaluations = None
+if "review_board_consensus" not in st.session_state:
+    st.session_state.review_board_consensus = None
+if "review_board_judge_memo" not in st.session_state:
+    st.session_state.review_board_judge_memo = None
+if "review_board_trace" not in st.session_state:
+    st.session_state.review_board_trace = {}
 
 
 # ============================================================
@@ -1095,3 +1122,243 @@ It’s a heuristic “coverage” score (not a probability). It combines:
             mime="text/csv",
             use_container_width=True,
         )
+        
+# ============================================================
+# 🆕 TAB: DECISION BOARD (Assignment 2 Feature)
+# ============================================================
+# WICHTIG: Diese Tabs-Zeile muss über diesem Code stehen (ungefähr Zeile 300-350):
+# tab1, tab2, tab3, tab4 = st.tabs([...])
+# ÄNDERE SIE ZU:
+# tab1, tab2, tab3, tab4, tab5 = st.tabs(["📊 Overview", "📚 Learning", "🎬 Extras", "⚙️ System"])
+
+# Dann füge NACH dem letzten "with tab4:" Block diesen Code ein:
+
+with st.expander("🆕 Decision Board (Assignment 2)", expanded=False):
+    """
+    Adversarial Review Board: 5 competing strategies evaluated by 5 expert personas.
+    """
+    
+    st.markdown("### ⚖️ Adversarial Review Board")
+    st.caption("Generate 5 competing strategies and have expert personas evaluate them.")
+
+    c1, c2, c3 = st.columns([1, 1, 1])
+
+    with c1:
+        if st.button("🔄 Generate Strategies", use_container_width=True, key="gen_strat_board"):
+            with st.spinner("Generating 5 strategy archetypes..."):
+                strategies_bundle = generate_all_strategies(
+                    current_role=str(current),
+                    target_role=str(target),
+                    gap_df=gap_df,
+                    model="gpt-4o-mini",
+                    prefer_online=True,
+                )
+                st.session_state.review_board_strategies = strategies_bundle.get("strategies")
+                st.session_state.review_board_trace["strategies_bundle"] = strategies_bundle.get("trace")
+                st.success(f"✅ Generated {len(st.session_state.review_board_strategies)} strategies!")
+
+    with c2:
+        if st.button("👥 Get Expert Evals", use_container_width=True, key="eval_strat_board"):
+            if not st.session_state.review_board_strategies:
+                st.error("❌ Generate strategies first!")
+            else:
+                with st.spinner("Evaluating by 5 expert personas (Hiring Manager, Recruiter, Portfolio Eval, Risk Analyst, Career Coach)..."):
+                    evals_bundle = evaluate_strategies_by_reviewers(
+                        strategies=st.session_state.review_board_strategies,
+                        current_role=str(current),
+                        target_role=str(target),
+                        model="gpt-4o-mini",
+                        prefer_online=True,
+                    )
+                    st.session_state.review_board_evaluations = evals_bundle.get("evaluations")
+                    st.session_state.review_board_trace["evaluations_bundle"] = evals_bundle.get("trace")
+                    st.success(f"✅ Got evaluations from {len(st.session_state.review_board_evaluations)} reviewers!")
+
+    with c3:
+        if st.button("🏆 Compute Consensus", use_container_width=True, key="consensus_board"):
+            if not st.session_state.review_board_evaluations:
+                st.error("❌ Get expert evals first!")
+            else:
+                with st.spinner("Aggregating scores + computing consensus (Python)..."):
+                    consensus = compute_consensus(st.session_state.review_board_evaluations)
+                    st.session_state.review_board_consensus = consensus
+                    st.success(f"✅ Consensus computed! Winner: {consensus.winner_strategy} ({consensus.winner_score:.1f}/100)")
+
+    st.divider()
+
+    # Display generated strategies
+    if st.session_state.review_board_strategies:
+        with st.expander("📋 Generated Strategies", expanded=True):
+            for i, strat in enumerate(st.session_state.review_board_strategies):
+                with st.container(border=True):
+                    col1, col2 = st.columns([2, 1])
+                    with col1:
+                        st.markdown(f"### {i+1}. {strat.archetype.name}")
+                        st.markdown(f"{strat.summary}")
+                    with col2:
+                        st.markdown(f"**Code**: `{strat.archetype.code}`")
+                        st.markdown(f"**Risk**: {strat.archetype.risk_level.upper()}")
+                        st.markdown(f"**Days**: {strat.archetype.estimated_days}")
+
+                    with st.expander("Details", expanded=False):
+                        st.markdown("**Phases**:")
+                        for phase in strat.phases:
+                            st.markdown(f"- **{phase.phase}**: {phase.objective}")
+
+                        st.markdown("**Missing skills to address**:")
+                        for skill in strat.key_missing_skills[:3]:
+                            st.markdown(f"  - {skill}")
+
+    # Display consensus results
+    if st.session_state.review_board_consensus:
+        consensus = st.session_state.review_board_consensus
+
+        with st.expander("🏆 Consensus Rankings", expanded=True):
+            col1, col2, col3 = st.columns([1, 1, 1])
+            with col1:
+                st.markdown(f"**🥇 Winner**: `{consensus.winner_strategy}`")
+                st.metric("Score", f"{consensus.winner_score:.1f}/100")
+
+            with col2:
+                st.markdown(f"**🥈 Runner-up**: `{consensus.runner_up_strategy}`")
+                st.metric("Score", f"{consensus.runner_up_score:.1f}/100")
+
+            with col3:
+                st.markdown(f"**🤝 Consensus Strength**")
+                st.metric("Agreement", f"{consensus.consensus_strength:.0f}/100")
+
+            st.divider()
+
+            st.markdown("### All Strategies Ranked")
+            ranking_df = pd.DataFrame(
+                consensus.strategy_rankings,
+                columns=["Strategy Code", "Avg Score"]
+            )
+            _render_table_card(
+                ranking_df,
+                columns=["Strategy Code", "Avg Score"],
+                headers=["Strategy", "Average Score"],
+                numeric_cols=["Avg Score"],
+            )
+
+        # Major disagreements
+        if consensus.major_disagreements:
+            with st.expander("🤝 Major Disagreements (where experts diverge)", expanded=False):
+                for d in consensus.major_disagreements[:3]:
+                    with st.container(border=True):
+                        st.markdown(f"**{d['strategy']}** (score range: {d['range']})")
+                        col_a, col_b = st.columns(2)
+                        with col_a:
+                            st.markdown(f"✅ **{d['strongest_advocate']}** loves it")
+                        with col_b:
+                            st.markdown(f"❌ **{d['strongest_critic']}** is skeptical")
+                        st.caption(f"Spread: {d['spread']:.0f} points")
+
+    # Generate Judge memo
+    if st.session_state.review_board_consensus:
+        if st.button("📝 Generate Final Judge Recommendation", use_container_width=True, key="judge_board"):
+            with st.spinner("Judge LLM evaluating consensus..."):
+                missing = gap_df[gap_df["gap"] > 0]["skill"].head(4).tolist()
+                gap_summary = f"Key gaps: {', '.join(missing) if missing else 'None identified'}"
+
+                judge_bundle = generate_judge_memo(
+                    current_role=str(current),
+                    target_role=str(target),
+                    consensus_result=st.session_state.review_board_consensus,
+                    evaluations=st.session_state.review_board_evaluations or [],
+                    gap_summary=gap_summary,
+                    model="gpt-4o-mini",
+                    prefer_online=True,
+                )
+                st.session_state.review_board_judge_memo = judge_bundle.get("memo")
+                st.success("✅ Judge memo generated!")
+
+    # Display Judge memo
+    if st.session_state.review_board_judge_memo:
+        memo = st.session_state.review_board_judge_memo
+        with st.container(border=True):
+            st.markdown("### 📋 Final Judge Recommendation")
+
+            col1, col2, col3 = st.columns([1, 1, 1])
+            with col1:
+                verdict_color = {"high": "🟢", "medium": "🟡", "low": "🔴"}.get(memo.verdict.lower().split()[0], "⚪")
+                st.markdown(f"{verdict_color} **Verdict**: {memo.verdict}")
+
+            with col2:
+                st.markdown(f"📌 **Recommended Strategy**: `{memo.recommended_strategy}`")
+
+            with col3:
+                st.markdown(f"⏱️ **Timeline**: {memo.success_timeline}")
+
+            st.divider()
+
+            st.markdown(f"**Executive Summary**\n{memo.executive_summary}")
+
+            col_sf, col_cr = st.columns(2)
+            with col_sf:
+                st.markdown("**✅ Success Factors**:")
+                for factor in memo.key_success_factors[:3]:
+                    st.markdown(f"- {factor}")
+
+            with col_cr:
+                st.markdown("**⚠️ Critical Risks**:")
+                for risk in memo.critical_risks[:2]:
+                    st.markdown(f"- {risk}")
+
+            st.markdown("**💼 How to pitch this to hiring managers**:")
+            st.info(memo.interview_narrative)
+
+    # Counterfactual analysis
+    if st.session_state.review_board_evaluations and st.session_state.review_board_consensus:
+        st.divider()
+        with st.expander("🚀 Counterfactual: What if you invested in specific skills?", expanded=False):
+            st.caption("Simulate improving key skills and watch strategy rankings change.")
+
+            sim_cands = suggest_best_investment_skills(gap_df, top_k=8)
+            if not sim_cands.empty:
+                skill_options = sim_cands["skill"].astype(str).tolist()
+                selected_skills = st.multiselect(
+                    "Which skills would you improve?",
+                    options=skill_options,
+                    default=skill_options[:min(2, len(skill_options))],
+                    key="counterfactual_skills",
+                )
+
+                uplift_ratio = st.slider(
+                    "How close to target level?",
+                    min_value=0.1,
+                    max_value=1.0,
+                    value=0.5,
+                    step=0.05,
+                    key="counterfactual_uplift",
+                )
+
+                if st.button("🔄 Re-evaluate Strategies", use_container_width=True, key="rerank_board"):
+                    with st.spinner("Simulating skill improvement impact..."):
+                        new_consensus = rerank_after_skill_investment(
+                            evaluations=st.session_state.review_board_evaluations,
+                            invested_skills=selected_skills,
+                            uplift_ratio=float(uplift_ratio),
+                        )
+
+                        st.session_state.review_board_trace["counterfactual_consensus"] = new_consensus
+
+                        st.markdown("### Rankings After Skill Investment")
+                        ranking_cf_df = pd.DataFrame(
+                            new_consensus.strategy_rankings,
+                            columns=["Strategy", "New Score"]
+                        )
+                        _render_table_card(
+                            ranking_cf_df,
+                            columns=["Strategy", "New Score"],
+                            headers=["Strategy", "New Avg Score"],
+                            numeric_cols=["New Score"],
+                        )
+
+                        if new_consensus.winner_strategy != st.session_state.review_board_consensus.winner_strategy:
+                            st.success(
+                                f"💡 **Recommendation flipped!** New winner: `{new_consensus.winner_strategy}` "
+                                f"({new_consensus.winner_score:.1f}/100)"
+                            )
+                        else:
+                            st.info(f"Strategy `{new_consensus.winner_strategy}` remains optimal")
