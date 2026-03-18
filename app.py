@@ -1,4 +1,4 @@
-# app.py
+
 from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
@@ -21,10 +21,6 @@ from src.skill_investment_simulator import (
     suggest_best_investment_skills,
 )
 from src.ai_coach import generate_learning_plan_markdown
-
-# Am Anfang von app.py, nach bestehenden Imports:
-
-# 🆕 NEW IMPORTS FOR ASSIGNMENT 2
 from src.llm_review_board import (
     generate_all_strategies,
     evaluate_strategies_by_reviewers,
@@ -35,12 +31,20 @@ from src.review_aggregation import (
     rerank_after_skill_investment,
 )
 
-st.write("🚀 LIVE VERSION CHECK")
 # ============================================================
 # Page config
 # ============================================================
-# Streamlit config must be set before most other Streamlit calls.
 st.set_page_config(page_title="Career Pivot Simulator", page_icon="🧭", layout="wide")
+
+
+def _has_openai_secret() -> bool:
+    try:
+        return bool(str(st.secrets["OPENAI_API_KEY"]).strip())
+    except Exception:
+        return False
+
+
+st.write("🚀 LIVE VERSION CHECK")
 
 
 # Global CSS to align the app look-and-feel with a card-based UI.
@@ -868,10 +872,10 @@ with right:
         st.markdown("### Learning plan (3 phases)")
 
         c1, c2 = st.columns([1, 1])
-
+                        
         with c1:
             if st.button("Generate plan", use_container_width=True):
-                with st.spinner("Generating plan (OpenAI if available)…"):
+                with st.spinner("Generating plan..."):
                     md = generate_learning_plan_markdown(
                         current_role=str(current),
                         target_role=str(target),
@@ -881,12 +885,19 @@ with right:
                         max_missing=6,
                         prefer_online=True,
                     )
+
                     st.session_state.learning_plan_md = md
 
-                    if md.startswith("🤖"):
+                    offline_markers = (
+                        md.startswith("**Learning Plan:**")
+                        or md.startswith("Transition Plan")
+                        or md.startswith("After filtering, no clear high-priority skill gaps were detected.")
+                    )
+
+                    if md.startswith("ERROR::") or md.startswith("⚠️ ONLINE_ERROR"):
+                        st.session_state.learning_plan_source = "OpenAI error"
+                    elif _has_openai_secret() and not offline_markers:
                         st.session_state.learning_plan_source = "OpenAI"
-                    elif md.startswith("⚠️"):
-                        st.session_state.learning_plan_source = "OpenAI error → fallback"
                     else:
                         st.session_state.learning_plan_source = "Offline"
 
