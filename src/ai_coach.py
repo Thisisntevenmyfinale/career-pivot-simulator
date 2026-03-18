@@ -7,8 +7,13 @@ from typing import Optional
 import pandas as pd
 
 
+    
 def _get_api_key_optional() -> str:
-    return os.getenv("OPENAI_API_KEY", "").strip()
+    try:
+        import streamlit as st
+        return str(st.secrets["OPENAI_API_KEY"]).strip()
+    except Exception:
+        return ""
 
 
 def _sanitize_role_name(s: str) -> str:

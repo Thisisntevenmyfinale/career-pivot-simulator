@@ -894,7 +894,8 @@ with right:
             if st.button("Clear", use_container_width=True):
                 st.session_state.learning_plan_md = ""
                 st.session_state.learning_plan_source = "—"
-
+st.session_state.learning_plan_md = md
+st.session_state.learning_plan_source = "OpenAI" if md.startswith("🤖") else "Offline"
         st.caption("Output is shown full-width below (no PDF).")
 
 
