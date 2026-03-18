@@ -1,5 +1,4 @@
 # app.py
-st.write("🚀 LIVE VERSION CHECK")
 from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
@@ -36,7 +35,7 @@ from src.review_aggregation import (
     rerank_after_skill_investment,
 )
 
-
+st.write("🚀 LIVE VERSION CHECK")
 # ============================================================
 # Page config
 # ============================================================
