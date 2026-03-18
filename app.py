@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
@@ -10,12 +9,9 @@ import streamlit as st
 from src.model_logic import (
     load_runtime_artifacts,
     compute_gap_df,
-    compute_skill_contributions,
     compute_confidence_score,
     find_pivot_path,
 )
-from src.llm_pivot_strategy import generate_pivot_strategy_bundle
-from src.llm_portfolio import generate_portfolio_projects_bundle
 from src.skill_investment_simulator import (
     simulate_skill_investment,
     suggest_best_investment_skills,
@@ -37,6 +33,9 @@ from src.review_aggregation import (
 st.set_page_config(page_title="Career Pivot Simulator", page_icon="🧭", layout="wide")
 
 
+# ============================================================
+# Small helpers
+# ============================================================
 def _has_openai_secret() -> bool:
     try:
         return bool(str(st.secrets["OPENAI_API_KEY"]).strip())
@@ -44,11 +43,72 @@ def _has_openai_secret() -> bool:
         return False
 
 
-st.write("🚀 LIVE VERSION CHECK")
+def _render_table_card(
+    df: pd.DataFrame,
+    columns: List[str],
+    headers: Optional[List[str]] = None,
+    numeric_cols: Optional[List[str]] = None,
+) -> None:
+    if df is None or df.empty:
+        st.info("No data.")
+        return
+
+    view = df[columns].copy()
+    headers = headers or columns
+    numeric_cols_set = set(numeric_cols or [])
+
+    for c in columns:
+        if c in numeric_cols_set:
+            view[c] = pd.to_numeric(view[c], errors="coerce").map(
+                lambda x: "" if pd.isna(x) else f"{float(x):.2f}"
+            )
+
+    th = "".join([f"<th>{h}</th>" for h in headers])
+    rows_html = []
+    for _, r in view.iterrows():
+        tds = []
+        for c in columns:
+            val = r[c]
+            cls = "num" if c in numeric_cols_set else ""
+            safe = str(val).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            tds.append(f"<td class='{cls}'>{safe}</td>")
+        rows_html.append("<tr>" + "".join(tds) + "</tr>")
+
+    html = f"""
+<div class="li-table-wrap">
+  <table class="li-table">
+    <thead><tr>{th}</tr></thead>
+    <tbody>{''.join(rows_html)}</tbody>
+  </table>
+</div>
+"""
+    st.markdown(html, unsafe_allow_html=True)
 
 
-# Global CSS to align the app look-and-feel with a card-based UI.
-# Intent: keep the UI predictable across Streamlit versions by overriding key BaseWeb tokens.
+def _learning_plan_source_label(md: str) -> str:
+    text = (md or "").strip()
+    if not text:
+        return "—"
+    if text.startswith("🤖"):
+        return "OpenAI"
+    if text.startswith("⚠️ ONLINE_ERROR"):
+        return "OpenAI error → fallback"
+    if text.startswith("ERROR::"):
+        return "Secret / runtime error"
+    return "Offline"
+
+
+def _extract_review_trace_status(trace: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "mode": trace.get("mode", ""),
+        "model": trace.get("model", ""),
+        "errors": trace.get("errors", []),
+    }
+
+
+# ============================================================
+# CSS
+# ============================================================
 st.markdown(
     """
 <style>
@@ -64,7 +124,6 @@ st.markdown(
   --shadow: 0 1px 1px rgba(0,0,0,0.04);
 }
 
-/* Remove Streamlit chrome */
 [data-testid="stHeader"]{ height:0px !important; background:transparent !important; }
 [data-testid="stToolbar"]{ display:none !important; }
 #MainMenu{ visibility:hidden; }
@@ -81,7 +140,6 @@ html, body, .stApp{
   padding-bottom: 28px !important;
 }
 
-/* Cards */
 div[data-testid="stVerticalBlockBorderWrapper"]{
   background: var(--li-card) !important;
   border: 1px solid var(--li-border-soft) !important;
@@ -97,7 +155,6 @@ section[data-testid="stSidebar"] div[data-testid="stVerticalBlockBorderWrapper"]
   padding: 12px !important;
 }
 
-/* Controls: force blue radio + switch (BaseWeb + Streamlit tokens) */
 :root{
   --primary-color: #0A66C2 !important;
   --primaryColor: #0A66C2 !important;
@@ -111,7 +168,6 @@ section[data-testid="stSidebar"] div[data-testid="stVerticalBlockBorderWrapper"]
   --primaryColorHover: #004182 !important;
 }
 
-/* RADIO: BaseWeb SVG + checked state */
 [data-baseweb="radio"] svg{
   color: var(--li-blue) !important;
   fill: var(--li-blue) !important;
@@ -124,7 +180,6 @@ section[data-testid="stSidebar"] div[data-testid="stVerticalBlockBorderWrapper"]
   border-color: var(--li-blue) !important;
 }
 
-/* SWITCH: track + knob (BaseWeb) */
 [data-baseweb="switch"] [role="switch"][aria-checked="true"]{
   background-color: rgba(10,102,194,0.35) !important;
   border-color: rgba(10,102,194,0.35) !important;
@@ -133,7 +188,6 @@ section[data-testid="stSidebar"] div[data-testid="stVerticalBlockBorderWrapper"]
   background: var(--li-blue) !important;
 }
 
-/* Buttons: remove wrapper boxes */
 .stButton > div,
 .stDownloadButton > div{
   background: transparent !important;
@@ -151,7 +205,6 @@ section[data-testid="stSidebar"] div[data-testid="stVerticalBlockBorderWrapper"]
   box-shadow: none !important;
 }
 
-/* Actual button */
 .stButton > button, .stDownloadButton > button{
   background: var(--li-blue) !important;
   border: 1px solid var(--li-blue) !important;
@@ -171,12 +224,7 @@ section[data-testid="stSidebar"] div[data-testid="stVerticalBlockBorderWrapper"]
   background: var(--li-blue-dark) !important;
   border: 1px solid var(--li-blue-dark) !important;
 }
-.stButton > button:focus, .stDownloadButton > button:focus{
-  box-shadow: none !important;
-  outline: none !important;
-}
 
-/* Table: lighter borders and avoid double bottom line */
 .li-table-wrap{
   border: 1px solid rgba(0,0,0,0.05) !important;
   border-radius: 10px !important;
@@ -204,76 +252,40 @@ table.li-table{
   border-bottom: 1px solid rgba(0,0,0,0.04) !important;
   color: rgba(0,0,0,0.88) !important;
 }
-.li-table tbody tr:last-child td{
-  border-bottom: none !important;
-}
 .li-table .num{
   text-align: right !important;
   font-variant-numeric: tabular-nums !important;
 }
 
-/* Subtitle */
 .li-subtitle{
   margin-top: -4px;
   margin-bottom: 6px;
   color: var(--li-subtext);
   font-size: 13px;
 }
+
+.status-pill{
+  display:inline-block;
+  padding:6px 10px;
+  border-radius:999px;
+  font-size:12px;
+  font-weight:700;
+  margin-right:8px;
+}
+.status-ok{
+  background:#E7F6EC;
+  color:#117A37;
+  border:1px solid #CBEAD5;
+}
+.status-warn{
+  background:#FFF4E5;
+  color:#A05A00;
+  border:1px solid #F3D7A5;
+}
 </style>
 """,
     unsafe_allow_html=True,
 )
-
-
-def _render_table_card(
-    df: pd.DataFrame,
-    columns: List[str],
-    headers: Optional[List[str]] = None,
-    numeric_cols: Optional[List[str]] = None,
-) -> None:
-    """Render a crisp HTML table (display only).
-
-    Notes:
-      - This intentionally bypasses Streamlit's dataframe renderer to keep layout stable.
-      - Values are HTML-escaped to avoid injection issues when skills/labels contain symbols.
-      - Numeric formatting is purely presentation; upstream computations remain unchanged.
-    """
-    if df is None or df.empty:
-        st.info("No data.")
-        return
-
-    view = df[columns].copy()
-    headers = headers or columns
-    numeric_cols_set = set(numeric_cols or [])
-
-    # Format numeric columns for readability; keep blanks for NaN to avoid "nan" noise.
-    for c in columns:
-        if c in numeric_cols_set:
-            view[c] = pd.to_numeric(view[c], errors="coerce").map(
-                lambda x: "" if pd.isna(x) else f"{float(x):.2f}"
-            )
-
-    th = "".join([f"<th>{h}</th>" for h in headers])
-    rows_html = []
-    for _, r in view.iterrows():
-        tds = []
-        for c in columns:
-            val = r[c]
-            cls = "num" if c in numeric_cols_set else ""
-            # Minimal escaping for safety while keeping the output lightweight.
-            safe = str(val).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-            tds.append(f"<td class='{cls}'>{safe}</td>")
-        rows_html.append("<tr>" + "".join(tds) + "</tr>")
-
-    html = f"""
-<div class="li-table-wrap">
-  <table class="li-table">
-    <thead><tr>{th}</tr></thead>
-    <tbody>{''.join(rows_html)}</tbody>
-  </table>
-</div>
-"""
-    st.markdown(html, unsafe_allow_html=True)
 
 
 # ============================================================
@@ -282,9 +294,15 @@ def _render_table_card(
 with st.container(border=True):
     st.markdown("## 🧭 Career Pivot Simulator")
     st.markdown(
-        '<div class="li-subtitle">Data + AI prototype to explore career pivots: match scoring • explainability • stepping-stone route • AI learning plan.</div>',
+        '<div class="li-subtitle">Career pivot decision support with O*NET skill matching, route analysis, learning plan generation, and an adversarial LLM review board.</div>',
         unsafe_allow_html=True,
     )
+    llm_html = (
+        '<span class="status-pill status-ok">LLM ready: Streamlit secret found</span>'
+        if _has_openai_secret()
+        else '<span class="status-pill status-warn">LLM fallback mode: no Streamlit secret found</span>'
+    )
+    st.markdown(llm_html, unsafe_allow_html=True)
 
 
 # ============================================================
@@ -292,97 +310,56 @@ with st.container(border=True):
 # ============================================================
 @st.cache_data(show_spinner=False)
 def load_artifacts_cached() -> Any:
-    """Load precomputed runtime artifacts from disk.
-
-    Cached because artifacts are typically large and immutable during an app session.
-    """
     return load_runtime_artifacts("artifacts")
 
 
 try:
     art = load_artifacts_cached()
 except Exception as e:
-    # Fail fast with a clear message; downstream code assumes artifacts are valid.
     st.error("Missing or invalid runtime artifacts.")
     st.info("Run: `python scripts/preprocess_onet.py` to generate artifacts.")
     st.exception(e)
     st.stop()
 
 mat: pd.DataFrame = art.matrix
-coords_pca: pd.DataFrame = art.coords
 occupations: list[str] = mat.index.astype(str).tolist()
-
-# Convert once into a contiguous float32 array; downstream scoring relies on fast linear algebra.
 X_BASE: np.ndarray = np.asarray(mat.to_numpy(), dtype=np.float32, order="C")
 OCCS: list[str] = occupations
 OCC_TO_IDX: dict[str, int] = {o: i for i, o in enumerate(OCCS)}
-N_OCC: int = X_BASE.shape[0]
 
 
 # ============================================================
 # Session state
 # ============================================================
-# Session state is used to preserve user choices and results across reruns (Streamlit reruns on interaction).
-if "has_run" not in st.session_state:
-    st.session_state.has_run = False
-if "target_override" not in st.session_state:
-    st.session_state.target_override = None
-if "learning_plan_md" not in st.session_state:
-    st.session_state.learning_plan_md = ""
-if "learning_plan_source" not in st.session_state:
-    st.session_state.learning_plan_source = "—"
-if "route_result" not in st.session_state:
-    st.session_state.route_result = None
-if "route_config" not in st.session_state:
-    st.session_state.route_config = {"k_neighbors": 10, "max_steps": 6}
-if "pivot_strategy_md" not in st.session_state:
-    st.session_state.pivot_strategy_md = ""
-if "pivot_strategy_source" not in st.session_state:
-    st.session_state.pivot_strategy_source = "—"
-if "pivot_strategy_trace" not in st.session_state:
-    st.session_state.pivot_strategy_trace = {}
-if "portfolio_projects_md" not in st.session_state:
-    st.session_state.portfolio_projects_md = ""
-if "portfolio_projects_source" not in st.session_state:
-    st.session_state.portfolio_projects_source = "—"
-if "portfolio_projects_df" not in st.session_state:
-    st.session_state.portfolio_projects_df = pd.DataFrame()
-if "portfolio_projects_trace" not in st.session_state:
-    st.session_state.portfolio_projects_trace = {}
-if "sim_result" not in st.session_state:
-    st.session_state.sim_result = None
-    
-# Im bestehenden Session-State-Block, nach allen anderen if-Checks:
+DEFAULT_STATE = {
+    "has_run": False,
+    "target_override": None,
+    "route_result": None,
+    "route_config": {"k_neighbors": 10, "max_steps": 6},
+    "learning_plan_md": "",
+    "learning_plan_source": "—",
+    "sim_result": None,
+    "review_board_strategies": None,
+    "review_board_evaluations": None,
+    "review_board_consensus": None,
+    "review_board_judge_memo": None,
+    "review_board_trace": {},
+}
 
-# 🆕 NEW STATE FOR REVIEW BOARD (Assignment 2)
-if "review_board_strategies" not in st.session_state:
-    st.session_state.review_board_strategies = None
-if "review_board_evaluations" not in st.session_state:
-    st.session_state.review_board_evaluations = None
-if "review_board_consensus" not in st.session_state:
-    st.session_state.review_board_consensus = None
-if "review_board_judge_memo" not in st.session_state:
-    st.session_state.review_board_judge_memo = None
-if "review_board_trace" not in st.session_state:
-    st.session_state.review_board_trace = {}
+for key, value in DEFAULT_STATE.items():
+    if key not in st.session_state:
+        st.session_state[key] = value
 
 
 # ============================================================
-# Scoring core (unchanged)
+# Scoring core
 # ============================================================
 @st.cache_resource(show_spinner=False)
 def build_cosine_core(use_idf: bool) -> Dict[str, Any]:
-    """Prepare normalized vectors and optional IDF weights for cosine similarity.
-
-    Why this is cached:
-      - Computing IDF and normalized matrices is deterministic for a fixed artifact set.
-      - The normalized matrix is reused across multiple computations (distribution + neighbors).
-    """
     X = X_BASE
     n, d = X.shape
 
     if use_idf:
-        # IDF downweights ubiquitous skills so that rare differentiators matter more.
         df = np.sum(X > 0.0, axis=0).astype(np.float32, copy=False)
         idf = np.log((np.float32(n) + 1.0) / (1.0 + df)) + 1.0
         idf = np.clip(idf, 1.0, None).astype(np.float32, copy=False)
@@ -391,34 +368,24 @@ def build_cosine_core(use_idf: bool) -> Dict[str, Any]:
         idf = np.ones(d, dtype=np.float32)
         Xw = X
 
-    # Guard against zero vectors (e.g., if an occupation has no skill weights in the dataset).
     norms = np.linalg.norm(Xw, axis=1)
     norms_safe = np.where(norms == 0.0, 1.0, norms).astype(np.float32, copy=False)
     Xn = (Xw / norms_safe[:, None]).astype(np.float32, copy=False)
 
-    return {"occs": OCCS, "occ_to_idx": OCC_TO_IDX, "Xn": Xn, "Xn_T": Xn.T, "idf": idf, "n": n}
+    return {"occs": OCCS, "occ_to_idx": OCC_TO_IDX, "Xn": Xn, "Xn_T": Xn.T}
 
 
 def _percentile_from_sorted(sorted_vals: np.ndarray, x: float) -> float:
-    """Compute a midrank percentile for a value against a sorted distribution.
-
-    Midrank behavior avoids over-crediting ties while keeping percentiles stable.
-    """
-    v = sorted_vals
-    if v.size == 0 or not np.isfinite(x):
+    if sorted_vals.size == 0 or not np.isfinite(x):
         return 0.0
-    left = int(np.searchsorted(v, x, side="left"))
-    right = int(np.searchsorted(v, x, side="right"))
+    left = int(np.searchsorted(sorted_vals, x, side="left"))
+    right = int(np.searchsorted(sorted_vals, x, side="right"))
     eq = right - left
-    pct = 100.0 * (left + 0.5 * eq) / float(v.size)
+    pct = 100.0 * (left + 0.5 * eq) / float(sorted_vals.size)
     return float(np.clip(pct, 0.0, 100.0))
 
 
 def _midrank_percentiles(values: np.ndarray) -> np.ndarray:
-    """Compute midrank percentiles for an array, handling ties deterministically.
-
-    Uses a stable sort so that equal values receive identical percentiles.
-    """
     v = np.asarray(values, dtype=np.float32)
     n = v.size
     if n == 0:
@@ -435,8 +402,7 @@ def _midrank_percentiles(values: np.ndarray) -> np.ndarray:
             j += 1
         less = i
         eq = j - i
-        pct = 100.0 * (less + 0.5 * eq) / float(n)
-        pct_sorted[i:j] = np.float32(pct)
+        pct_sorted[i:j] = np.float32(100.0 * (less + 0.5 * eq) / float(n))
         i = j
 
     pct = np.empty(n, dtype=np.float32)
@@ -445,10 +411,6 @@ def _midrank_percentiles(values: np.ndarray) -> np.ndarray:
 
 
 def get_score_distribution(use_idf: bool, current_occ: str) -> Dict[str, Any]:
-    """Return similarity scores for all occupations relative to the current occupation.
-
-    The distribution excludes the current occupation itself to make percentiles meaningful.
-    """
     core = build_cosine_core(bool(use_idf))
     Xn: np.ndarray = core["Xn"]
     Xn_T: np.ndarray = core["Xn_T"]
@@ -456,7 +418,6 @@ def get_score_distribution(use_idf: bool, current_occ: str) -> Dict[str, Any]:
 
     i = occ_to_idx.get(current_occ, -1)
     if i < 0:
-        # Defensive default for invalid occupation labels (e.g., artifacts mismatch).
         return {
             "scores": np.asarray([], dtype=np.float32),
             "scores_sorted": np.asarray([], dtype=np.float32),
@@ -466,59 +427,51 @@ def get_score_distribution(use_idf: bool, current_occ: str) -> Dict[str, Any]:
 
     sims = Xn[i] @ Xn_T
     sims = np.clip(sims, -1.0, 1.0)
-
-    # Similarities are clipped to [0, 1] to avoid negative match scores in the UI.
     raw_scores_all = np.maximum(sims, 0.0) * 100.0
     raw_scores_all = np.clip(raw_scores_all, 0.0, 100.0).astype(np.float32, copy=False)
 
     mask_other = np.ones(raw_scores_all.shape[0], dtype=bool)
     mask_other[i] = False
 
-    scores = raw_scores_all[mask_other]
-    scores_sorted = np.sort(scores)
-
-    return {"scores": scores, "scores_sorted": scores_sorted, "raw_scores_all": raw_scores_all, "mask_other": mask_other}
+    return {
+        "scores": raw_scores_all[mask_other],
+        "scores_sorted": np.sort(raw_scores_all[mask_other]),
+        "raw_scores_all": raw_scores_all,
+        "mask_other": mask_other,
+    }
 
 
 def recommend_neighbors(use_idf: bool, current_occ: str, top_k: int = 10) -> pd.DataFrame:
-    """Return the top-k closest occupations to the current occupation.
-
-    Percentiles are computed over 'other occupations' only, matching the UI interpretation.
-    """
     dist = get_score_distribution(bool(use_idf), str(current_occ))
-    scores_other: np.ndarray = dist["scores"]
-    raw_all: np.ndarray = dist["raw_scores_all"]
-    mask_other: np.ndarray = dist["mask_other"]
+    scores_other = dist["scores"]
+    raw_all = dist["raw_scores_all"]
+    mask_other = dist["mask_other"]
 
     if scores_other.size == 0 or raw_all.size == 0:
         return pd.DataFrame(columns=["occupation", "match_raw", "match_percentile"])
 
     pct_other = _midrank_percentiles(scores_other)
-
     occ_other = np.asarray(OCCS, dtype=object)[mask_other]
     raw_other = raw_all[mask_other]
 
-    # Clamp k to the available space; keep behavior predictable for edge cases.
     k = int(min(max(int(top_k), 0), raw_other.size))
     if k == 0:
         return pd.DataFrame(columns=["occupation", "match_raw", "match_percentile"])
 
-    # Argpartition is used for top-k selection without sorting the full array.
     idx_part = np.argpartition(-raw_other, kth=k - 1)[:k]
     idx_sorted = idx_part[np.argsort(-raw_other[idx_part], kind="mergesort")]
 
-    df = pd.DataFrame(
+    return pd.DataFrame(
         {
             "occupation": occ_other[idx_sorted],
             "match_raw": raw_other[idx_sorted].astype(float),
             "match_percentile": pct_other[idx_sorted].astype(float),
         }
     ).reset_index(drop=True)
-    return df
 
 
 # ============================================================
-# Sidebar (2 clean cards)
+# Sidebar
 # ============================================================
 with st.sidebar:
     with st.container(border=True):
@@ -532,14 +485,12 @@ with st.sidebar:
         with st.expander("Choose your pivot", expanded=True):
             current = st.selectbox("Current occupation", options=occupations, index=0)
             default_target_idx = 1 if len(occupations) > 1 else 0
-            target = st.selectbox("Target occupation", options=occupations, index=default_target_idx)
+            selected_target = st.selectbox("Target occupation", options=occupations, index=default_target_idx)
 
-            # Allow the main panel to "promote" a recommended neighbor into the target selector.
-            if st.session_state.target_override:
-                target = st.session_state.target_override
+            target = st.session_state.target_override or selected_target
 
             if current == target:
-                st.warning("Pick a different target (current and target are identical).")
+                st.warning("Pick a different target.")
 
         with st.expander("Scoring", expanded=True):
             use_idf = st.toggle("Downweight common skills (IDF)", value=True)
@@ -548,19 +499,16 @@ with st.sidebar:
                 options=["Percentile (recommended)", "Raw similarity (transparent)"],
                 index=0,
             )
-            st.caption("Tip: Percentile answers: “How strong is this target vs other options from my current role?”")
+            st.caption("Percentile answers: how strong is this target versus all other options from the current role?")
 
         if not guided:
-            with st.expander("Research knobs (optional)", expanded=False):
-                st.subheader("Stepping-stone route")
+            with st.expander("Research knobs", expanded=False):
                 k_neighbors = st.slider("kNN neighbors", 2, 20, int(st.session_state.route_config["k_neighbors"]), 1)
                 max_steps = st.slider("Max steps", 2, 10, int(st.session_state.route_config["max_steps"]), 1)
                 st.session_state.route_config = {"k_neighbors": int(k_neighbors), "max_steps": int(max_steps)}
 
         st.divider()
-        run = st.button("🚀 Run pivot analysis", use_container_width=True)
-        if run:
-            # This gate prevents expensive computations before the user explicitly runs the analysis.
+        if st.button("🚀 Run pivot analysis", use_container_width=True):
             st.session_state.has_run = True
 
     with st.container(border=True):
@@ -577,25 +525,28 @@ if not st.session_state.has_run:
 
     with c1:
         with st.container():
-            st.subheader("What you can do here")
+            st.subheader("What this prototype does")
             st.markdown(
                 """
-- Compare a **current** vs **target** occupation using skill-profile similarity.
-- See **what transfers** and **what’s missing** (explainability).
-- Try a **stepping-stone route** (intermediate roles).
-- Generate a **3-phase learning plan** with OpenAI (cached in the session once generated).
+- Compare a current role and target role using skill-profile similarity.
+- Show what transfers and what blocks the pivot.
+- Suggest stepping-stone roles.
+- Simulate targeted skill investment.
+- Generate an LLM learning plan.
+- Run an adversarial review board with competing strategies and reviewer personas.
                 """
             )
 
     with c2:
         with st.container():
-            st.subheader("How to use it (fast)")
+            st.subheader("Fast path")
             st.markdown(
                 """
-1) Pick current + target  
-2) Click **Run pivot analysis**  
-3) Generate the learning plan (optional)  
-4) If it’s a hard pivot, choose a stepping-stone suggestion
+1. Pick current and target roles  
+2. Click **Run pivot analysis**  
+3. Review match + gaps  
+4. Generate the learning plan  
+5. Run the **Decision Board**  
                 """
             )
     st.stop()
@@ -604,7 +555,6 @@ if not st.session_state.has_run:
 # ============================================================
 # Core computations
 # ============================================================
-# Compute distribution once; multiple panels reuse both raw and percentile views.
 dist = get_score_distribution(bool(use_idf), str(current))
 scores_all_sorted = dist["scores_sorted"]
 raw_all = dist["raw_scores_all"]
@@ -616,11 +566,8 @@ pct_target = _percentile_from_sorted(scores_all_sorted, float(raw_target))
 show_percentile = score_mode.startswith("Percentile")
 match_score_display = float(pct_target if show_percentile else raw_target)
 
-# "gap_df" is the shared explainability substrate; downstream modules compute contributions/confidence from it.
 gap_df = compute_gap_df(mat, str(current), str(target))
-contrib = compute_skill_contributions(gap_df)
 conf = compute_confidence_score(mat, art.pca_meta, str(current), str(target))
-
 neighbors_df = recommend_neighbors(bool(use_idf), str(current), top_k=10)
 
 
@@ -635,13 +582,12 @@ with st.container(border=True):
     m2.metric("Confidence", f"{conf['confidence_score']:.0f}/100")
     m3.metric("Scoring", "IDF cosine" if use_idf else "Raw cosine")
 
-    # Thresholds are product decisions; keep them stable to avoid changing user expectations.
     if match_score_display >= 70:
-        st.success("Next action: Strong candidate — generate a learning plan + build 1 portfolio artifact.")
+        st.success("Strong candidate: validate the story, build evidence, and compare strategies.")
     elif match_score_display >= 45:
-        st.info("Next action: Promising but with gaps — consider a stepping-stone role and follow the plan.")
+        st.info("Promising with gaps: a stepping-stone or hybrid strategy may outperform a direct pivot.")
     else:
-        st.warning("Next action: Hard pivot in this dataset — start with a stepping-stone role, then re-evaluate.")
+        st.warning("Hard pivot: use route analysis, skill investment, and the review board before choosing a strategy.")
 
 
 # ============================================================
@@ -652,7 +598,7 @@ left, right = st.columns([1.15, 1.0], gap="large")
 with left:
     with st.container():
         st.subheader("Career neighborhood")
-        st.caption("Closest roles to your current occupation. Great stepping-stone candidates.")
+        st.caption("Closest roles to your current occupation. Useful stepping-stone candidates.")
 
         show_df = neighbors_df.copy()
         show_df["match_raw"] = show_df["match_raw"].round(2)
@@ -666,11 +612,10 @@ with left:
         )
 
         with st.container(border=True):
-            st.markdown("**Try a stepping-stone target:**")
+            st.markdown("**Try a stepping-stone target**")
             if show_df.empty:
                 st.info("No recommendations available.")
             else:
-                # Maintain a stable mapping between UI labels and occupation keys.
                 label_to_occ: Dict[str, str] = {}
                 options = []
                 for _, r in show_df.head(8).iterrows():
@@ -681,137 +626,72 @@ with left:
 
                 pick = st.selectbox("Recommended targets", options=options, index=0, label_visibility="collapsed")
                 if st.button("Use as target", use_container_width=True):
-                    # Reset route because the target changed; route computations depend on start/target.
                     st.session_state.target_override = label_to_occ[pick]
                     st.session_state.has_run = True
                     st.session_state.route_result = None
+                    st.session_state.review_board_strategies = None
+                    st.session_state.review_board_evaluations = None
+                    st.session_state.review_board_consensus = None
+                    st.session_state.review_board_judge_memo = None
                     st.rerun()
 
 with right:
     with st.container():
-        st.subheader("Route + Learning plan")
-        st.caption("Keep it simple: route is optional. Learning plan is generated on demand.")
+        st.subheader("Route + Learning")
+        st.caption("Operational support before the strategy board.")
 
         st.markdown("### Stepping-stone route")
-        with st.container():
-            if guided:
-                st.caption("Optional: find intermediate roles that make the pivot more realistic.")
-                col_a, col_b = st.columns([1, 1])
+        if guided:
+            st.caption("Optional: find intermediate roles that make the pivot more realistic.")
+            col_a, col_b = st.columns([1, 1])
 
-                with col_a:
-                    if st.button("Find route", use_container_width=True):
-                        # Route finding can be non-trivial; keep the UI responsive with a spinner.
-                        with st.spinner("Finding a route…"):
-                            st.session_state.route_result = find_pivot_path(
-                                mat,
-                                start_occ=str(current),
-                                target_occ=str(target),
-                                k_neighbors=12,
-                                max_steps=6,
-                            )
+            with col_a:
+                if st.button("Find route", use_container_width=True):
+                    with st.spinner("Finding a route..."):
+                        st.session_state.route_result = find_pivot_path(
+                            mat,
+                            start_occ=str(current),
+                            target_occ=str(target),
+                            k_neighbors=12,
+                            max_steps=6,
+                        )
 
-                with col_b:
-                    if st.button("Reset route", use_container_width=True):
-                        st.session_state.route_result = None
-            else:
-                st.caption("Research mode: adjust kNN neighbors and max steps in the sidebar.")
-                c1, c2 = st.columns([1, 1])
+            with col_b:
+                if st.button("Reset route", use_container_width=True):
+                    st.session_state.route_result = None
+        else:
+            st.caption("Research mode: use custom graph settings from the sidebar.")
+            col_a, col_b = st.columns([1, 1])
 
-                with c1:
-                    if st.button("Find route (research)", use_container_width=True):
-                        cfg = st.session_state.route_config
-                        with st.spinner("Finding a route…"):
-                            st.session_state.route_result = find_pivot_path(
-                                mat,
-                                start_occ=str(current),
-                                target_occ=str(target),
-                                k_neighbors=int(cfg["k_neighbors"]),
-                                max_steps=int(cfg["max_steps"]),
-                            )
+            with col_a:
+                if st.button("Find route (research)", use_container_width=True):
+                    cfg = st.session_state.route_config
+                    with st.spinner("Finding a route..."):
+                        st.session_state.route_result = find_pivot_path(
+                            mat,
+                            start_occ=str(current),
+                            target_occ=str(target),
+                            k_neighbors=int(cfg["k_neighbors"]),
+                            max_steps=int(cfg["max_steps"]),
+                        )
 
-                with c2:
-                    if st.button("Reset route", use_container_width=True):
-                        st.session_state.route_result = None
+            with col_b:
+                if st.button("Reset route", use_container_width=True):
+                    st.session_state.route_result = None
 
-            route = st.session_state.route_result
-            if not route:
-                st.info("Route not computed yet.")
-            else:
-                # "reachable" is treated as the authoritative flag from the routing backend.
-                if not route.get("reachable"):
-                    st.warning("No route found with the current assumptions. Try again.")
-                else:
-                    path = route.get("path", [])
-                    if path:
-                        st.write(" → ".join([f"**{p}**" for p in path]))
-                    else:
-                        st.info("Route computed, but path is empty (unexpected).")
-
-        st.divider()
-
-        st.markdown("### Career pivot strategy (LLM + O*NET evidence)")
-        st.caption("Multi-step workflow: retrieve target-role evidence → structured plan → validation → final brief.")
-
-        s1, s2 = st.columns([1, 1])
-
-        with s1:
-            if st.button("Generate pivot strategy", use_container_width=True):
-                with st.spinner("Generating strategy..."):
-                    bundle = generate_pivot_strategy_bundle(
-                        current_role=str(current),
-                        target_role=str(target),
-                        gap_df=gap_df,
-                        route=st.session_state.route_result,
-                        model="gpt-4o-mini",
-                        prefer_online=True,
-                        data_dir="data/onet_raw",
-                    )
-
-                    st.session_state.pivot_strategy_md = str(bundle["markdown"])
-                    st.session_state.pivot_strategy_source = str(bundle["source"])
-                    st.session_state.pivot_strategy_trace = dict(bundle.get("trace", {}))
-
-        with s2:
-            if st.button("Clear strategy", use_container_width=True):
-                st.session_state.pivot_strategy_md = ""
-                st.session_state.pivot_strategy_source = "—"
-                st.session_state.pivot_strategy_trace = {}
-
-        st.divider()
-
-        st.markdown("### Portfolio project generator (LLM + structured output)")
-        st.caption("Second LLM feature: generate structured portfolio projects, validate them, and score missing-skill coverage.")
-
-        p1, p2 = st.columns([1, 1])
-
-        with p1:
-            if st.button("Generate project ideas", use_container_width=True):
-                with st.spinner("Generating portfolio projects..."):
-                    bundle = generate_portfolio_projects_bundle(
-                        current_role=str(current),
-                        target_role=str(target),
-                        gap_df=gap_df,
-                        model="gpt-4o-mini",
-                        prefer_online=True,
-                        data_dir="data/onet_raw",
-                    )
-
-                    st.session_state.portfolio_projects_md = str(bundle["markdown"])
-                    st.session_state.portfolio_projects_source = str(bundle["source"])
-                    st.session_state.portfolio_projects_df = bundle.get("projects_df", pd.DataFrame())
-                    st.session_state.portfolio_projects_trace = dict(bundle.get("trace", {}))
-
-        with p2:
-            if st.button("Clear project ideas", use_container_width=True):
-                st.session_state.portfolio_projects_md = ""
-                st.session_state.portfolio_projects_source = "—"
-                st.session_state.portfolio_projects_df = pd.DataFrame()
-                st.session_state.portfolio_projects_trace = {}
+        route = st.session_state.route_result
+        if not route:
+            st.info("Route not computed yet.")
+        elif not route.get("reachable"):
+            st.warning("No route found with the current assumptions.")
+        else:
+            path = route.get("path", [])
+            st.success(" → ".join([str(p) for p in path]) if path else "Route computed.")
 
         st.divider()
 
         st.markdown("### Skill investment simulator")
-        st.caption("Counterfactual analysis: simulate which skill improvements would move your match score most.")
+        st.caption("Counterfactual: if you improve selected skills, how much does the match move?")
 
         sim_candidates_df = suggest_best_investment_skills(gap_df, top_k=8)
 
@@ -851,28 +731,11 @@ with right:
                 if st.button("Clear simulation", use_container_width=True):
                     st.session_state.sim_result = None
 
-            sim_result = st.session_state.sim_result
-            if sim_result:
-                r1, r2, r3 = st.columns([1, 1, 1])
-                r1.metric("Before", f"{float(sim_result['before_score']):.1f}/100")
-                r2.metric("After", f"{float(sim_result['after_score']):.1f}/100")
-                r3.metric("Uplift", f"{float(sim_result['uplift']):+.1f}")
-
-                sim_df = sim_result.get("details_df", pd.DataFrame())
-                if isinstance(sim_df, pd.DataFrame) and not sim_df.empty:
-                    _render_table_card(
-                        sim_df,
-                        columns=["skill", "current_before", "target_value", "current_after", "delta_applied"],
-                        headers=["Skill", "Current (before)", "Target", "Current (after)", "Applied delta"],
-                        numeric_cols=["current_before", "target_value", "current_after", "delta_applied"],
-                    )
-
         st.divider()
 
-        st.markdown("### Learning plan (3 phases)")
-
+        st.markdown("### Learning plan")
         c1, c2 = st.columns([1, 1])
-                        
+
         with c1:
             if st.button("Generate plan", use_container_width=True):
                 with st.spinner("Generating plan..."):
@@ -885,28 +748,13 @@ with right:
                         max_missing=6,
                         prefer_online=True,
                     )
-
                     st.session_state.learning_plan_md = md
-
-                    offline_markers = (
-                        md.startswith("**Learning Plan:**")
-                        or md.startswith("Transition Plan")
-                        or md.startswith("After filtering, no clear high-priority skill gaps were detected.")
-                    )
-
-                    if md.startswith("ERROR::") or md.startswith("⚠️ ONLINE_ERROR"):
-                        st.session_state.learning_plan_source = "OpenAI error"
-                    elif _has_openai_secret() and not offline_markers:
-                        st.session_state.learning_plan_source = "OpenAI"
-                    else:
-                        st.session_state.learning_plan_source = "Offline"
+                    st.session_state.learning_plan_source = _learning_plan_source_label(md)
 
         with c2:
-            if st.button("Clear", use_container_width=True):
+            if st.button("Clear plan", use_container_width=True):
                 st.session_state.learning_plan_md = ""
                 st.session_state.learning_plan_source = "—"
-
-        st.caption("Output is shown full-width below (no PDF).")
 
 
 # ============================================================
@@ -919,168 +767,262 @@ if plan_md:
         st.caption(f"Source: {st.session_state.learning_plan_source} • Output is Markdown.")
         st.markdown(plan_md)
 
-# ============================================================
-# Pivot strategy preview
-# ============================================================
-strategy_md = (st.session_state.pivot_strategy_md or "").strip()
-if strategy_md:
-    with st.container(border=True):
-        st.subheader("Career pivot strategy")
-        st.caption(f"Source: {st.session_state.pivot_strategy_source}")
-        st.markdown(strategy_md)
 
 # ============================================================
-# Portfolio project preview
+# Decision Board (Hero Feature)
 # ============================================================
-portfolio_md = (st.session_state.portfolio_projects_md or "").strip()
-if portfolio_md:
-    with st.container(border=True):
-        st.subheader("Portfolio project ideas")
-        st.caption(f"Source: {st.session_state.portfolio_projects_source}")
-        st.markdown(portfolio_md)
-
-        portfolio_df = st.session_state.portfolio_projects_df
-        if isinstance(portfolio_df, pd.DataFrame) and not portfolio_df.empty:
-            _render_table_card(
-                portfolio_df,
-                columns=[
-                    "title",
-                    "difficulty",
-                    "estimated_hours",
-                    "portfolio_signal",
-                    "covered_missing_skills",
-                    "missing_skill_coverage",
-                ],
-                headers=[
-                    "Project",
-                    "Difficulty",
-                    "Hours",
-                    "Signal",
-                    "Missing skills covered",
-                    "Coverage",
-                ],
-                numeric_cols=[
-                    "estimated_hours",
-                    "portfolio_signal",
-                    "covered_missing_skills",
-                    "missing_skill_coverage",
-                ],
-            )
-
-
-# ============================================================
-# LLM trace / system transparency
-# ============================================================
-with st.expander("LLM system trace (advanced)", expanded=False):
-    st.markdown(
-        """
-This panel exposes the non-trivial LLM workflow:
-- retrieval from O*NET evidence
-- structured planning
-- Python validation
-- optional repair call
-- structured project generation
-        """
+with st.container(border=True):
+    st.subheader("⚖️ Adversarial Review Board")
+    st.caption(
+        "Hero feature: generate competing strategies, evaluate them with expert personas, compute consensus in Python, and stress-test the recommendation with skill investment."
     )
 
-    st.markdown("### Strategy trace")
-    strategy_trace = st.session_state.pivot_strategy_trace or {}
+    b1, b2, b3 = st.columns([1, 1, 1])
 
-    if strategy_trace:
-        st.write(
-            {
-                "mode": strategy_trace.get("mode", ""),
-                "repair_attempted": strategy_trace.get("repair_attempted", False),
-                "validation_errors": strategy_trace.get("validation_errors", []),
-                "soc_codes": strategy_trace.get("soc_codes", []),
-                "job_zone": strategy_trace.get("job_zone", None),
-                "missing_skills": strategy_trace.get("missing_skills", []),
-                "transfer_skills": strategy_trace.get("transfer_skills", []),
-            }
+    with b1:
+        if st.button("1) Generate strategies", use_container_width=True):
+            with st.spinner("Generating 5 strategy archetypes..."):
+                strategies_bundle = generate_all_strategies(
+                    current_role=str(current),
+                    target_role=str(target),
+                    gap_df=gap_df,
+                    model="gpt-4o-mini",
+                    prefer_online=True,
+                )
+                st.session_state.review_board_strategies = strategies_bundle.get("strategies")
+                st.session_state.review_board_trace["strategies_bundle"] = strategies_bundle.get("trace", {})
+                st.session_state.review_board_evaluations = None
+                st.session_state.review_board_consensus = None
+                st.session_state.review_board_judge_memo = None
+
+    with b2:
+        if st.button("2) Get expert evals", use_container_width=True):
+            if not st.session_state.review_board_strategies:
+                st.error("Generate strategies first.")
+            else:
+                with st.spinner("Evaluating strategies with reviewer personas..."):
+                    evals_bundle = evaluate_strategies_by_reviewers(
+                        strategies=st.session_state.review_board_strategies,
+                        current_role=str(current),
+                        target_role=str(target),
+                        model="gpt-4o-mini",
+                        prefer_online=True,
+                    )
+                    st.session_state.review_board_evaluations = evals_bundle.get("evaluations")
+                    st.session_state.review_board_trace["evaluations_bundle"] = evals_bundle.get("trace", {})
+                    st.session_state.review_board_consensus = None
+                    st.session_state.review_board_judge_memo = None
+
+    with b3:
+        if st.button("3) Compute consensus", use_container_width=True):
+            if not st.session_state.review_board_evaluations:
+                st.error("Get expert evals first.")
+            else:
+                with st.spinner("Aggregating reviewer scores..."):
+                    st.session_state.review_board_consensus = compute_consensus(
+                        st.session_state.review_board_evaluations
+                    )
+                    st.session_state.review_board_judge_memo = None
+
+    strategies = st.session_state.review_board_strategies
+    evaluations = st.session_state.review_board_evaluations
+    consensus = st.session_state.review_board_consensus
+    judge_memo = st.session_state.review_board_judge_memo
+
+    if strategies:
+        st.divider()
+        st.markdown("### Generated strategies")
+        for i, strat in enumerate(strategies):
+            with st.container(border=True):
+                col1, col2 = st.columns([2.2, 1.0])
+                with col1:
+                    st.markdown(f"**{i + 1}. {strat.archetype.name}**")
+                    st.markdown(str(strat.summary))
+                with col2:
+                    st.markdown(f"**Code:** `{strat.archetype.code}`")
+                    st.markdown(f"**Risk:** {strat.archetype.risk_level}")
+                    st.markdown(f"**Days:** {strat.archetype.estimated_days}")
+
+                with st.expander("Details", expanded=False):
+                    phases_rows = []
+                    for phase in strat.phases:
+                        phases_rows.append(
+                            {
+                                "phase": phase.phase,
+                                "objective": phase.objective,
+                            }
+                        )
+                    phases_df = pd.DataFrame(phases_rows)
+                    if not phases_df.empty:
+                        _render_table_card(
+                            phases_df,
+                            columns=["phase", "objective"],
+                            headers=["Phase", "Objective"],
+                            numeric_cols=[],
+                        )
+
+                    if getattr(strat, "key_missing_skills", None):
+                        st.markdown("**Key missing skills addressed**")
+                        st.write(", ".join(strat.key_missing_skills[:6]))
+
+    if evaluations:
+        st.divider()
+        st.markdown("### Reviewer coverage")
+        review_rows = []
+        for ev in evaluations:
+            review_rows.append(
+                {
+                    "reviewer_persona": ev.reviewer_persona,
+                    "strongest_strategy": ev.strongest_strategy,
+                    "weakest_strategy": ev.weakest_strategy,
+                }
+            )
+        review_df = pd.DataFrame(review_rows)
+        if not review_df.empty:
+            _render_table_card(
+                review_df,
+                columns=["reviewer_persona", "strongest_strategy", "weakest_strategy"],
+                headers=["Reviewer", "Strongest", "Weakest"],
+                numeric_cols=[],
+            )
+
+    if consensus:
+        st.divider()
+        st.markdown("### Consensus result")
+
+        c1, c2, c3 = st.columns([1, 1, 1])
+        c1.metric("Winner", consensus.winner_strategy)
+        c2.metric("Winner score", f"{consensus.winner_score:.1f}/100")
+        c3.metric("Consensus strength", f"{consensus.consensus_strength:.0f}/100")
+
+        ranking_df = pd.DataFrame(consensus.strategy_rankings, columns=["strategy_code", "avg_score"])
+        _render_table_card(
+            ranking_df,
+            columns=["strategy_code", "avg_score"],
+            headers=["Strategy", "Average Score"],
+            numeric_cols=["avg_score"],
         )
 
-        retrieved_evidence = strategy_trace.get("retrieved_evidence", [])
-        if retrieved_evidence:
-            ev_df = pd.DataFrame(retrieved_evidence)
-            if not ev_df.empty:
-                _render_table_card(
-                    ev_df,
-                    columns=["evidence_id", "kind", "text"],
-                    headers=["Evidence ID", "Kind", "Text"],
-                    numeric_cols=[],
+        if consensus.major_disagreements:
+            with st.expander("Major disagreements", expanded=False):
+                disagreement_df = pd.DataFrame(consensus.major_disagreements)
+                if not disagreement_df.empty:
+                    _render_table_card(
+                        disagreement_df,
+                        columns=["strategy", "strongest_advocate", "strongest_critic", "spread"],
+                        headers=["Strategy", "Advocate", "Critic", "Spread"],
+                        numeric_cols=["spread"],
+                    )
+
+        if st.button("4) Generate judge memo", use_container_width=True):
+            with st.spinner("Generating final judge recommendation..."):
+                missing = gap_df[gap_df["gap"] > 0]["skill"].head(4).tolist()
+                gap_summary = f"Key gaps: {', '.join(missing) if missing else 'None identified'}"
+
+                judge_bundle = generate_judge_memo(
+                    current_role=str(current),
+                    target_role=str(target),
+                    consensus_result=consensus,
+                    evaluations=evaluations or [],
+                    gap_summary=gap_summary,
+                    model="gpt-4o-mini",
+                    prefer_online=True,
+                )
+                st.session_state.review_board_judge_memo = judge_bundle.get("memo")
+                st.session_state.review_board_trace["judge_bundle"] = judge_bundle.get("trace", {})
+
+    judge_memo = st.session_state.review_board_judge_memo
+    if judge_memo:
+        st.divider()
+        st.markdown("### Final judge recommendation")
+
+        j1, j2, j3 = st.columns([1, 1, 1])
+        j1.metric("Verdict", str(judge_memo.verdict))
+        j2.metric("Recommended strategy", str(judge_memo.recommended_strategy))
+        j3.metric("Timeline", str(judge_memo.success_timeline))
+
+        st.markdown("**Executive summary**")
+        st.markdown(str(judge_memo.executive_summary))
+
+        col_sf, col_cr = st.columns(2)
+
+        with col_sf:
+            st.markdown("**Success factors**")
+            for factor in judge_memo.key_success_factors[:5]:
+                st.markdown(f"- {factor}")
+
+        with col_cr:
+            st.markdown("**Critical risks**")
+            for risk in judge_memo.critical_risks[:5]:
+                st.markdown(f"- {risk}")
+
+        st.markdown("**Interview narrative**")
+        st.info(str(judge_memo.interview_narrative))
+
+    if evaluations and consensus:
+        st.divider()
+        with st.expander("Counterfactual: re-rank after skill investment", expanded=False):
+            sim_cands = suggest_best_investment_skills(gap_df, top_k=8)
+            if sim_cands.empty:
+                st.info("No candidate skills available.")
+            else:
+                skill_options = sim_cands["skill"].astype(str).tolist()
+                selected_skills = st.multiselect(
+                    "Which skills would you improve?",
+                    options=skill_options,
+                    default=skill_options[: min(2, len(skill_options))],
+                    key="counterfactual_skills",
+                )
+                uplift_ratio = st.slider(
+                    "How close to target level?",
+                    min_value=0.10,
+                    max_value=1.00,
+                    value=0.50,
+                    step=0.05,
+                    key="counterfactual_uplift",
                 )
 
-        cleaned_strategy = strategy_trace.get("cleaned_strategy", {})
-        if cleaned_strategy:
-            st.markdown("**Validated structured strategy JSON**")
-            st.json(cleaned_strategy)
+                if st.button("Re-evaluate strategies", use_container_width=True, key="rerank_board"):
+                    with st.spinner("Re-ranking strategies..."):
+                        new_consensus = rerank_after_skill_investment(
+                            evaluations=evaluations,
+                            invested_skills=selected_skills,
+                            uplift_ratio=float(uplift_ratio),
+                        )
+                        st.session_state.review_board_trace["counterfactual_consensus"] = new_consensus
 
-        if strategy_trace.get("planner_raw"):
-            st.markdown("**Planner raw output**")
-            st.code(strategy_trace["planner_raw"], language="json")
-
-        if strategy_trace.get("repair_raw"):
-            st.markdown("**Repair raw output**")
-            st.code(strategy_trace["repair_raw"], language="json")
-    else:
-        st.info("No strategy trace available yet.")
-
-    st.divider()
-
-    st.markdown("### Portfolio trace")
-    portfolio_trace = st.session_state.portfolio_projects_trace or {}
-
-    if portfolio_trace:
-        st.write(
-            {
-                "mode": portfolio_trace.get("mode", ""),
-                "validation_errors": portfolio_trace.get("validation_errors", []),
-                "missing_skills": portfolio_trace.get("missing_skills", []),
-                "transfer_skills": portfolio_trace.get("transfer_skills", []),
-                "allowed_skills": portfolio_trace.get("allowed_skills", []),
-            }
-        )
-
-        retrieved_evidence = portfolio_trace.get("retrieved_evidence", [])
-        if retrieved_evidence:
-            ev_df = pd.DataFrame(retrieved_evidence)
-            if not ev_df.empty:
-                _render_table_card(
-                    ev_df,
-                    columns=["evidence_id", "kind", "text"],
-                    headers=["Evidence ID", "Kind", "Text"],
-                    numeric_cols=[],
-                )
-
-        cleaned_projects = portfolio_trace.get("cleaned_projects", [])
-        if cleaned_projects:
-            st.markdown("**Validated structured portfolio JSON**")
-            st.json({"projects": cleaned_projects})
-
-        if portfolio_trace.get("planner_raw"):
-            st.markdown("**Project planner raw output**")
-            st.code(portfolio_trace["planner_raw"], language="json")
-
-        if portfolio_trace.get("repair_raw"):
-            st.markdown("**Project repair raw output**")
-            st.code(portfolio_trace["repair_raw"], language="json")
-    else:
-        st.info("No portfolio trace available yet.")
+                new_consensus = st.session_state.review_board_trace.get("counterfactual_consensus")
+                if new_consensus:
+                    ranking_cf_df = pd.DataFrame(
+                        new_consensus.strategy_rankings,
+                        columns=["strategy_code", "avg_score"],
+                    )
+                    _render_table_card(
+                        ranking_cf_df,
+                        columns=["strategy_code", "avg_score"],
+                        headers=["Strategy", "New Avg Score"],
+                        numeric_cols=["avg_score"],
+                    )
+                    if new_consensus.winner_strategy != consensus.winner_strategy:
+                        st.success(
+                            f"Recommendation flipped: {consensus.winner_strategy} → {new_consensus.winner_strategy}"
+                        )
+                    else:
+                        st.info(f"{new_consensus.winner_strategy} remains the best strategy.")
 
 
 # ============================================================
 # Explainability
 # ============================================================
 with st.container(border=True):
-    st.subheader("Explain (compact)")
-    st.caption("High-signal view: what transfers vs what blocks this pivot.")
+    st.subheader("Explainability")
+    st.caption("High-signal view: what transfers versus what blocks this pivot.")
 
     c1, c2 = st.columns(2, gap="large")
 
     with c1:
-        st.markdown("**Top transferable skills (overlap)**")
+        st.markdown("**Top transferable skills**")
         top_transfer = gap_df.copy()
-        # Overlap is the shared mass between profiles; it is a simple but effective transferability heuristic.
         top_transfer["overlap"] = np.minimum(top_transfer["current_importance"], top_transfer["target_importance"])
         top_transfer = top_transfer.sort_values("overlap", ascending=False).head(10)
 
@@ -1092,10 +1034,10 @@ with st.container(border=True):
         )
 
     with c2:
-        st.markdown("**Top missing skills (gaps)**")
+        st.markdown("**Top missing skills**")
         top_missing = gap_df[gap_df["gap"] > 0].sort_values(["gap", "target_importance"], ascending=False).head(10)
         if top_missing.empty:
-            st.success("No missing skills detected in this dataset.")
+            st.success("No missing skills detected.")
         else:
             _render_table_card(
                 top_missing,
@@ -1106,21 +1048,18 @@ with st.container(border=True):
 
 
 # ============================================================
-# Research-only extras
+# Research extras
 # ============================================================
 if not guided:
-    with st.expander("Research: scoring notes (optional)", expanded=False):
+    with st.expander("Research notes", expanded=False):
         st.markdown(
             """
-**What does “Confidence” mean here?**  
-It’s a heuristic “coverage” score (not a probability). It combines:
-- how much the skill-support overlaps (binary coverage),
-- how dense the dataset is,
-- and how much variance the 2D embedding explains (from PCA metadata).
+**Confidence** is a heuristic coverage score, not a probability.  
+It combines overlap, dataset density, and embedding support.
             """
         )
 
-    with st.expander("Export (CSV)", expanded=False):
+    with st.expander("Export CSV", expanded=False):
         export_df = gap_df.copy()
         export_df.insert(0, "current_occupation", str(current))
         export_df.insert(1, "target_occupation", str(target))
@@ -1129,7 +1068,6 @@ It’s a heuristic “coverage” score (not a probability). It combines:
         export_df.insert(4, "use_idf", bool(use_idf))
         export_df.insert(5, "confidence_score", round(float(conf["confidence_score"]), 2))
 
-        # Export is intentionally limited to the gap table to keep downloads small and interpretable.
         csv_bytes = export_df.to_csv(index=False).encode("utf-8")
         st.download_button(
             label="Download pivot CSV",
@@ -1138,243 +1076,26 @@ It’s a heuristic “coverage” score (not a probability). It combines:
             mime="text/csv",
             use_container_width=True,
         )
-        
+
+
 # ============================================================
-# 🆕 TAB: DECISION BOARD (Assignment 2 Feature)
+# LLM system trace
 # ============================================================
-# WICHTIG: Diese Tabs-Zeile muss über diesem Code stehen (ungefähr Zeile 300-350):
-# tab1, tab2, tab3, tab4 = st.tabs([...])
-# ÄNDERE SIE ZU:
-# tab1, tab2, tab3, tab4, tab5 = st.tabs(["📊 Overview", "📚 Learning", "🎬 Extras", "⚙️ System"])
+with st.expander("LLM system trace (advanced)", expanded=False):
+    st.markdown("### Learning plan source")
+    st.write(
+        {
+            "learning_plan_source": st.session_state.learning_plan_source,
+            "streamlit_secret_present": _has_openai_secret(),
+        }
+    )
 
-# Dann füge NACH dem letzten "with tab4:" Block diesen Code ein:
-
-with st.expander("🆕 Decision Board (Assignment 2)", expanded=False):
-    """
-    Adversarial Review Board: 5 competing strategies evaluated by 5 expert personas.
-    """
-    
-    st.markdown("### ⚖️ Adversarial Review Board")
-    st.caption("Generate 5 competing strategies and have expert personas evaluate them.")
-
-    c1, c2, c3 = st.columns([1, 1, 1])
-
-    with c1:
-        if st.button("🔄 Generate Strategies", use_container_width=True, key="gen_strat_board"):
-            with st.spinner("Generating 5 strategy archetypes..."):
-                strategies_bundle = generate_all_strategies(
-                    current_role=str(current),
-                    target_role=str(target),
-                    gap_df=gap_df,
-                    model="gpt-4o-mini",
-                    prefer_online=True,
-                )
-                st.session_state.review_board_strategies = strategies_bundle.get("strategies")
-                st.session_state.review_board_trace["strategies_bundle"] = strategies_bundle.get("trace")
-                st.success(f"✅ Generated {len(st.session_state.review_board_strategies)} strategies!")
-
-    with c2:
-        if st.button("👥 Get Expert Evals", use_container_width=True, key="eval_strat_board"):
-            if not st.session_state.review_board_strategies:
-                st.error("❌ Generate strategies first!")
-            else:
-                with st.spinner("Evaluating by 5 expert personas (Hiring Manager, Recruiter, Portfolio Eval, Risk Analyst, Career Coach)..."):
-                    evals_bundle = evaluate_strategies_by_reviewers(
-                        strategies=st.session_state.review_board_strategies,
-                        current_role=str(current),
-                        target_role=str(target),
-                        model="gpt-4o-mini",
-                        prefer_online=True,
-                    )
-                    st.session_state.review_board_evaluations = evals_bundle.get("evaluations")
-                    st.session_state.review_board_trace["evaluations_bundle"] = evals_bundle.get("trace")
-                    st.success(f"✅ Got evaluations from {len(st.session_state.review_board_evaluations)} reviewers!")
-
-    with c3:
-        if st.button("🏆 Compute Consensus", use_container_width=True, key="consensus_board"):
-            if not st.session_state.review_board_evaluations:
-                st.error("❌ Get expert evals first!")
-            else:
-                with st.spinner("Aggregating scores + computing consensus (Python)..."):
-                    consensus = compute_consensus(st.session_state.review_board_evaluations)
-                    st.session_state.review_board_consensus = consensus
-                    st.success(f"✅ Consensus computed! Winner: {consensus.winner_strategy} ({consensus.winner_score:.1f}/100)")
-
-    st.divider()
-
-    # Display generated strategies
-    if st.session_state.review_board_strategies:
-        with st.expander("📋 Generated Strategies", expanded=True):
-            for i, strat in enumerate(st.session_state.review_board_strategies):
-                with st.container(border=True):
-                    col1, col2 = st.columns([2, 1])
-                    with col1:
-                        st.markdown(f"### {i+1}. {strat.archetype.name}")
-                        st.markdown(f"{strat.summary}")
-                    with col2:
-                        st.markdown(f"**Code**: `{strat.archetype.code}`")
-                        st.markdown(f"**Risk**: {strat.archetype.risk_level.upper()}")
-                        st.markdown(f"**Days**: {strat.archetype.estimated_days}")
-
-                    with st.expander("Details", expanded=False):
-                        st.markdown("**Phases**:")
-                        for phase in strat.phases:
-                            st.markdown(f"- **{phase.phase}**: {phase.objective}")
-
-                        st.markdown("**Missing skills to address**:")
-                        for skill in strat.key_missing_skills[:3]:
-                            st.markdown(f"  - {skill}")
-
-    # Display consensus results
-    if st.session_state.review_board_consensus:
-        consensus = st.session_state.review_board_consensus
-
-        with st.expander("🏆 Consensus Rankings", expanded=True):
-            col1, col2, col3 = st.columns([1, 1, 1])
-            with col1:
-                st.markdown(f"**🥇 Winner**: `{consensus.winner_strategy}`")
-                st.metric("Score", f"{consensus.winner_score:.1f}/100")
-
-            with col2:
-                st.markdown(f"**🥈 Runner-up**: `{consensus.runner_up_strategy}`")
-                st.metric("Score", f"{consensus.runner_up_score:.1f}/100")
-
-            with col3:
-                st.markdown(f"**🤝 Consensus Strength**")
-                st.metric("Agreement", f"{consensus.consensus_strength:.0f}/100")
-
-            st.divider()
-
-            st.markdown("### All Strategies Ranked")
-            ranking_df = pd.DataFrame(
-                consensus.strategy_rankings,
-                columns=["Strategy Code", "Avg Score"]
-            )
-            _render_table_card(
-                ranking_df,
-                columns=["Strategy Code", "Avg Score"],
-                headers=["Strategy", "Average Score"],
-                numeric_cols=["Avg Score"],
-            )
-
-        # Major disagreements
-        if consensus.major_disagreements:
-            with st.expander("🤝 Major Disagreements (where experts diverge)", expanded=False):
-                for d in consensus.major_disagreements[:3]:
-                    with st.container(border=True):
-                        st.markdown(f"**{d['strategy']}** (score range: {d['range']})")
-                        col_a, col_b = st.columns(2)
-                        with col_a:
-                            st.markdown(f"✅ **{d['strongest_advocate']}** loves it")
-                        with col_b:
-                            st.markdown(f"❌ **{d['strongest_critic']}** is skeptical")
-                        st.caption(f"Spread: {d['spread']:.0f} points")
-
-    # Generate Judge memo
-    if st.session_state.review_board_consensus:
-        if st.button("📝 Generate Final Judge Recommendation", use_container_width=True, key="judge_board"):
-            with st.spinner("Judge LLM evaluating consensus..."):
-                missing = gap_df[gap_df["gap"] > 0]["skill"].head(4).tolist()
-                gap_summary = f"Key gaps: {', '.join(missing) if missing else 'None identified'}"
-
-                judge_bundle = generate_judge_memo(
-                    current_role=str(current),
-                    target_role=str(target),
-                    consensus_result=st.session_state.review_board_consensus,
-                    evaluations=st.session_state.review_board_evaluations or [],
-                    gap_summary=gap_summary,
-                    model="gpt-4o-mini",
-                    prefer_online=True,
-                )
-                st.session_state.review_board_judge_memo = judge_bundle.get("memo")
-                st.success("✅ Judge memo generated!")
-
-    # Display Judge memo
-    if st.session_state.review_board_judge_memo:
-        memo = st.session_state.review_board_judge_memo
-        with st.container(border=True):
-            st.markdown("### 📋 Final Judge Recommendation")
-
-            col1, col2, col3 = st.columns([1, 1, 1])
-            with col1:
-                verdict_color = {"high": "🟢", "medium": "🟡", "low": "🔴"}.get(memo.verdict.lower().split()[0], "⚪")
-                st.markdown(f"{verdict_color} **Verdict**: {memo.verdict}")
-
-            with col2:
-                st.markdown(f"📌 **Recommended Strategy**: `{memo.recommended_strategy}`")
-
-            with col3:
-                st.markdown(f"⏱️ **Timeline**: {memo.success_timeline}")
-
-            st.divider()
-
-            st.markdown(f"**Executive Summary**\n{memo.executive_summary}")
-
-            col_sf, col_cr = st.columns(2)
-            with col_sf:
-                st.markdown("**✅ Success Factors**:")
-                for factor in memo.key_success_factors[:3]:
-                    st.markdown(f"- {factor}")
-
-            with col_cr:
-                st.markdown("**⚠️ Critical Risks**:")
-                for risk in memo.critical_risks[:2]:
-                    st.markdown(f"- {risk}")
-
-            st.markdown("**💼 How to pitch this to hiring managers**:")
-            st.info(memo.interview_narrative)
-
-    # Counterfactual analysis
-    if st.session_state.review_board_evaluations and st.session_state.review_board_consensus:
-        st.divider()
-        with st.expander("🚀 Counterfactual: What if you invested in specific skills?", expanded=False):
-            st.caption("Simulate improving key skills and watch strategy rankings change.")
-
-            sim_cands = suggest_best_investment_skills(gap_df, top_k=8)
-            if not sim_cands.empty:
-                skill_options = sim_cands["skill"].astype(str).tolist()
-                selected_skills = st.multiselect(
-                    "Which skills would you improve?",
-                    options=skill_options,
-                    default=skill_options[:min(2, len(skill_options))],
-                    key="counterfactual_skills",
-                )
-
-                uplift_ratio = st.slider(
-                    "How close to target level?",
-                    min_value=0.1,
-                    max_value=1.0,
-                    value=0.5,
-                    step=0.05,
-                    key="counterfactual_uplift",
-                )
-
-                if st.button("🔄 Re-evaluate Strategies", use_container_width=True, key="rerank_board"):
-                    with st.spinner("Simulating skill improvement impact..."):
-                        new_consensus = rerank_after_skill_investment(
-                            evaluations=st.session_state.review_board_evaluations,
-                            invested_skills=selected_skills,
-                            uplift_ratio=float(uplift_ratio),
-                        )
-
-                        st.session_state.review_board_trace["counterfactual_consensus"] = new_consensus
-
-                        st.markdown("### Rankings After Skill Investment")
-                        ranking_cf_df = pd.DataFrame(
-                            new_consensus.strategy_rankings,
-                            columns=["Strategy", "New Score"]
-                        )
-                        _render_table_card(
-                            ranking_cf_df,
-                            columns=["Strategy", "New Score"],
-                            headers=["Strategy", "New Avg Score"],
-                            numeric_cols=["New Score"],
-                        )
-
-                        if new_consensus.winner_strategy != st.session_state.review_board_consensus.winner_strategy:
-                            st.success(
-                                f"💡 **Recommendation flipped!** New winner: `{new_consensus.winner_strategy}` "
-                                f"({new_consensus.winner_score:.1f}/100)"
-                            )
-                        else:
-                            st.info(f"Strategy `{new_consensus.winner_strategy}` remains optimal")
+    st.markdown("### Review Board trace")
+    trace = st.session_state.review_board_trace or {}
+    st.write(
+        {
+            "strategies_bundle": _extract_review_trace_status(trace.get("strategies_bundle", {})),
+            "evaluations_bundle": _extract_review_trace_status(trace.get("evaluations_bundle", {})),
+            "judge_bundle": trace.get("judge_bundle", {}),
+        }
+    )
