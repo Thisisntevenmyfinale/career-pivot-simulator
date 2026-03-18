@@ -808,42 +808,45 @@ with right:
                 if st.button("Clear simulation", use_container_width=True):
                     st.session_state.sim_result = None
 
+
+
+
+
+
+# ============================================================
+# LLM Learning Plan
+# ============================================================
+with st.container(border=True):
+    st.subheader("🧠 LinkedIn AI Learning Plan")
+    st.caption("LLM-generated upskilling guidance based on your selected pivot and current skill gaps.")
+
+    lp1, lp2 = st.columns([1, 1])
+
+    with lp1:
+        if st.button("Generate learning plan", use_container_width=True):
+            with st.spinner("Generating learning plan..."):
+                md = generate_learning_plan_markdown(
+                    current_role=str(current),
+                    target_role=str(target),
+                    gap_df=gap_df,
+                    language="en",
+                    model="gpt-4o-mini",
+                    max_missing=6,
+                    prefer_online=True,
+                )
+                st.session_state.learning_plan_md = md
+                st.session_state.learning_plan_source = _learning_plan_source_label(md)
+
+    with lp2:
+        if st.button("Clear learning plan", use_container_width=True):
+            st.session_state.learning_plan_md = ""
+            st.session_state.learning_plan_source = "—"
+
+    plan_md = (st.session_state.learning_plan_md or "").strip()
+    if plan_md:
         st.divider()
-
-        st.markdown("### Learning plan")
-        c1, c2 = st.columns([1, 1])
-
-        with c1:
-            if st.button("Generate plan", use_container_width=True):
-                with st.spinner("Generating plan..."):
-                    md = generate_learning_plan_markdown(
-                        current_role=str(current),
-                        target_role=str(target),
-                        gap_df=gap_df,
-                        language="en",
-                        model="gpt-4o-mini",
-                        max_missing=6,
-                        prefer_online=True,
-                    )
-                    st.session_state.learning_plan_md = md
-                    st.session_state.learning_plan_source = _learning_plan_source_label(md)
-
-        with c2:
-            if st.button("Clear plan", use_container_width=True):
-                st.session_state.learning_plan_md = ""
-                st.session_state.learning_plan_source = "—"
-
-
-# ============================================================
-# Learning plan preview
-# ============================================================
-plan_md = (st.session_state.learning_plan_md or "").strip()
-if plan_md:
-    with st.container(border=True):
-        st.subheader("Learning plan preview")
         st.caption(f"Source: {st.session_state.learning_plan_source} • Output is Markdown.")
         st.markdown(plan_md)
-
 
 # ============================================================
 # Decision Board (Hero Feature)
