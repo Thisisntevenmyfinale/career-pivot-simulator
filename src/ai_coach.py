@@ -198,14 +198,26 @@ def generate_learning_plan_markdown(
     if not prefer_online:
         return fallback
 
+
+    
+
     key = _get_api_key_optional()
     if not key:
         return fallback
+    if key.startswith("ERROR::"):
+        return key + "\n\n" + fallback
+    
+    if key.startswith("ERROR::"):
+        return key + "\n\n" + fallback
 
+    
     try:
         from openai import OpenAI
-    except Exception:
-        return fallback
+    except Exception as e:
+        return f"⚠️ OPENAI_IMPORT_ERROR: {type(e).__name__}: {e}\n\n{fallback}"
+
+
+
 
     cur = _sanitize_role_name(current_role)
     tgt = _sanitize_role_name(target_role)
@@ -240,6 +252,7 @@ def generate_learning_plan_markdown(
         "4) 3 common pivot mistakes\n"
     )
 
+    
     try:
         client = OpenAI(api_key=key)
         resp = client.responses.create(
@@ -250,9 +263,9 @@ def generate_learning_plan_markdown(
 
         text = (resp.output_text or "").strip()
         if not text:
-            return fallback
+            return "⚠️ EMPTY_OPENAI_RESPONSE\n\n" + fallback
 
-        return text
+        return "🤖 " + text
 
-    except Exception:
-        return fallback
+    except Exception as e:
+        return f"⚠️ ONLINE_ERROR: {type(e).__name__}: {e}\n\n{fallback}"
