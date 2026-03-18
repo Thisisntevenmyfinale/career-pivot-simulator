@@ -1,6 +1,6 @@
-# Career Pivot Simulator
+# Career Pivot Simulator (LLM-Enhanced Decision Engine)
 
-AI-powered prototype for exploring realistic career transitions using occupational skill data.
+AI-powered prototype for exploring realistic career transitions using occupational skill data and multi-agent LLM reasoning.
 
 **Live App:**  
 https://career-pivot-simulator.streamlit.app/
@@ -16,95 +16,147 @@ Instructor: Jose A. Rodriguez Serrano
 
 # Project Overview
 
-The Career Pivot Simulator is a Streamlit prototype that helps users explore **realistic career transitions based on skill similarity**.
+The Career Pivot Simulator is a Streamlit prototype that helps users explore **realistic career transitions based on skill similarity and AI-supported reasoning**.
 
-Instead of simply recommending jobs, the system explains:
+The first version of the prototype focused on:
+- explainable career matching  
+- skill gap analysis  
+- stepping-stone routing  
+- data-driven learning plans  
 
-• how similar two careers are  
-• which skills transfer  
-• which skills are missing  
-• which intermediate careers could act as stepping stones  
-• what a realistic learning plan could look like  
+The extended version transforms this system into a **decision-support engine** by introducing a non-trivial LLM reasoning layer.
 
-The goal is to prototype a **data-driven product feature** that could realistically be embedded into professional platforms such as LinkedIn.
+Instead of only answering *“what job fits?”*, the system now answers:
 
-The feature focuses on **decision support rather than black-box predictions**.
+• What is realistically achievable?  
+• Which strategy should I follow?  
+• What would convince the market?  
+• Where are the real risks?  
+• What could change the recommendation?  
+
+The result is not just a recommender system, but a **structured decision framework combining data models and LLM-based reasoning**.
 
 ---
 
 # Key Features
 
-### Career Similarity Scoring
+## Data-Driven Career Matching
+
 Occupations are represented as skill vectors derived from the O*NET database.
 
 Cosine similarity is used to measure how close two careers are.
 
-### Percentile Contextualization
-Similarity scores are contextualized relative to all possible career transitions.
+## Percentile Contextualization
 
-This makes the score interpretable for users.
+Similarity scores are contextualized relative to all possible transitions.
 
-### Skill Gap Analysis
-The system identifies:
+## Skill Gap Analysis
 
 **Transferable skills**  
-skills that both careers require strongly.
+skills that strongly overlap between roles.
 
 **Missing skills**  
-skills that are important in the target role but weaker in the current role.
+skills required in the target role but underdeveloped.
 
-### Stepping-Stone Career Paths
+## Stepping-Stone Career Paths
+
 Occupations are modeled as nodes in a similarity graph.
 
-Shortest path algorithms identify realistic intermediate roles.
+Shortest-path logic identifies realistic intermediate roles.
 
-This helps users plan transitions step-by-step rather than jumping directly to a distant career.
+## Skill Investment Simulator
 
-### AI Learning Plan Generator
-An optional AI component generates a structured **3-phase learning plan** based on missing skills.
+Users can simulate how improving specific skills changes their match score.
 
-If the API is unavailable, the system falls back to a rule-based plan.
+---
+
+# LLM-Enhanced Features (Assignment 2)
+
+## Multi-Strategy Generation
+
+The system generates competing pivot strategies:
+- Direct  
+- Stepping-Stone  
+- Skill-First  
+- Portfolio-First  
+- Hybrid  
+
+Each includes structured attributes such as risk, speed, and feasibility.
+
+## Multi-Agent Evaluation
+
+Each strategy is evaluated by multiple personas:
+- Hiring Manager  
+- Recruiter  
+- Risk Analyst  
+- Portfolio Evaluator  
+- Career Coach  
+
+## Disagreement and Robustness Modeling
+
+Outputs are processed in Python to compute:
+- average scores  
+- disagreement  
+- robustness  
+- confidence-adjusted rankings  
+
+## Final Recommendation (Judge Layer)
+
+A final synthesis produces:
+- recommended strategy  
+- risks  
+- success conditions  
+- decision sensitivity  
+
+## AI Learning Plan
+
+A structured learning plan is generated based on real skill gaps.
+
+Fallback logic ensures robustness without API.
+
+## AI Coach
+
+Interactive assistant for quick validation and short-term guidance.
 
 ---
 
 # System Architecture
 
-The prototype separates **offline preprocessing** from **runtime inference**.
+O*NET Raw Data  
+→ Offline preprocessing  
+→ Skill Matrix + PCA + Clusters  
+→ Streamlit App  
 
-```
-O*NET Raw Data
-      ↓
-Offline preprocessing
-      ↓
-Skill Matrix
-PCA Coordinates
-Clusters
-Artifacts
-      ↓
-Streamlit Application
-      ↓
-Career Matching
-Skill Gap Analysis
-Stepping-Stone Paths
-AI Learning Plan
-```
+Data Layer:  
+- similarity scoring  
+- skill gaps  
+- routing  
 
-This design ensures that expensive computations are performed offline while the user interface remains responsive.
+LLM Layer:  
+- strategy generation  
+- multi-agent evaluation  
+- aggregation  
+- decision synthesis  
+
+---
+
+# Why This Is Non-Trivial LLM Usage
+
+The system uses:
+
+• multiple coordinated LLM calls  
+• role-based prompting  
+• structured outputs processed in Python  
+• aggregation and ranking logic  
+• integration with deterministic models  
+
+The LLM is part of a **decision pipeline**, not just a generator.
 
 ---
 
 # Data Source
 
-The prototype uses the **O*NET occupational database**, maintained by the U.S. Department of Labor.
-
-O*NET provides structured information about:
-
-• occupations  
-• required skills  
-• work activities  
-• abilities  
-
-Using this dataset allows the prototype to rely on **real labor market data** instead of synthetic examples.
+O*NET occupational database (U.S. Department of Labor)
 
 ---
 
@@ -117,122 +169,49 @@ NumPy
 Scikit-learn  
 NetworkX  
 
-AI integration:
-
-ChatGPT / LLM API (optional learning plan generation)
+LLM API integration
 
 ---
 
 # Repository Structure
 
-```
-career-pivot-simulator
-│
-├── app.py
-├── requirements.txt
-├── runtime.txt
-│
-├── src
-│   ├── ai_coach.py
-│   ├── map_pipeline.py
-│   ├── model_logic.py
-│   └── preprocessing.py
-│
-├── scripts
-│   ├── preprocess_onet.py
-│   └── preprocess_dummy.py
-│
-├── data
-│   └── skills_long.csv
-│
-└── artifacts
-```
-
-**src/**  
-Core model logic and algorithms.
-
-**scripts/**  
-Offline preprocessing pipeline.
-
-**artifacts/**  
-Precomputed data artifacts loaded at runtime.
-
-**app.py**  
-Streamlit interface.
+career-pivot-simulator  
+│  
+├── app.py  
+├── requirements.txt  
+├── runtime.txt  
+│  
+├── src  
+│   ├── ai_coach.py  
+│   ├── decision_engine.py  
+│   ├── map_pipeline.py  
+│   ├── model_logic.py  
+│   └── preprocessing.py  
+│  
+├── scripts  
+├── data  
+└── artifacts  
 
 ---
 
-# Running the App Locally
+# Running Locally
 
-Clone the repository:
-
-```
-git clone https://github.com/Thisisntevenmyfinale/career-pivot-simulator
-cd career-pivot-simulator
-```
-
-Install dependencies:
-
-```
-pip install -r requirements.txt
-```
-
-Run the Streamlit app:
-
-```
-streamlit run app.py
-```
+git clone https://github.com/Thisisntevenmyfinale/career-pivot-simulator  
+cd career-pivot-simulator  
+pip install -r requirements.txt  
+streamlit run app.py  
 
 ---
 
-# Prototyping Goals
+# Reflection
 
-The prototype was designed to reflect the **three dimensions of AI prototyping discussed in the course**.
+The system evolves from a recommender into a **decision-support system**.
 
-### User Experience
-A structured interaction flow helps users explore and interpret career transitions.
-
-### Data / Model Pipeline
-Offline preprocessing is separated from runtime inference.
-
-### Accuracy and Trust
-Explainability is provided through skill gap analysis and contextualized similarity scores.
-
----
-
-# AI Usage
-
-AI was used in two ways:
-
-1. **Development support**
-
-ChatGPT assisted with debugging, code review, and iteration during development.
-
-2. **Product feature**
-
-The prototype integrates an AI coach that generates learning plans based on detected skill gaps.
-
-This demonstrates how generative AI can be layered on top of structured data systems.
-
----
-
-# Limitations
-
-This prototype focuses on concept validation rather than production deployment.
-
-Limitations include:
-
-• simplified learning plan generation  
-• limited occupation filtering  
-• no real labor market demand data  
-• limited personalization
-
-Future work could integrate:
-
-• job market demand signals  
-• course recommendation systems  
-• salary data  
-• user skill profiles
+Instead of predicting one answer, it:
+- generates alternatives  
+- evaluates trade-offs  
+- models uncertainty  
+- supports execution  
 
 ---
 
