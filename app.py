@@ -32,6 +32,67 @@ from src.review_aggregation import (
 # ============================================================
 st.set_page_config(page_title="Career Pivot Simulator", page_icon="🧭", layout="wide")
 
+st.markdown("""
+<style>
+/* LinkedIn Header */
+.linkedin-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background-color: #0A66C2;
+    padding: 10px 20px;
+    border-radius: 8px;
+    margin-bottom: 15px;
+}
+
+.linkedin-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.linkedin-logo {
+    font-weight: bold;
+    font-size: 20px;
+    color: white;
+    background: #0A66C2;
+    border: 2px solid white;
+    padding: 2px 6px;
+    border-radius: 4px;
+}
+
+.linkedin-title {
+    color: white;
+    font-weight: 600;
+    font-size: 16px;
+}
+
+.linkedin-right {
+    color: white;
+    font-size: 14px;
+    opacity: 0.85;
+}
+
+/* Make app feel less Streamlit */
+.block-container {
+    padding-top: 1rem;
+}
+</style>
+""", unsafe_allow_html=True)
+
+# Fake LinkedIn Header
+st.markdown("""
+<div class="linkedin-header">
+    <div class="linkedin-left">
+        <div class="linkedin-logo">in</div>
+        <div class="linkedin-title">Career Pivot Assistant</div>
+    </div>
+    <div class="linkedin-right">
+        Simulated LinkedIn Extension
+    </div>
+</div>
+""", unsafe_allow_html=True)
+
 
 # ============================================================
 # Small helpers
@@ -837,6 +898,11 @@ with st.container(border=True):
                     )
                     st.session_state.review_board_judge_memo = None
 
+    progress_cols = st.columns(4)
+    progress_cols[0].metric("Step 1", "Done" if st.session_state.review_board_strategies else "Pending")
+    progress_cols[1].metric("Step 2", "Done" if st.session_state.review_board_evaluations else "Pending")
+    progress_cols[2].metric("Step 3", "Done" if st.session_state.review_board_consensus else "Pending")
+    progress_cols[3].metric("Step 4", "Done" if st.session_state.review_board_judge_memo else "Pending")
     strategies = st.session_state.review_board_strategies
     evaluations = st.session_state.review_board_evaluations
     consensus = st.session_state.review_board_consensus
@@ -918,7 +984,8 @@ with st.container(border=True):
     # --------------------------------------------------------
     if evaluations:
         st.divider()
-        st.markdown("### Reviewer coverage and disagreement")
+        st.markdown("### 2) Reviewer coverage and disagreement")
+        st.caption("Generated after clicking **Get expert evals**. This stage compares how different reviewer personas score the same strategies.")
 
         review_rows = []
         detail_rows = []
@@ -1018,7 +1085,8 @@ with st.container(border=True):
     # --------------------------------------------------------
     if consensus:
         st.divider()
-        st.markdown("### Consensus result")
+        st.markdown("### 3) Consensus result")
+        st.caption("Generated after clicking **Compute consensus**. This stage aggregates disagreement, weights reviewers, and produces the decision ranking.")
 
         c1, c2, c3, c4, c5 = st.columns(5)
         c1.metric("Winner", consensus.winner_strategy)
@@ -1144,8 +1212,9 @@ with st.container(border=True):
     # --------------------------------------------------------
     judge_memo = st.session_state.review_board_judge_memo
     if judge_memo:
-        st.divider()
-        st.markdown("### Final judge recommendation")
+        st.divider()        
+        st.markdown("### 4) Final judge recommendation")
+        st.caption("Generated after clicking **Generate judge memo**. This is the final synthesized recommendation and action-oriented summary.")
 
         j1, j2, j3 = st.columns([1, 1, 1])
         j1.metric("Verdict", str(judge_memo.verdict))
