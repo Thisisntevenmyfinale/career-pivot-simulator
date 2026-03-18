@@ -589,7 +589,11 @@ with st.sidebar:
         st.metric("Occupations", mat.shape[0])
         st.metric("Skills", mat.shape[1])
 
-
+with st.container(border=True):
+    st.markdown("### Your LinkedIn profile context")
+    st.markdown(f"**Current role:** {current}")
+    st.markdown(f"**Target role:** {target}")
+    st.caption("Derived from your profile and selected pivot.")
 # ============================================================
 # Empty state
 # ============================================================
