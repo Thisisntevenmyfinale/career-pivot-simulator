@@ -23,28 +23,36 @@ def _get_api_key_optional() -> str:
         return ""
 
 
-def _sanitize_text(s: Any, max_len: int = 400) -> str:
-    s = re.sub(r"\s+", " ", str(s or "")).strip()
-    return s[:max_len]
+def _sanitize_text(value: Any, max_len: int = 400) -> str:
+    text = re.sub(r"\s+", " ", str(value or "")).strip()
+    return text[:max_len]
 
 
-def _sanitize_list(items: Any, *, max_n: int, max_len: int = 120) -> List[str]:
+def _sanitize_list(items: Any, *, max_n: int, max_len: int = 140) -> List[str]:
     if not isinstance(items, list):
         return []
-    cleaned: List[str] = []
+    out: List[str] = []
     seen = set()
     for item in items:
-        val = _sanitize_text(item, max_len=max_len)
-        if not val:
+        s = _sanitize_text(item, max_len=max_len)
+        if not s:
             continue
-        key = val.lower()
+        key = s.lower()
         if key in seen:
             continue
         seen.add(key)
-        cleaned.append(val)
-        if len(cleaned) >= max_n:
+        out.append(s)
+        if len(out) >= max_n:
             break
-    return cleaned
+    return out
+
+
+def _safe_float(x: Any, default: float, lo: float, hi: float) -> float:
+    try:
+        val = float(x)
+    except Exception:
+        val = float(default)
+    return max(lo, min(hi, val))
 
 
 def _extract_json_object(text: str) -> Dict[str, Any]:
@@ -75,35 +83,35 @@ STRATEGY_ARCHETYPES: Dict[str, StrategyArchetype] = {
     "DIRECT": StrategyArchetype(
         name="Direct Pivot",
         code="DIRECT",
-        description="Immediate jump to the target role. Optimizes for speed, but requires high credibility.",
+        description="Immediate jump to the target role. Optimizes for speed and early market exposure.",
         estimated_days=45,
         risk_level="high",
     ),
     "STEPPING": StrategyArchetype(
         name="Stepping-Stone Pivot",
         code="STEPPING",
-        description="Uses one or more adjacent roles as bridges. Optimizes for market realism and lower downside risk.",
+        description="Uses adjacent bridge roles to reduce market-entry risk and improve credibility.",
         estimated_days=150,
         risk_level="medium",
     ),
     "SKILL_FIRST": StrategyArchetype(
         name="Skill-First Pivot",
         code="SKILL_FIRST",
-        description="Prioritizes closing the highest-signal capability gaps before pushing hard on the pivot.",
+        description="Prioritizes closing the highest-signal missing capabilities before a strong market push.",
         estimated_days=120,
         risk_level="low",
     ),
     "PORTFOLIO": StrategyArchetype(
         name="Portfolio-First Pivot",
         code="PORTFOLIO",
-        description="Builds visible proof of capability first. Optimizes for evidence and credibility in applications.",
+        description="Creates visible proof of ability first to make the pivot more credible externally.",
         estimated_days=100,
         risk_level="medium",
     ),
     "HYBRID": StrategyArchetype(
         name="Hybrid / Balanced",
         code="HYBRID",
-        description="Combines targeted upskilling, evidence-building, and realistic market entry. Optimizes for robustness.",
+        description="Balances speed, capability-building, portfolio proof, and labor-market realism.",
         estimated_days=110,
         risk_level="medium",
     ),
@@ -121,121 +129,110 @@ REVIEWER_WEIGHTS: Dict[str, float] = {
     "HiringManager": 1.25,
     "Recruiter": 1.10,
     "PortfolioEval": 1.00,
-    "RiskAnalyst": 1.15,
+    "RiskAnalyst": 1.20,
     "CareerCoach": 0.95,
 }
 
 
-def _strategy_style_hints(code: str) -> Dict[str, Any]:
+def _strategy_profile(code: str) -> Dict[str, Any]:
     code = str(code).upper()
     mapping = {
         "DIRECT": {
-            "optimization_goal": "maximize speed to target role",
-            "must_emphasize": [
-                "credible transferable strengths",
-                "fast interview readiness",
-                "minimum viable proof of fit",
+            "goal": "maximize speed to target role",
+            "best_for": "Candidates with unusually strong overlap, high risk tolerance, and immediate willingness to test themselves in the market.",
+            "evidence": "Use a tight narrative plus fast, high-signal experience such as auditions, public performance, workshops, or real target-role trials.",
+            "tradeoff": "Fastest path, but also the least forgiving if the market rejects the first signal.",
+            "confidence": "Only realistic when transferable strengths are unusually strong or the target field accepts rough-entry experimentation.",
+            "biases": {"speed": 9.0, "risk": 2.5, "evidence": 7.0, "market": 6.5, "gap": 4.5},
+            "must_do": [
+                "act fast",
+                "accept feedback from the market quickly",
+                "avoid over-preparing before first market exposure",
             ],
             "must_avoid": [
-                "long preparation timelines",
-                "too many intermediate detours",
-                "overbuilding before applying",
+                "long detours",
+                "course collection without external testing",
+                "pretending risk is low",
             ],
-            "signal_profile": {
-                "speed_bias": 9.0,
-                "risk_bias": 2.5,
-                "evidence_burden": 7.5,
-                "market_signal_strength": 7.5,
-                "skill_gap_focus": 4.5,
-            },
         },
         "STEPPING": {
-            "optimization_goal": "minimize transition risk by using adjacent roles",
-            "must_emphasize": [
-                "credible bridge roles",
-                "progressive market entry",
-                "reduced downside risk",
+            "goal": "minimize transition risk via adjacent bridge roles",
+            "best_for": "Candidates who need credibility compounding and cannot afford a very risky direct jump.",
+            "evidence": "Build proof through adjacent experiences that move the profile closer to the target role over time.",
+            "tradeoff": "Safer and more sellable, but slower and less emotionally exciting than a direct leap.",
+            "confidence": "Most realistic when the gap is meaningful and there are plausible intermediate positions or adjacent signals.",
+            "biases": {"speed": 4.0, "risk": 8.5, "evidence": 5.5, "market": 8.5, "gap": 6.0},
+            "must_do": [
+                "identify bridge roles",
+                "sequence the transition logically",
+                "show compounding credibility",
             ],
             "must_avoid": [
-                "implausible direct jump",
-                "missing bridge narrative",
-                "weak sequencing",
+                "fake bridge roles that do not actually improve fit",
+                "aimless drift",
+                "unclear sequencing",
             ],
-            "signal_profile": {
-                "speed_bias": 4.0,
-                "risk_bias": 8.5,
-                "evidence_burden": 5.5,
-                "market_signal_strength": 8.0,
-                "skill_gap_focus": 6.0,
-            },
         },
         "SKILL_FIRST": {
-            "optimization_goal": "close critical missing skills before applying aggressively",
-            "must_emphasize": [
-                "highest-signal skill gaps",
-                "sequenced learning",
-                "measurable capability lift",
+            "goal": "close critical missing skills before serious market push",
+            "best_for": "Candidates whose biggest blocker is true capability deficit rather than positioning alone.",
+            "evidence": "Demonstrate skill acquisition through measurable outputs, practice loops, and role-relevant exercises.",
+            "tradeoff": "Improves actual readiness, but delays aggressive market entry.",
+            "confidence": "Strong when the target role clearly requires capabilities that are not yet present at a credible level.",
+            "biases": {"speed": 3.0, "risk": 8.0, "evidence": 6.5, "market": 6.0, "gap": 9.0},
+            "must_do": [
+                "prioritize highest-signal gaps",
+                "turn learning into measurable outputs",
+                "avoid vague self-development",
             ],
             "must_avoid": [
-                "vague learning",
-                "course collecting without outputs",
+                "learning without proof",
+                "trying to close every gap at once",
                 "premature applications",
             ],
-            "signal_profile": {
-                "speed_bias": 3.0,
-                "risk_bias": 8.0,
-                "evidence_burden": 6.5,
-                "market_signal_strength": 6.0,
-                "skill_gap_focus": 9.0,
-            },
         },
         "PORTFOLIO": {
-            "optimization_goal": "maximize external proof of capability through tangible evidence",
-            "must_emphasize": [
-                "visible outputs",
-                "portfolio artifacts",
-                "proof before claims",
+            "goal": "maximize visible proof of capability",
+            "best_for": "Candidates entering markets where tangible artifacts, demos, or visible public work strongly affect credibility.",
+            "evidence": "Create public or semi-public artifacts that make competence legible to external evaluators.",
+            "tradeoff": "High proof value, but requires disciplined creation and curation of visible work.",
+            "confidence": "Strong when evidence can materially change how outsiders evaluate the pivot.",
+            "biases": {"speed": 5.0, "risk": 6.0, "evidence": 9.0, "market": 8.5, "gap": 7.0},
+            "must_do": [
+                "build concrete artifacts",
+                "choose visible proof that hiring-side audiences care about",
+                "connect outputs to target-role expectations",
             ],
             "must_avoid": [
-                "abstract learning only",
-                "generic projects with weak signaling",
-                "unclear evidence strategy",
+                "generic projects",
+                "private work no one sees",
+                "evidence that does not map to the target role",
             ],
-            "signal_profile": {
-                "speed_bias": 5.0,
-                "risk_bias": 6.0,
-                "evidence_burden": 9.0,
-                "market_signal_strength": 8.5,
-                "skill_gap_focus": 7.0,
-            },
         },
         "HYBRID": {
-            "optimization_goal": "balance speed, risk, learning, and proof of execution",
-            "must_emphasize": [
-                "balanced sequencing",
-                "risk-aware progress",
-                "both skill and signal building",
+            "goal": "balance speed, evidence, learning, and realism",
+            "best_for": "Candidates who need a robust path instead of a single aggressive bet.",
+            "evidence": "Combine targeted upskilling with visible outputs and a realistic market entry sequence.",
+            "tradeoff": "Most balanced option, but requires stronger prioritization discipline to avoid becoming too broad.",
+            "confidence": "Usually strongest when both readiness and proof matter and no single lever solves everything.",
+            "biases": {"speed": 6.5, "risk": 7.0, "evidence": 7.5, "market": 7.5, "gap": 7.5},
+            "must_do": [
+                "sequence actions carefully",
+                "balance proof and learning",
+                "avoid overcommitting to one lever too early",
             ],
             "must_avoid": [
-                "strategy drift",
-                "trying everything at once",
+                "doing everything at once",
                 "weak prioritization",
+                "strategy drift",
             ],
-            "signal_profile": {
-                "speed_bias": 6.5,
-                "risk_bias": 7.0,
-                "evidence_burden": 7.0,
-                "market_signal_strength": 7.5,
-                "skill_gap_focus": 7.5,
-            },
         },
     }
-    return mapping.get(code, mapping["HYBRID"])
+    return mapping[code]
 
 
 def _summarize_gap_df(gap_df: pd.DataFrame) -> Tuple[List[str], List[str], str]:
     df = gap_df.copy()
-
     for col in ["gap", "current_importance", "target_importance"]:
         df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0.0)
 
@@ -266,16 +263,115 @@ def _summarize_gap_df(gap_df: pd.DataFrame) -> Tuple[List[str], List[str], str]:
     )
 
     gap_summary = (
-        f"{len(missing)} positive skill gaps identified. "
-        f"Average gap: {avg_gap:.2f}. "
+        f"{len(missing)} positive skill gaps. "
+        f"Average gap {avg_gap:.2f}. "
         f"Highest-signal missing skills: {', '.join(high_signal_missing) if high_signal_missing else 'none'}. "
         f"Top transferable anchors: {', '.join(transfer_skills[:3]) if transfer_skills else 'none'}."
     )
-
     return missing_skills, transfer_skills, gap_summary
 
 
-def _build_strategy_gen_prompt(
+def _fallback_strategy_payload(
+    *,
+    current_role: str,
+    target_role: str,
+    archetype: StrategyArchetype,
+    missing_skills: List[str],
+    transfer_skills: List[str],
+) -> Dict[str, Any]:
+    profile = _strategy_profile(archetype.code)
+    b = profile["biases"]
+
+    objective_map = {
+        "DIRECT": [
+            "Package the pivot quickly and get to real market feedback fast.",
+            "Build minimum viable credibility and test it externally.",
+            "Push aggressively into auditions, interviews, or real opportunities.",
+        ],
+        "STEPPING": [
+            "Define the bridge-role path that makes the pivot believable.",
+            "Accumulate adjacent evidence that narrows the credibility gap.",
+            "Convert bridge-role credibility into target-role entry.",
+        ],
+        "SKILL_FIRST": [
+            "Identify the highest-signal missing capabilities and set a focused practice plan.",
+            "Convert core skill gaps into measurable improvement.",
+            "Enter the market once the minimum capability threshold is more credible.",
+        ],
+        "PORTFOLIO": [
+            "Choose target-role proof artifacts that outsiders will actually value.",
+            "Build visible evidence that demonstrates role-relevant ability.",
+            "Use the portfolio to change how the market reads the pivot.",
+        ],
+        "HYBRID": [
+            "Define a balanced plan for proof, skill-building, and market entry.",
+            "Build both readiness and visible signal in parallel.",
+            "Launch with a more robust, evidence-backed transition narrative.",
+        ],
+    }
+
+    return {
+        "summary": (
+            f"{archetype.name} is a {profile['goal']} strategy for moving from {current_role} to {target_role}. "
+            f"It is designed for candidates where this trade-off profile is more appropriate than the alternatives."
+        ),
+        "phases": [
+            {
+                "phase": "0-30 days",
+                "objective": objective_map[archetype.code][0],
+                "deliverables": ["Pivot positioning brief", "Priority action list"],
+                "key_actions": profile["must_do"][:3],
+            },
+            {
+                "phase": "30-90 days",
+                "objective": objective_map[archetype.code][1],
+                "deliverables": ["Visible evidence milestone", "Narrative refinement"],
+                "key_actions": [
+                    "Test progress against real market expectations",
+                    "Collect feedback from credible outsiders",
+                    "Refine the weak parts of the transition story",
+                ],
+            },
+            {
+                "phase": "90+ days",
+                "objective": objective_map[archetype.code][2],
+                "deliverables": ["Market push", "Iteration loop"],
+                "key_actions": [
+                    "Apply or audition selectively",
+                    "Track rejection and feedback patterns",
+                    "Double down on what increases credibility",
+                ],
+            },
+        ],
+        "key_missing_skills": missing_skills[:6],
+        "transferable_anchors": transfer_skills[:5],
+        "success_criteria": [
+            "Stronger external credibility",
+            "Better proof of fit",
+            "Clearer market narrative",
+        ],
+        "potential_risks": [
+            profile["tradeoff"],
+            "Execution quality may be weaker than planned",
+        ],
+        "resources_needed": [
+            "Focused time",
+            "Feedback from real evaluators",
+            "Visible evidence of progress",
+        ],
+        "best_for_profile": profile["best_for"],
+        "evidence_strategy": profile["evidence"],
+        "key_tradeoff": profile["tradeoff"],
+        "confidence_rationale": profile["confidence"],
+        "speed_bias": b["speed"],
+        "risk_bias": b["risk"],
+        "evidence_burden": b["evidence"],
+        "market_signal_strength": b["market"],
+        "skill_gap_focus": b["gap"],
+    }
+
+
+def _build_strategy_prompt(
     *,
     current_role: str,
     target_role: str,
@@ -284,32 +380,43 @@ def _build_strategy_gen_prompt(
     transfer_skills: List[str],
     gap_summary: str,
 ) -> str:
-    hints = _strategy_style_hints(archetype.code)
+    profile = _strategy_profile(archetype.code)
+    fallback = _fallback_strategy_payload(
+        current_role=current_role,
+        target_role=target_role,
+        archetype=archetype,
+        missing_skills=missing_skills,
+        transfer_skills=transfer_skills,
+    )
 
     return f"""
-You are designing one strategy inside a career-pivot decision engine.
+You are generating ONE strategy inside a multi-strategy career pivot decision engine.
 
-Your task is NOT to write generic career advice.
-Your task is to produce ONE strategy that is clearly differentiated from the other archetypes.
+This is critical:
+- The strategy must feel genuinely DIFFERENT from the other archetypes.
+- Do not write generic career advice.
+- Make the trade-off profile explicit.
+- Fill every field.
+- Return valid JSON only.
 
 Current role: {current_role}
 Target role: {target_role}
 
-Strategy archetype:
-- name: {archetype.name}
+Archetype:
 - code: {archetype.code}
+- name: {archetype.name}
 - description: {archetype.description}
 - estimated_days: {archetype.estimated_days}
 - risk_level: {archetype.risk_level}
 
 Optimization goal:
-{hints["optimization_goal"]}
+{profile["goal"]}
 
 Must emphasize:
-{json.dumps(hints["must_emphasize"], ensure_ascii=False)}
+{json.dumps(profile["must_do"], ensure_ascii=False)}
 
 Must avoid:
-{json.dumps(hints["must_avoid"], ensure_ascii=False)}
+{json.dumps(profile["must_avoid"], ensure_ascii=False)}
 
 Top missing skills:
 {json.dumps(missing_skills, ensure_ascii=False)}
@@ -320,19 +427,12 @@ Top transferable anchors:
 Gap summary:
 {gap_summary}
 
-Write a strategy that feels genuinely different from the other archetypes.
-Make trade-offs explicit. Keep it practical and market-aware.
+Use this as the style reference for what a good answer contains, but generate your own better version:
+{json.dumps(fallback, ensure_ascii=False, indent=2)}
 
-Return ONLY valid JSON:
+Return ONLY valid JSON with this shape:
 {{
-  "archetype": {{
-    "name": "{archetype.name}",
-    "code": "{archetype.code}",
-    "description": "{archetype.description}",
-    "estimated_days": {archetype.estimated_days},
-    "risk_level": "{archetype.risk_level}"
-  }},
-  "summary": "2-4 sentence summary",
+  "summary": "2-4 sentence strategy summary",
   "phases": [
     {{
       "phase": "0-30 days",
@@ -358,79 +458,20 @@ Return ONLY valid JSON:
   "success_criteria": ["string", "string", "string"],
   "potential_risks": ["string", "string"],
   "resources_needed": ["string", "string", "string"],
-  "best_for_profile": "Who this strategy suits best",
-  "evidence_strategy": "How this strategy creates labor-market proof",
-  "key_tradeoff": "Main trade-off in one sentence",
-  "confidence_rationale": "Why this strategy is or is not realistic",
-  "speed_bias": {hints["signal_profile"]["speed_bias"]},
-  "risk_bias": {hints["signal_profile"]["risk_bias"]},
-  "evidence_burden": {hints["signal_profile"]["evidence_burden"]},
-  "market_signal_strength": {hints["signal_profile"]["market_signal_strength"]},
-  "skill_gap_focus": {hints["signal_profile"]["skill_gap_focus"]}
+  "best_for_profile": "string",
+  "evidence_strategy": "string",
+  "key_tradeoff": "string",
+  "confidence_rationale": "string",
+  "speed_bias": 0,
+  "risk_bias": 0,
+  "evidence_burden": 0,
+  "market_signal_strength": 0,
+  "skill_gap_focus": 0
 }}
 """.strip()
 
 
-def _build_reviewer_prompt(
-    *,
-    reviewer_persona: str,
-    strategy_json: Dict[str, Any],
-    current_role: str,
-    target_role: str,
-) -> str:
-    persona_context = {
-        "HiringManager": "You are a hiring manager focused on role readiness, credibility, and whether this candidate would survive a real interview loop.",
-        "Recruiter": "You are a recruiter focused on market feasibility, positioning, and whether this pivot can be sold externally in a noisy job market.",
-        "PortfolioEval": "You are a portfolio evaluator focused on proof of skill, visibility of work, and whether evidence backs the claims.",
-        "RiskAnalyst": "You are a risk analyst focused on downside, weak assumptions, timing risk, and fragility of the plan.",
-        "CareerCoach": "You are a career coach focused on sustainable growth, motivation, sequencing, and narrative coherence.",
-    }
-
-    return f"""
-{persona_context.get(reviewer_persona, "")}
-
-Evaluate this pivot strategy for a transition from {current_role} to {target_role}.
-
-Strategy:
-{json.dumps(strategy_json, ensure_ascii=False, indent=2)}
-
-Return ONLY valid JSON:
-{{
-  "reviewer_persona": "{reviewer_persona}",
-  "strategy_code": "{strategy_json.get('archetype', {}).get('code', 'UNKNOWN')}",
-  "alignment_with_role": 0,
-  "market_feasibility": 0,
-  "time_efficiency": 0,
-  "risk_assessment": 0,
-  "narrative_strength": 0,
-  "justification": "2-4 sentence explanation",
-  "concerns": ["string", "string"],
-  "best_strength": "Best part of this strategy",
-  "biggest_risk": "Biggest practical risk",
-  "killer_objection": "The hardest objection against this plan",
-  "success_condition": "What must be true for this strategy to work",
-  "best_candidate_fit": "Who this strategy fits best",
-  "overall_score": 0
-}}
-
-Scoring rules:
-- the five dimensions are 0-10
-- overall_score is 0-100
-- be discriminative, not polite
-- do not give all strategies similar scores
-- let your persona preferences matter
-""".strip()
-
-
-def _coerce_float(x: Any, default: float, *, lo: float, hi: float) -> float:
-    try:
-        val = float(x)
-    except Exception:
-        val = default
-    return max(lo, min(hi, val))
-
-
-def _normalize_strategy_object(
+def _normalize_strategy(
     *,
     obj: Dict[str, Any],
     current_role: str,
@@ -439,132 +480,63 @@ def _normalize_strategy_object(
     missing_skills: List[str],
     transfer_skills: List[str],
 ) -> Strategy:
-    phases_raw = obj.get("phases", [])
-    phases: List[StrategyPhase] = []
+    fallback = _fallback_strategy_payload(
+        current_role=current_role,
+        target_role=target_role,
+        archetype=archetype,
+        missing_skills=missing_skills,
+        transfer_skills=transfer_skills,
+    )
+    profile = _strategy_profile(archetype.code)
 
-    for idx, p in enumerate(phases_raw[:4]):
-        phase_name = _sanitize_text(
-            p.get("phase", ["0-30 days", "30-90 days", "90+ days"][min(idx, 2)]),
-            max_len=40,
-        )
+    raw_phases = obj.get("phases", fallback["phases"])
+    phases: List[StrategyPhase] = []
+    for idx, p in enumerate(raw_phases[:4]):
+        default_phase = fallback["phases"][min(idx, 2)]
         phases.append(
             StrategyPhase(
-                phase=phase_name or ["0-30 days", "30-90 days", "90+ days"][min(idx, 2)],
-                objective=_sanitize_text(p.get("objective", "Build pivot readiness"), max_len=160),
-                deliverables=_sanitize_list(p.get("deliverables", []), max_n=4, max_len=120),
-                key_actions=_sanitize_list(p.get("key_actions", []), max_n=5, max_len=120),
+                phase=_sanitize_text(p.get("phase", default_phase["phase"]), 40),
+                objective=_sanitize_text(p.get("objective", default_phase["objective"]), 180),
+                deliverables=_sanitize_list(p.get("deliverables", default_phase["deliverables"]), max_n=4),
+                key_actions=_sanitize_list(p.get("key_actions", default_phase["key_actions"]), max_n=5),
             )
         )
 
     if len(phases) < 3:
-        fallback_phases = [
-            StrategyPhase(
-                phase="0-30 days",
-                objective="Clarify the pivot positioning and define the first evidence milestones.",
-                deliverables=["Positioning brief", "Priority skill list"],
-                key_actions=["Map top gaps", "Define target narrative", "Choose first proof artifact"],
-            ),
-            StrategyPhase(
-                phase="30-90 days",
-                objective="Build enough capability and evidence to make the pivot credible.",
-                deliverables=["Visible artifact", "Interview story bank"],
-                key_actions=["Create proof of work", "Practice stories", "Refine role targeting"],
-            ),
-            StrategyPhase(
-                phase="90+ days",
-                objective="Push into the market with a strategy-specific execution plan.",
-                deliverables=["Applications", "Feedback loop"],
-                key_actions=["Apply selectively", "Use feedback to iterate", "Double down on strongest signal"],
-            ),
-        ]
-        phases = fallback_phases
+        phases = [StrategyPhase(**x) for x in fallback["phases"]]
+
+    b = profile["biases"]
 
     return Strategy(
         archetype=archetype,
         current_role=current_role,
         target_role=target_role,
-        summary=_sanitize_text(obj.get("summary", ""), max_len=700)
-        or f"{archetype.name} strategy for moving from {current_role} to {target_role}.",
-        phases=phases[:4],
-        key_missing_skills=_sanitize_list(obj.get("key_missing_skills", missing_skills), max_n=6),
-        transferable_anchors=_sanitize_list(obj.get("transferable_anchors", transfer_skills), max_n=5),
-        success_criteria=_sanitize_list(obj.get("success_criteria", []), max_n=5) or [
-            "Improved market credibility",
-            "Stronger interview readiness",
-            "Clearer evidence of fit",
-        ],
-        potential_risks=_sanitize_list(obj.get("potential_risks", []), max_n=4) or [
-            "Weak labor-market signal",
-            "Timeline drift",
-        ],
-        resources_needed=_sanitize_list(obj.get("resources_needed", []), max_n=6) or [
-            "Focused time",
-            "Feedback from market",
-            "Tangible outputs",
-        ],
-        best_for_profile=_sanitize_text(obj.get("best_for_profile", ""), max_len=240),
-        evidence_strategy=_sanitize_text(obj.get("evidence_strategy", ""), max_len=320),
-        key_tradeoff=_sanitize_text(obj.get("key_tradeoff", ""), max_len=220),
-        confidence_rationale=_sanitize_text(obj.get("confidence_rationale", ""), max_len=320),
-        speed_bias=_coerce_float(obj.get("speed_bias", 5.0), 5.0, lo=0.0, hi=10.0),
-        risk_bias=_coerce_float(obj.get("risk_bias", 5.0), 5.0, lo=0.0, hi=10.0),
-        evidence_burden=_coerce_float(obj.get("evidence_burden", 5.0), 5.0, lo=0.0, hi=10.0),
-        market_signal_strength=_coerce_float(obj.get("market_signal_strength", 5.0), 5.0, lo=0.0, hi=10.0),
-        skill_gap_focus=_coerce_float(obj.get("skill_gap_focus", 5.0), 5.0, lo=0.0, hi=10.0),
+        summary=_sanitize_text(obj.get("summary", fallback["summary"]), 700),
+        phases=phases,
+        key_missing_skills=_sanitize_list(obj.get("key_missing_skills", fallback["key_missing_skills"]), max_n=6),
+        transferable_anchors=_sanitize_list(obj.get("transferable_anchors", fallback["transferable_anchors"]), max_n=5),
+        success_criteria=_sanitize_list(obj.get("success_criteria", fallback["success_criteria"]), max_n=5),
+        potential_risks=_sanitize_list(obj.get("potential_risks", fallback["potential_risks"]), max_n=4),
+        resources_needed=_sanitize_list(obj.get("resources_needed", fallback["resources_needed"]), max_n=6),
+        best_for_profile=_sanitize_text(obj.get("best_for_profile", fallback["best_for_profile"]), 240),
+        evidence_strategy=_sanitize_text(obj.get("evidence_strategy", fallback["evidence_strategy"]), 320),
+        key_tradeoff=_sanitize_text(obj.get("key_tradeoff", fallback["key_tradeoff"]), 220),
+        confidence_rationale=_sanitize_text(obj.get("confidence_rationale", fallback["confidence_rationale"]), 320),
+        speed_bias=_safe_float(obj.get("speed_bias", b["speed"]), b["speed"], 0.0, 10.0),
+        risk_bias=_safe_float(obj.get("risk_bias", b["risk"]), b["risk"], 0.0, 10.0),
+        evidence_burden=_safe_float(obj.get("evidence_burden", b["evidence"]), b["evidence"], 0.0, 10.0),
+        market_signal_strength=_safe_float(obj.get("market_signal_strength", b["market"]), b["market"], 0.0, 10.0),
+        skill_gap_focus=_safe_float(obj.get("skill_gap_focus", b["gap"]), b["gap"], 0.0, 10.0),
     )
 
 
-def _normalize_reviewer_score(
-    *,
-    obj: Dict[str, Any],
-    persona: str,
-    strategy_code: str,
-) -> ReviewerScore:
-    dimensions = {
-        "alignment_with_role": _coerce_float(obj.get("alignment_with_role", 5.0), 5.0, lo=0.0, hi=10.0),
-        "market_feasibility": _coerce_float(obj.get("market_feasibility", 5.0), 5.0, lo=0.0, hi=10.0),
-        "time_efficiency": _coerce_float(obj.get("time_efficiency", 5.0), 5.0, lo=0.0, hi=10.0),
-        "risk_assessment": _coerce_float(obj.get("risk_assessment", 5.0), 5.0, lo=0.0, hi=10.0),
-        "narrative_strength": _coerce_float(obj.get("narrative_strength", 5.0), 5.0, lo=0.0, hi=10.0),
-    }
-
-    overall = _coerce_float(obj.get("overall_score", 0.0), 0.0, lo=0.0, hi=100.0)
-    if overall <= 0.0:
-        overall = sum(dimensions.values()) / len(dimensions) * 10.0
-
-    return ReviewerScore(
-        reviewer_persona=persona,
-        strategy_code=strategy_code,
-        overall_score=overall,
-        alignment_with_role=dimensions["alignment_with_role"],
-        market_feasibility=dimensions["market_feasibility"],
-        time_efficiency=dimensions["time_efficiency"],
-        risk_assessment=dimensions["risk_assessment"],
-        narrative_strength=dimensions["narrative_strength"],
-        justification=_sanitize_text(obj.get("justification", ""), max_len=500)
-        or f"{persona} evaluation for {strategy_code}.",
-        concerns=_sanitize_list(obj.get("concerns", []), max_n=4, max_len=160),
-        best_strength=_sanitize_text(obj.get("best_strength", ""), max_len=220),
-        biggest_risk=_sanitize_text(obj.get("biggest_risk", ""), max_len=220),
-        killer_objection=_sanitize_text(obj.get("killer_objection", ""), max_len=220),
-        success_condition=_sanitize_text(obj.get("success_condition", ""), max_len=220),
-        best_candidate_fit=_sanitize_text(obj.get("best_candidate_fit", ""), max_len=220),
-    )
-
-
-def _strategy_similarity_signature(strategy: Strategy) -> set[str]:
+def _signature(strategy: Strategy) -> set[str]:
     tokens = set()
-
-    for skill in strategy.key_missing_skills[:6]:
-        tokens.add(skill.lower())
-
+    tokens.add(strategy.archetype.code.lower())
+    tokens.update([x.lower() for x in strategy.key_missing_skills[:6]])
+    tokens.update([x.lower() for x in strategy.success_criteria[:3]])
     for phase in strategy.phases[:3]:
-        for action in phase.key_actions[:4]:
-            tokens.add(action.lower())
-
-    for crit in strategy.success_criteria[:3]:
-        tokens.add(crit.lower())
-
+        tokens.update([x.lower() for x in phase.key_actions[:3]])
     return tokens
 
 
@@ -572,18 +544,164 @@ def _compute_diversity_warnings(strategies: List[Strategy]) -> List[str]:
     warnings: List[str] = []
     for i in range(len(strategies)):
         for j in range(i + 1, len(strategies)):
-            s1 = _strategy_similarity_signature(strategies[i])
-            s2 = _strategy_similarity_signature(strategies[j])
-            if not s1 or not s2:
+            a = _signature(strategies[i])
+            b = _signature(strategies[j])
+            if not a or not b:
                 continue
-            overlap = len(s1 & s2)
-            union = max(1, len(s1 | s2))
-            ratio = overlap / union
-            if ratio >= 0.45:
+            overlap = len(a & b) / max(1, len(a | b))
+            if overlap >= 0.45:
                 warnings.append(
-                    f"{strategies[i].archetype.code} and {strategies[j].archetype.code} may be too similar (overlap={ratio:.2f})."
+                    f"{strategies[i].archetype.code} and {strategies[j].archetype.code} may still be too similar ({overlap:.2f} overlap)."
                 )
     return warnings
+
+
+def _build_reviewer_prompt(
+    *,
+    reviewer_persona: str,
+    strategy: Strategy,
+    current_role: str,
+    target_role: str,
+) -> str:
+    persona_context = {
+        "HiringManager": "You are a hiring manager. Care most about role readiness, credibility, and whether this person could survive real evaluation.",
+        "Recruiter": "You are a recruiter. Care most about market positioning, sellability, and whether the pivot can be explained convincingly.",
+        "PortfolioEval": "You are a portfolio evaluator. Care most about proof, visible evidence, and whether claims are backed by artifacts or public signal.",
+        "RiskAnalyst": "You are a risk analyst. Care most about downside, fragile assumptions, hidden blockers, and time-to-realism.",
+        "CareerCoach": "You are a career coach. Care most about sustainability, sequencing, motivation, and whether the plan is psychologically executable.",
+    }
+
+    return f"""
+{persona_context.get(reviewer_persona, "")}
+
+Evaluate this career pivot strategy for moving from {current_role} to {target_role}.
+
+Strategy JSON:
+{json.dumps(strategy.model_dump(), ensure_ascii=False, indent=2)}
+
+Return ONLY valid JSON:
+{{
+  "alignment_with_role": 0,
+  "market_feasibility": 0,
+  "time_efficiency": 0,
+  "risk_assessment": 0,
+  "narrative_strength": 0,
+  "overall_score": 0,
+  "justification": "2-4 sentence explanation",
+  "concerns": ["string", "string"],
+  "best_strength": "string",
+  "biggest_risk": "string",
+  "killer_objection": "string",
+  "success_condition": "string",
+  "best_candidate_fit": "string"
+}}
+
+Rules:
+- score 0-10 for dimensions
+- overall_score 0-100
+- be discriminative
+- do not make all strategies similar
+- let your persona preferences visibly matter
+""".strip()
+
+
+def _persona_anchor_score(persona: str, strategy: Strategy) -> Dict[str, float]:
+    code = strategy.archetype.code
+
+    # hard persona preferences
+    persona_bias = {
+        "HiringManager": {"DIRECT": -1.2, "STEPPING": 0.6, "SKILL_FIRST": 0.4, "PORTFOLIO": 0.9, "HYBRID": 1.1},
+        "Recruiter": {"DIRECT": -0.8, "STEPPING": 1.0, "SKILL_FIRST": 0.2, "PORTFOLIO": 0.5, "HYBRID": 1.0},
+        "PortfolioEval": {"DIRECT": -1.0, "STEPPING": 0.1, "SKILL_FIRST": 0.5, "PORTFOLIO": 1.6, "HYBRID": 0.9},
+        "RiskAnalyst": {"DIRECT": -1.8, "STEPPING": 1.2, "SKILL_FIRST": 1.1, "PORTFOLIO": 0.3, "HYBRID": 1.0},
+        "CareerCoach": {"DIRECT": -0.9, "STEPPING": 0.8, "SKILL_FIRST": 1.0, "PORTFOLIO": 0.6, "HYBRID": 1.1},
+    }
+    bias = persona_bias.get(persona, {}).get(code, 0.0)
+
+    alignment = 5.5 + (strategy.skill_gap_focus * 0.10) + (strategy.market_signal_strength * 0.12) + bias
+    market = 5.0 + (strategy.market_signal_strength * 0.18) + (strategy.risk_bias * 0.10) + bias
+    time_eff = 4.5 + (strategy.speed_bias * 0.22) - (strategy.evidence_burden * 0.06)
+    risk = 4.5 + (strategy.risk_bias * 0.22) - (strategy.speed_bias * 0.10)
+    narrative = 5.0 + (strategy.market_signal_strength * 0.14) + (strategy.evidence_burden * 0.08) + bias * 0.4
+
+    dims = {
+        "alignment_with_role": max(0.0, min(10.0, alignment)),
+        "market_feasibility": max(0.0, min(10.0, market)),
+        "time_efficiency": max(0.0, min(10.0, time_eff)),
+        "risk_assessment": max(0.0, min(10.0, risk)),
+        "narrative_strength": max(0.0, min(10.0, narrative)),
+    }
+    dims["overall_score"] = sum(dims.values()) / 5.0 * 10.0
+    return dims
+
+
+def _normalize_reviewer_score(
+    *,
+    obj: Dict[str, Any],
+    persona: str,
+    strategy: Strategy,
+) -> ReviewerScore:
+    anchor = _persona_anchor_score(persona, strategy)
+
+    # blend weak LLM output with deterministic anchor so results stay useful
+    def blended(field: str) -> float:
+        llm_val = _safe_float(obj.get(field, anchor[field]), anchor[field], 0.0, 10.0)
+        return max(0.0, min(10.0, 0.45 * llm_val + 0.55 * anchor[field]))
+
+    alignment = blended("alignment_with_role")
+    market = blended("market_feasibility")
+    time_eff = blended("time_efficiency")
+    risk = blended("risk_assessment")
+    narrative = blended("narrative_strength")
+
+    llm_overall = _safe_float(obj.get("overall_score", 0.0), 0.0, 0.0, 100.0)
+    computed = (alignment + market + time_eff + risk + narrative) / 5.0 * 10.0
+    if llm_overall <= 0.0:
+        overall = computed
+    else:
+        overall = max(0.0, min(100.0, 0.35 * llm_overall + 0.65 * computed))
+
+    return ReviewerScore(
+        reviewer_persona=persona,
+        strategy_code=strategy.archetype.code,
+        overall_score=overall,
+        alignment_with_role=alignment,
+        market_feasibility=market,
+        time_efficiency=time_eff,
+        risk_assessment=risk,
+        narrative_strength=narrative,
+        justification=_sanitize_text(
+            obj.get(
+                "justification",
+                f"{persona} sees {strategy.archetype.code} as a differentiated strategy with clear trade-offs."
+            ),
+            500,
+        ),
+        concerns=_sanitize_list(obj.get("concerns", []), max_n=4) or [
+            "Execution quality will strongly affect outcomes.",
+            "Market reaction may differ from internal confidence.",
+        ],
+        best_strength=_sanitize_text(
+            obj.get("best_strength", strategy.key_tradeoff or strategy.best_for_profile),
+            240,
+        ),
+        biggest_risk=_sanitize_text(
+            obj.get("biggest_risk", (strategy.potential_risks[0] if strategy.potential_risks else "Execution risk")),
+            240,
+        ),
+        killer_objection=_sanitize_text(
+            obj.get("killer_objection", "This plan fails if it does not produce external credibility quickly enough."),
+            240,
+        ),
+        success_condition=_sanitize_text(
+            obj.get("success_condition", "The candidate must execute the sequencing with discipline and visible proof."),
+            240,
+        ),
+        best_candidate_fit=_sanitize_text(
+            obj.get("best_candidate_fit", strategy.best_for_profile),
+            240,
+        ),
+    )
 
 
 def _offline_strategies(
@@ -594,93 +712,22 @@ def _offline_strategies(
     transfer_skills: List[str],
 ) -> Dict[str, Any]:
     strategies: List[Strategy] = []
-
-    offline_profiles = {
-        "DIRECT": {
-            "summary": "Fastest path to the target role by leveraging existing overlap and targeting immediate market entry.",
-            "best_for_profile": "Candidates with strong transferable credibility and low tolerance for long detours.",
-            "evidence_strategy": "Use a tight interview narrative plus one fast proof artifact.",
-            "key_tradeoff": "Speed is high, but downside risk is also high.",
-            "confidence_rationale": "Works best when the current role already signals partial readiness.",
-        },
-        "STEPPING": {
-            "summary": "Use adjacent bridge roles to make the pivot easier to sell and safer in the market.",
-            "best_for_profile": "Candidates who need credibility compounding and want lower downside risk.",
-            "evidence_strategy": "Create proof gradually through adjacent-role accomplishments.",
-            "key_tradeoff": "More realistic, but slower than a direct jump.",
-            "confidence_rationale": "Stronger when the target role is materially different from the current role.",
-        },
-        "SKILL_FIRST": {
-            "summary": "Prioritize critical missing capabilities before pushing hard on the market.",
-            "best_for_profile": "Candidates with large high-signal skill gaps.",
-            "evidence_strategy": "Show capability lift through targeted outputs and practical exercises.",
-            "key_tradeoff": "Capability improves first, but market entry is delayed.",
-            "confidence_rationale": "Strong when missing skills are the main blocker.",
-        },
-        "PORTFOLIO": {
-            "summary": "Build visible artifacts that prove target-role readiness before relying on resume claims.",
-            "best_for_profile": "Candidates entering proof-heavy markets where visible work matters.",
-            "evidence_strategy": "Create two or three public-facing proof artifacts tied to target-role work.",
-            "key_tradeoff": "Requires effort upfront, but makes the narrative much more credible.",
-            "confidence_rationale": "Strong when employers want concrete evidence rather than abstract claims.",
-        },
-        "HYBRID": {
-            "summary": "Balance skill-building, evidence, and market realism to create a robust transition strategy.",
-            "best_for_profile": "Candidates who want a practical path without overcommitting to one lever.",
-            "evidence_strategy": "Combine targeted skill building with visible market-facing outputs.",
-            "key_tradeoff": "Not the fastest single path, but usually the most resilient.",
-            "confidence_rationale": "Strong when the pivot requires both proof and credibility, but not a complete reset.",
-        },
-    }
-
     for code, archetype in STRATEGY_ARCHETYPES.items():
-        profile = offline_profiles[code]
-        signal = _strategy_style_hints(code)["signal_profile"]
-
+        payload = _fallback_strategy_payload(
+            current_role=current_role,
+            target_role=target_role,
+            archetype=archetype,
+            missing_skills=missing_skills,
+            transfer_skills=transfer_skills,
+        )
         strategies.append(
-            Strategy(
-                archetype=archetype,
+            _normalize_strategy(
+                obj=payload,
                 current_role=current_role,
                 target_role=target_role,
-                summary=profile["summary"],
-                phases=[
-                    StrategyPhase(
-                        phase="0-30 days",
-                        objective="Define the pivot positioning and high-priority workstream.",
-                        deliverables=["Pivot positioning brief", "Prioritized gap list"],
-                        key_actions=["Clarify target angle", "Select highest-signal opportunities", "Set evidence targets"],
-                    ),
-                    StrategyPhase(
-                        phase="30-90 days",
-                        objective="Build enough credibility to change the quality of the market conversation.",
-                        deliverables=["One visible artifact", "Updated interview story bank"],
-                        key_actions=["Create concrete evidence", "Tighten story", "Test assumptions against real postings"],
-                    ),
-                    StrategyPhase(
-                        phase="90+ days",
-                        objective="Execute the pivot with a strategy-specific go-to-market plan.",
-                        deliverables=["Applications", "Feedback log"],
-                        key_actions=["Apply selectively", "Gather feedback", "Iterate based on weak signal areas"],
-                    ),
-                ],
-                key_missing_skills=missing_skills[:6],
-                transferable_anchors=transfer_skills[:5],
-                success_criteria=[
-                    "Better market credibility",
-                    "Stronger proof of fit",
-                    "Clearer interview narrative",
-                ],
-                potential_risks=["Weak external signal", "Timeline drift"],
-                resources_needed=["Focused time", "Practical output", "Feedback loop"],
-                best_for_profile=profile["best_for_profile"],
-                evidence_strategy=profile["evidence_strategy"],
-                key_tradeoff=profile["key_tradeoff"],
-                confidence_rationale=profile["confidence_rationale"],
-                speed_bias=signal["speed_bias"],
-                risk_bias=signal["risk_bias"],
-                evidence_burden=signal["evidence_burden"],
-                market_signal_strength=signal["market_signal_strength"],
-                skill_gap_focus=signal["skill_gap_focus"],
+                archetype=archetype,
+                missing_skills=missing_skills,
+                transfer_skills=transfer_skills,
             )
         )
 
@@ -739,8 +786,6 @@ def generate_all_strategies(
         "errors": [],
         "raw_outputs": {},
         "gap_summary": gap_summary,
-        "missing_skills": missing_skills,
-        "transfer_skills": transfer_skills,
         "diversity_warnings": [],
     }
 
@@ -749,7 +794,7 @@ def generate_all_strategies(
 
     for code, archetype in STRATEGY_ARCHETYPES.items():
         try:
-            prompt = _build_strategy_gen_prompt(
+            prompt = _build_strategy_prompt(
                 current_role=current_role,
                 target_role=target_role,
                 archetype=archetype,
@@ -757,13 +802,12 @@ def generate_all_strategies(
                 transfer_skills=transfer_skills,
                 gap_summary=gap_summary,
             )
-
             resp = client.responses.create(model=model, input=prompt)
             raw_text = (resp.output_text or "").strip()
             trace["raw_outputs"][code] = raw_text
 
             obj = _extract_json_object(raw_text)
-            strategy = _normalize_strategy_object(
+            strategy = _normalize_strategy(
                 obj=obj,
                 current_role=current_role,
                 target_role=target_role,
@@ -771,27 +815,35 @@ def generate_all_strategies(
                 missing_skills=missing_skills,
                 transfer_skills=transfer_skills,
             )
-
             strategies.append(strategy)
             trace["strategies_generated"] += 1
 
         except Exception as e:
             trace["errors"].append(f"{code}: {repr(e)}")
-
-    if not strategies:
-        return _offline_strategies(
-            current_role=current_role,
-            target_role=target_role,
-            missing_skills=missing_skills,
-            transfer_skills=transfer_skills,
-        )
+            fallback_obj = _fallback_strategy_payload(
+                current_role=current_role,
+                target_role=target_role,
+                archetype=archetype,
+                missing_skills=missing_skills,
+                transfer_skills=transfer_skills,
+            )
+            strategies.append(
+                _normalize_strategy(
+                    obj=fallback_obj,
+                    current_role=current_role,
+                    target_role=target_role,
+                    archetype=archetype,
+                    missing_skills=missing_skills,
+                    transfer_skills=transfer_skills,
+                )
+            )
 
     trace["diversity_warnings"] = _compute_diversity_warnings(strategies)
 
     return {
         "strategies": strategies,
         "trace": trace,
-        "source": "OpenAI",
+        "source": "OpenAI" if trace["strategies_generated"] > 0 else "Offline (deterministic)",
     }
 
 
@@ -802,47 +854,27 @@ def _offline_evaluations(
 ) -> Dict[str, Any]:
     evaluations: List[ReviewerEvaluation] = []
 
-    persona_bias = {
-        "HiringManager": {"DIRECT": 72, "STEPPING": 79, "SKILL_FIRST": 75, "PORTFOLIO": 81, "HYBRID": 84},
-        "Recruiter": {"DIRECT": 68, "STEPPING": 82, "SKILL_FIRST": 73, "PORTFOLIO": 77, "HYBRID": 83},
-        "PortfolioEval": {"DIRECT": 65, "STEPPING": 73, "SKILL_FIRST": 76, "PORTFOLIO": 88, "HYBRID": 82},
-        "RiskAnalyst": {"DIRECT": 58, "STEPPING": 84, "SKILL_FIRST": 80, "PORTFOLIO": 75, "HYBRID": 86},
-        "CareerCoach": {"DIRECT": 67, "STEPPING": 79, "SKILL_FIRST": 81, "PORTFOLIO": 80, "HYBRID": 87},
-    }
-
     for persona in reviewer_personas:
         scores: List[ReviewerScore] = []
         for strategy in strategies:
-            code = strategy.archetype.code
-            overall = float(persona_bias.get(persona, {}).get(code, 75.0))
-
             scores.append(
-                ReviewerScore(
-                    reviewer_persona=persona,
-                    strategy_code=code,
-                    overall_score=overall,
-                    alignment_with_role=min(10.0, max(0.0, overall / 10.0 - 0.2)),
-                    market_feasibility=min(10.0, max(0.0, overall / 10.0 - 0.1)),
-                    time_efficiency=min(10.0, max(0.0, strategy.speed_bias)),
-                    risk_assessment=min(10.0, max(0.0, strategy.risk_bias)),
-                    narrative_strength=min(10.0, max(0.0, strategy.market_signal_strength)),
-                    justification=f"{persona} offline evaluation of {code} based on its trade-offs and market signal.",
-                    concerns=["Execution quality matters", "Weak evidence would reduce this score"],
-                    best_strength=f"Strongest trait is {strategy.key_tradeoff or 'its differentiated logic'}.",
-                    biggest_risk=strategy.potential_risks[0] if strategy.potential_risks else "Execution risk",
-                    killer_objection="The plan fails if the candidate cannot convert theory into visible proof quickly.",
-                    success_condition="The candidate executes the stated sequencing with discipline.",
-                    best_candidate_fit=strategy.best_for_profile or "Candidates with aligned constraints and motivation.",
+                _normalize_reviewer_score(
+                    obj={},
+                    persona=persona,
+                    strategy=strategy,
                 )
             )
+
+        strongest = max(scores, key=lambda s: s.overall_score).strategy_code
+        weakest = min(scores, key=lambda s: s.overall_score).strategy_code
 
         evaluations.append(
             ReviewerEvaluation(
                 reviewer_persona=persona,
                 strategy_scores=scores,
-                overall_recommendation="Use the highest-scoring strategy unless disagreement and fragility are too high.",
-                strongest_strategy=max(scores, key=lambda s: s.overall_score).strategy_code if scores else "HYBRID",
-                weakest_strategy=min(scores, key=lambda s: s.overall_score).strategy_code if scores else "DIRECT",
+                overall_recommendation=f"{persona} currently prefers {strongest} over {weakest} given its priorities.",
+                strongest_strategy=strongest,
+                weakest_strategy=weakest,
                 reviewer_weight=REVIEWER_WEIGHTS.get(persona, 1.0),
             )
         )
@@ -889,54 +921,49 @@ def evaluate_strategies_by_reviewers(
     evaluations: List[ReviewerEvaluation] = []
 
     for persona in reviewer_personas:
-        try:
-            scores: List[ReviewerScore] = []
+        scores: List[ReviewerScore] = []
 
-            for strategy in strategies:
+        for strategy in strategies:
+            try:
                 prompt = _build_reviewer_prompt(
                     reviewer_persona=persona,
-                    strategy_json=strategy.model_dump(),
+                    strategy=strategy,
                     current_role=current_role,
                     target_role=target_role,
                 )
-
                 resp = client.responses.create(model=model, input=prompt)
                 raw_text = (resp.output_text or "").strip()
                 trace["raw_outputs"][f"{persona}_{strategy.archetype.code}"] = raw_text
-
                 obj = _extract_json_object(raw_text)
-                score = _normalize_reviewer_score(
+            except Exception as e:
+                trace["errors"].append(f"{persona}_{strategy.archetype.code}: {repr(e)}")
+                obj = {}
+
+            scores.append(
+                _normalize_reviewer_score(
                     obj=obj,
                     persona=persona,
-                    strategy_code=strategy.archetype.code,
-                )
-                scores.append(score)
-
-            strongest = max(scores, key=lambda s: s.overall_score).strategy_code if scores else "HYBRID"
-            weakest = min(scores, key=lambda s: s.overall_score).strategy_code if scores else "DIRECT"
-
-            evaluations.append(
-                ReviewerEvaluation(
-                    reviewer_persona=persona,
-                    strategy_scores=scores,
-                    overall_recommendation=(
-                        f"{persona} favors {strongest} over {weakest} given its implicit priorities."
-                    ),
-                    strongest_strategy=strongest,
-                    weakest_strategy=weakest,
-                    reviewer_weight=REVIEWER_WEIGHTS.get(persona, 1.0),
+                    strategy=strategy,
                 )
             )
-            trace["evaluations_completed"] += 1
 
-        except Exception as e:
-            trace["errors"].append(f"{persona}: {repr(e)}")
+        strongest = max(scores, key=lambda s: s.overall_score).strategy_code
+        weakest = min(scores, key=lambda s: s.overall_score).strategy_code
 
-    if not evaluations:
-        return _offline_evaluations(strategies=strategies, reviewer_personas=reviewer_personas)
+        evaluations.append(
+            ReviewerEvaluation(
+                reviewer_persona=persona,
+                strategy_scores=scores,
+                overall_recommendation=f"{persona} prefers {strongest} and is most skeptical of {weakest}.",
+                strongest_strategy=strongest,
+                weakest_strategy=weakest,
+                reviewer_weight=REVIEWER_WEIGHTS.get(persona, 1.0),
+            )
+        )
+        trace["evaluations_completed"] += 1
 
     return {
         "evaluations": evaluations,
         "trace": trace,
-        "source": "OpenAI",
+        "source": "OpenAI" if trace["evaluations_completed"] > 0 else "Offline (deterministic)",
     }

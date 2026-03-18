@@ -114,6 +114,16 @@ def _render_bullet_list(title: str, items: List[str], empty_text: str = "No item
         return
     for item in clean[:6]:
         st.markdown(f"- {item}")
+        
+
+def _render_bullet_list(title: str, items: List[str], empty_text: str = "No items.") -> None:
+    st.markdown(f"**{title}**")
+    clean = [str(x).strip() for x in (items or []) if str(x).strip()]
+    if not clean:
+        st.caption(empty_text)
+        return
+    for item in clean[:6]:
+        st.markdown(f"- {item}")
 
 
 # ============================================================

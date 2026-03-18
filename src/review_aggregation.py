@@ -47,13 +47,6 @@ def _safe_float(x: Any, default: float = 0.0) -> float:
         return float(default)
 
 
-def _reviewer_weights(evaluations: List[ReviewerEvaluation]) -> Dict[str, float]:
-    out: Dict[str, float] = {}
-    for ev in evaluations:
-        out[ev.reviewer_persona] = max(0.5, min(2.0, _safe_float(getattr(ev, "reviewer_weight", 1.0), 1.0)))
-    return out
-
-
 def compute_consensus(
     evaluations: List[ReviewerEvaluation],
 ) -> ConsensusResult:
@@ -70,28 +63,30 @@ def compute_consensus(
     if not strategy_codes:
         raise ValueError("No strategy scores found")
 
-    reviewer_weights = _reviewer_weights(evaluations)
+    reviewer_weights = {
+        ev.reviewer_persona: max(0.5, min(2.0, _safe_float(getattr(ev, "reviewer_weight", 1.0), 1.0)))
+        for ev in evaluations
+    }
 
     score_matrix: Dict[str, Dict[str, float]] = {code: {} for code in strategy_codes}
-    dimension_matrix: Dict[str, List[float]] = {code: [] for code in strategy_codes}
 
     for ev in evaluations:
         for score in ev.strategy_scores:
             score_matrix[score.strategy_code][ev.reviewer_persona] = float(score.overall_score)
-            dimension_matrix[score.strategy_code].append(
-                float(score.alignment_with_role + score.market_feasibility + score.time_efficiency + score.risk_assessment + score.narrative_strength) / 5.0
-            )
 
-    weighted_means: Dict[str, float] = {}
+    adjusted_scores: Dict[str, float] = {}
     raw_means: Dict[str, float] = {}
     std_scores: Dict[str, float] = {}
     penalties: Dict[str, float] = {}
     robustness: Dict[str, float] = {}
+    major_disagreements: List[Dict[str, Any]] = []
+    reviewer_alignment_summary: List[Dict[str, Any]] = []
+    strategy_diagnostics: List[Dict[str, Any]] = []
 
     for code in strategy_codes:
-        reviewer_scores = score_matrix.get(code, {})
+        reviewer_scores = score_matrix[code]
         if not reviewer_scores:
-            weighted_means[code] = 0.0
+            adjusted_scores[code] = 0.0
             raw_means[code] = 0.0
             std_scores[code] = 0.0
             penalties[code] = 0.0
@@ -105,89 +100,70 @@ def compute_consensus(
         raw_mean = float(np.mean(vals))
         weighted_mean = float(np.average(vals, weights=weights))
         std = float(np.std(vals))
-        spread = float(np.max(vals) - np.min(vals)) if len(vals) else 0.0
+        spread = float(np.max(vals) - np.min(vals))
 
-        disagreement_penalty = min(18.0, std * 0.9 + spread * 0.15)
-        confidence_adjusted = max(0.0, weighted_mean - disagreement_penalty)
+        disagreement_penalty = min(16.0, std * 0.9 + spread * 0.12)
+        adjusted = max(0.0, weighted_mean - disagreement_penalty)
+        robust = max(0.0, min(100.0, weighted_mean - std * 1.8))
 
-        weighted_means[code] = confidence_adjusted
+        adjusted_scores[code] = adjusted
         raw_means[code] = raw_mean
         std_scores[code] = std
         penalties[code] = disagreement_penalty
-        robustness[code] = max(0.0, min(100.0, weighted_mean - std * 2.2))
+        robustness[code] = robust
 
-    ranked = sorted(weighted_means.items(), key=lambda x: x[1], reverse=True)
-    winner_code, winner_score = ranked[0] if ranked else ("HYBRID", 0.0)
-    runner_up_code, runner_up_score = ranked[1] if len(ranked) > 1 else (winner_code, winner_score)
-
-    # global agreement metrics
-    all_std = np.asarray(list(std_scores.values()), dtype=float)
-    mean_std = float(np.mean(all_std)) if all_std.size else 0.0
-
-    consensus_strength = float(max(0.0, min(100.0, 100.0 - mean_std * 7.0)))
-    controversy_score = float(max(0.0, min(100.0, np.mean(list(penalties.values())) * 4.0 if penalties else 0.0)))
-    robustness_score = float(max(0.0, min(100.0, robustness.get(winner_code, winner_score))))
-
-    score_margin = winner_score - runner_up_score
-    fragile_winner = bool(score_margin < 4.0 or std_scores.get(winner_code, 0.0) > 10.0)
-
-    major_disagreements: List[Dict[str, Any]] = []
-    strategy_diagnostics: List[Dict[str, Any]] = []
-    reviewer_alignment_summary: List[Dict[str, Any]] = []
-
-    for code in strategy_codes:
-        reviewer_scores = score_matrix[code]
-        vals = list(reviewer_scores.values())
-        if reviewer_scores:
-            min_score = min(vals)
-            max_score = max(vals)
-            min_reviewer = [k for k, v in reviewer_scores.items() if v == min_score][0]
-            max_reviewer = [k for k, v in reviewer_scores.items() if v == max_score][0]
-        else:
-            min_score = max_score = 0.0
-            min_reviewer = max_reviewer = "Unknown"
-
-        if std_scores.get(code, 0.0) > 8.0 or (max_score - min_score) >= 15.0:
+        if std >= 5.0 or spread >= 12.0:
+            strongest_advocate = max(reviewer_scores.items(), key=lambda kv: kv[1])[0]
+            strongest_critic = min(reviewer_scores.items(), key=lambda kv: kv[1])[0]
             major_disagreements.append(
                 {
                     "strategy": code,
-                    "range": f"{min_score:.0f}-{max_score:.0f}",
-                    "strongest_advocate": max_reviewer,
-                    "strongest_critic": min_reviewer,
-                    "spread": float(max_score - min_score),
-                    "std_dev": float(std_scores.get(code, 0.0)),
+                    "range": f"{min(vals):.0f}-{max(vals):.0f}",
+                    "strongest_advocate": strongest_advocate,
+                    "strongest_critic": strongest_critic,
+                    "spread": spread,
+                    "std_dev": std,
                 }
             )
 
         strategy_diagnostics.append(
             {
                 "strategy": code,
-                "confidence_adjusted_score": round(weighted_means.get(code, 0.0), 2),
-                "raw_mean_score": round(raw_means.get(code, 0.0), 2),
-                "disagreement_penalty": round(penalties.get(code, 0.0), 2),
-                "std_dev": round(std_scores.get(code, 0.0), 2),
-                "robustness_score": round(robustness.get(code, 0.0), 2),
+                "confidence_adjusted_score": round(adjusted, 2),
+                "raw_mean_score": round(raw_mean, 2),
+                "disagreement_penalty": round(disagreement_penalty, 2),
+                "std_dev": round(std, 2),
+                "robustness_score": round(robust, 2),
+            }
+        )
+
+    ranked = sorted(adjusted_scores.items(), key=lambda kv: kv[1], reverse=True)
+    winner_code, winner_score = ranked[0]
+    runner_up_code, runner_up_score = ranked[1] if len(ranked) > 1 else ranked[0]
+
+    all_stds = np.asarray(list(std_scores.values()), dtype=float)
+    mean_std = float(np.mean(all_stds)) if all_stds.size else 0.0
+
+    consensus_strength = max(0.0, min(100.0, 100.0 - mean_std * 8.0))
+    controversy_score = max(0.0, min(100.0, np.mean(list(penalties.values())) * 4.0 if penalties else 0.0))
+    robustness_score = max(0.0, min(100.0, robustness.get(winner_code, winner_score)))
+    fragile_winner = (winner_score - runner_up_score) < 4.0 or std_scores.get(winner_code, 0.0) > 8.0
+
+    for ev in evaluations:
+        per_scores = {s.strategy_code: float(s.overall_score) for s in ev.strategy_scores}
+        best = max(per_scores.items(), key=lambda kv: kv[1])[0]
+        worst = min(per_scores.items(), key=lambda kv: kv[1])[0]
+        reviewer_alignment_summary.append(
+            {
+                "reviewer_persona": ev.reviewer_persona,
+                "preferred_strategy": best,
+                "least_preferred_strategy": worst,
+                "reviewer_weight": reviewer_weights.get(ev.reviewer_persona, 1.0),
             }
         )
 
     major_disagreements.sort(key=lambda x: x["spread"], reverse=True)
     strategy_diagnostics.sort(key=lambda x: x["confidence_adjusted_score"], reverse=True)
-
-    for ev in evaluations:
-        person_scores = {s.strategy_code: float(s.overall_score) for s in ev.strategy_scores}
-        if not person_scores:
-            continue
-
-        best_code = max(person_scores.items(), key=lambda kv: kv[1])[0]
-        worst_code = min(person_scores.items(), key=lambda kv: kv[1])[0]
-        reviewer_alignment_summary.append(
-            {
-                "reviewer_persona": ev.reviewer_persona,
-                "preferred_strategy": best_code,
-                "least_preferred_strategy": worst_code,
-                "reviewer_weight": reviewer_weights.get(ev.reviewer_persona, 1.0),
-            }
-        )
 
     return ConsensusResult(
         winner_strategy=winner_code,
@@ -214,33 +190,24 @@ def _build_judge_prompt(
     gap_summary: str,
 ) -> str:
     rankings_text = "\n".join(
-        [f"{i + 1}. {code}: {score:.1f}/100" for i, (code, score) in enumerate(consensus_result.strategy_rankings)]
+        [f"{i+1}. {code}: {score:.1f}/100" for i, (code, score) in enumerate(consensus_result.strategy_rankings)]
     )
 
-    disagreements_text = ""
+    disagreement_text = ""
     if consensus_result.major_disagreements:
-        disagreements_text += "Major disagreements:\n"
+        disagreement_text = "Major disagreements:\n"
         for d in consensus_result.major_disagreements[:4]:
-            disagreements_text += (
+            disagreement_text += (
                 f"- {d['strategy']}: {d['strongest_advocate']} vs {d['strongest_critic']} "
                 f"(spread {d['spread']:.1f}, std {d['std_dev']:.1f})\n"
             )
 
-    reviewer_pref_text = ""
-    if consensus_result.reviewer_alignment_summary:
-        reviewer_pref_text += "Reviewer alignment summary:\n"
-        for row in consensus_result.reviewer_alignment_summary[:5]:
-            reviewer_pref_text += (
-                f"- {row['reviewer_persona']}: prefers {row['preferred_strategy']}, "
-                f"least prefers {row['least_preferred_strategy']}\n"
-            )
-
     return f"""
-You are the final judge in a career-pivot decision engine.
+You are the final judge in a career pivot decision engine.
 
-You must synthesize:
-- ranked multi-strategy outputs
-- reviewer disagreements
+Synthesize:
+- competing strategy rankings
+- reviewer disagreement
 - robustness and controversy
 - labor-market realism
 
@@ -255,9 +222,7 @@ Robustness score: {consensus_result.robustness_score:.1f}/100
 Controversy score: {consensus_result.controversy_score:.1f}/100
 Fragile winner: {consensus_result.fragile_winner}
 
-{disagreements_text}
-
-{reviewer_pref_text}
+{disagreement_text}
 
 Gap summary:
 {gap_summary}
@@ -270,7 +235,7 @@ Return ONLY valid JSON:
   "key_success_factors": ["string", "string", "string"],
   "critical_risks": ["string", "string"],
   "first_30_day_actions": ["string", "string", "string"],
-  "interview_narrative": "How the candidate should pitch this pivot",
+  "interview_narrative": "How to pitch this pivot convincingly",
   "success_timeline": "e.g. 6-9 months",
   "confidence_level": "High | Medium | Low"
 }}
@@ -284,15 +249,15 @@ def _offline_judge_memo(
     consensus_result: ConsensusResult,
 ) -> Dict[str, Any]:
     verdict = "Feasible with Conditions"
-    if consensus_result.winner_score >= 82 and consensus_result.consensus_strength >= 75:
+    if consensus_result.winner_score >= 82 and consensus_result.robustness_score >= 75 and not consensus_result.fragile_winner:
         verdict = "Highly Feasible"
-    elif consensus_result.winner_score < 65:
+    elif consensus_result.winner_score < 65 or consensus_result.controversy_score > 40:
         verdict = "Challenging"
 
     confidence = "Medium"
-    if consensus_result.robustness_score >= 80 and not consensus_result.fragile_winner:
+    if consensus_result.robustness_score >= 75 and not consensus_result.fragile_winner:
         confidence = "High"
-    elif consensus_result.fragile_winner or consensus_result.controversy_score >= 45:
+    elif consensus_result.fragile_winner or consensus_result.controversy_score >= 35:
         confidence = "Low"
 
     return {
@@ -301,26 +266,26 @@ def _offline_judge_memo(
             recommended_strategy=consensus_result.winner_strategy,
             executive_summary=(
                 f"The {consensus_result.winner_strategy} strategy currently leads for moving from "
-                f"{current_role} to {target_role}. Its recommendation is based on confidence-adjusted reviewer "
-                f"support rather than raw mean score alone, which helps penalize fragile or controversial winners."
+                f"{current_role} to {target_role}. This recommendation is based on confidence-adjusted reviewer support, "
+                f"not just raw averages, so disagreement and fragility reduce the final rank rather than being ignored."
             ),
             key_success_factors=[
-                "Prioritize the highest-signal missing skills",
-                "Create external proof of capability early",
-                "Align the interview narrative with the chosen strategy logic",
+                "Prioritize the highest-leverage missing skills",
+                "Create visible evidence that makes the pivot legible to outsiders",
+                "Use a strategy-specific narrative instead of generic career-change language",
             ],
             critical_risks=[
-                "Weak market signal if execution quality is low",
-                "Recommendation could change if critical gaps remain unaddressed",
+                "Weak external credibility if execution quality is low",
+                "The best-looking plan may fail if its trade-offs are ignored in practice",
             ],
             first_30_day_actions=[
-                "Choose the highest-leverage proof artifact",
-                "Tighten the pivot narrative around transferable anchors",
-                "Target the top missing skills that most affect credibility",
+                "Choose one high-signal proof artifact or milestone",
+                "Refine the transition narrative around the strongest transferable anchors",
+                "Stress-test the first month plan against real market feedback",
             ],
             interview_narrative=(
-                "Frame the pivot as a deliberate, evidence-backed transition: explain the transferable strengths, "
-                "show what has been built to close the role-relevant gaps, and position the move as realistic rather than aspirational."
+                "Present the pivot as deliberate, evidence-backed, and role-specific: explain what transfers, "
+                "show what has been built to close the gaps, and make the strategy sound realistic rather than aspirational."
             ),
             success_timeline="6-9 months",
             confidence_level=confidence,
@@ -373,7 +338,6 @@ def generate_judge_memo(
             evaluations=evaluations,
             gap_summary=gap_summary,
         )
-
         resp = client.responses.create(model=model, input=prompt)
         raw_text = (resp.output_text or "").strip()
         memo_obj = _extract_json_object(raw_text)
@@ -408,19 +372,16 @@ def rerank_after_skill_investment(
     invested_skills: List[str],
     uplift_ratio: float = 0.5,
 ) -> ConsensusResult:
-    invested_skills = [str(s).strip() for s in (invested_skills or []) if str(s).strip()]
-    uplift_ratio = max(0.0, min(1.0, float(uplift_ratio)))
-
     if not evaluations:
         raise ValueError("No evaluations provided")
 
+    invested_skills = [str(x).strip() for x in (invested_skills or []) if str(x).strip()]
+    uplift_ratio = max(0.0, min(1.0, float(uplift_ratio)))
     skill_count = len(invested_skills)
-    leverage = min(1.0, 0.35 + 0.18 * skill_count)
 
-    # strategy-specific sensitivity to skill investment
     base_boost = {
         "DIRECT": 2.0,
-        "STEPPING": 4.0,
+        "STEPPING": 4.5,
         "SKILL_FIRST": 9.0,
         "PORTFOLIO": 6.5,
         "HYBRID": 7.5,
@@ -430,34 +391,25 @@ def rerank_after_skill_investment(
 
     for ev in evaluations:
         boosted_scores = []
-
         for score in ev.strategy_scores:
             code = score.strategy_code
-            boost = base_boost.get(code, 4.0) * uplift_ratio * leverage
+            leverage = min(1.0, 0.35 + 0.18 * skill_count)
+            boost = base_boost.get(code, 4.0) * leverage * uplift_ratio
 
-            # persona-specific interpretation of skill investment
-            persona_bonus = 0.0
-            if ev.reviewer_persona == "HiringManager" and code in {"SKILL_FIRST", "HYBRID", "PORTFOLIO"}:
-                persona_bonus = 0.8 * uplift_ratio
-            elif ev.reviewer_persona == "Recruiter" and code in {"STEPPING", "HYBRID", "PORTFOLIO"}:
-                persona_bonus = 0.6 * uplift_ratio
-            elif ev.reviewer_persona == "PortfolioEval" and code == "PORTFOLIO":
-                persona_bonus = 1.2 * uplift_ratio
-            elif ev.reviewer_persona == "RiskAnalyst" and code in {"SKILL_FIRST", "HYBRID", "STEPPING"}:
-                persona_bonus = 0.9 * uplift_ratio
-            elif ev.reviewer_persona == "CareerCoach" and code in {"SKILL_FIRST", "HYBRID"}:
-                persona_bonus = 0.7 * uplift_ratio
-
-            total_boost = boost + persona_bonus
-            new_overall = min(100.0, float(score.overall_score) + total_boost)
+            if ev.reviewer_persona == "PortfolioEval" and code == "PORTFOLIO":
+                boost += 1.0 * uplift_ratio
+            if ev.reviewer_persona == "RiskAnalyst" and code in {"SKILL_FIRST", "STEPPING", "HYBRID"}:
+                boost += 0.8 * uplift_ratio
+            if ev.reviewer_persona == "HiringManager" and code in {"HYBRID", "PORTFOLIO", "SKILL_FIRST"}:
+                boost += 0.6 * uplift_ratio
 
             boosted_scores.append(
                 score.model_copy(
                     update={
-                        "overall_score": new_overall,
+                        "overall_score": min(100.0, float(score.overall_score) + boost),
                         "justification": (
                             f"{score.justification} Counterfactual rerank applied after investment in "
-                            f"{len(invested_skills)} skills."
+                            f"{len(invested_skills)} selected skills."
                         )[:500],
                     }
                 )
