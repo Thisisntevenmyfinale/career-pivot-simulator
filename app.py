@@ -93,6 +93,7 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
+st.caption("Analyzing your career pivot directly within your LinkedIn profile context.")
 
 # ============================================================
 # Small helpers
@@ -844,7 +845,7 @@ if plan_md:
 # Decision Board (Hero Feature)
 # ============================================================
 with st.container(border=True):
-    st.subheader("⚖️ Career Pivot Decision Engine")
+    st.subheader("LinkedIn Career Pivot Assistant")
     st.caption(
         "Generate competing pivot strategies, pressure-test them with expert personas, aggregate disagreement in Python, and identify what could change the recommendation."
     )
