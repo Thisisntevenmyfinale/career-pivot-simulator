@@ -1,0 +1,1305 @@
+===== review_schemas.py =====
+"""
+Pydantic schemas for Adversarial Review Board.
+Ensures type safety + structured validation across the pipeline.
+"""
+
+from typing import List, Optional, Dict, Any
+from pydantic import BaseModel, Field, validator
+
+
+class StrategyArchetype(BaseModel):
+    """One of five possible pivot strategy archetypes."""
+    
+    name: str = Field(..., description="Direct Pivot | Stepping-Stone | Skill-First | Portfolio-First | Hybrid")
+    code: str = Field(..., description="DIRECT | STEPPING | SKILL_FIRST | PORTFOLIO | HYBRID")
+    description: str
+    estimated_days: int = Field(..., ge=14, le=365)
+    risk_level: str = Field(..., description="low | medium | high")
+    
+    @validator('code')
+    def validate_code(cls, v):
+        allowed = {"DIRECT", "STEPPING", "SKILL_FIRST", "PORTFOLIO", "HYBRID"}
+        if v not in allowed:
+            raise ValueError(f"code must be one of {allowed}")
+        return v
+    
+    @validator('risk_level')
+    def validate_risk(cls, v):
+        if v not in {"low", "medium", "high"}:
+            raise ValueError("risk_level must be low | medium | high")
+        return v
+
+
+class StrategyPhase(BaseModel):
+    """One phase of a pivot strategy (0-30 days, 30-90 days, etc)."""
+    
+    phase: str = Field(..., description="e.g. '0-30 days', '30-90 days'")
+    objective: str
+    deliverables: List[str]
+    key_actions: List[str]
+
+
+class Strategy(BaseModel):
+    """Complete pivot strategy with archetype, phases, and evidence."""
+    
+    archetype: StrategyArchetype
+    current_role: str
+    target_role: str
+    summary: str = Field(..., max_length=500)
+    phases: List[StrategyPhase] = Field(..., min_items=2, max_items=4)
+    key_missing_skills: List[str] = Field(..., max_items=6)
+    transferable_anchors: List[str] = Field(..., max_items=5)
+    success_criteria: List[str] = Field(..., min_items=2, max_items=4)
+    potential_risks: List[str] = Field(..., min_items=1, max_items=3)
+    resources_needed: List[str] = Field(..., min_items=2, max_items=5)
+
+
+class ReviewerScore(BaseModel):
+    """One reviewer's evaluation of a single strategy."""
+    
+    reviewer_persona: str = Field(..., description="HiringManager | Recruiter | PortfolioEval | RiskAnalyst | CareerCoach")
+    strategy_code: str  # e.g. "DIRECT", "HYBRID"
+    overall_score: float = Field(..., ge=0.0, le=100.0)
+    
+    alignment_with_role: float = Field(..., ge=0.0, le=10.0, description="How well does this strategy prepare for target role?")
+    market_feasibility: float = Field(..., ge=0.0, le=10.0, description="Is this realistic in job market?")
+    time_efficiency: float = Field(..., ge=0.0, le=10.0, description="Time to target role (inverted: lower days = higher score)")
+    risk_assessment: float = Field(..., ge=0.0, le=10.0, description="Lower risk = higher score")
+    narrative_strength: float = Field(..., ge=0.0, le=10.0, description="Can candidate tell convincing story?")
+    
+    justification: str = Field(..., max_length=400)
+    concerns: List[str] = Field(default_factory=list, max_items=3)
+    
+    @property
+    def compute_overall(self) -> float:
+        """Recompute overall from components if needed."""
+        components = [
+            self.alignment_with_role,
+            self.market_feasibility,
+            self.time_efficiency,
+            self.risk_assessment,
+            self.narrative_strength
+        ]
+        return sum(components) / len(components) * 10.0  # normalize to 100
+
+
+class ReviewerEvaluation(BaseModel):
+    """Full evaluation from one reviewer across all strategies."""
+    
+    reviewer_persona: str
+    strategy_scores: List[ReviewerScore]
+    overall_recommendation: str = Field(..., max_length=300)
+    strongest_strategy: str  # e.g., "HYBRID"
+    weakest_strategy: str
+
+
+class ConsensusResult(BaseModel):
+    """Aggregated consensus across all reviewers."""
+    
+    winner_strategy: str  # Code of best strategy
+    winner_score: float
+    runner_up_strategy: str
+    runner_up_score: float
+    
+    consensus_strength: float = Field(..., ge=0.0, le=100.0, description="How much do reviewers agree?")
+    major_disagreements: List[Dict[str, Any]] = Field(default_factory=list)
+    
+    strategy_rankings: List[tuple[str, float]]  # [(code, avg_score), ...]
+    
+
+class JudgeMemoRequest(BaseModel):
+    """Input to final judge memo generation."""
+    
+    current_role: str
+    target_role: str
+    winner_strategy: str
+    consensus_result: ConsensusResult
+    gap_df_summary: Dict[str, Any]  # top missing, top transferable
+    route_exists: bool
+
+
+class JudgeMemo(BaseModel):
+    """Final recommendation memo produced by judge LLM."""
+    
+    verdict: str  # "Highly Feasible" | "Feasible with Conditions" | "Challenging"
+    recommended_strategy: str
+    
+    executive_summary: str = Field(..., max_length=600)
+    key_success_factors: List[str]
+    critical_risks: List[str]
+    first_30_day_actions: List[str]
+    
+    interview_narrative: str = Field(..., max_length=500, description="How to pitch this pivot to hiring manager")
+    success_timeline: str = Field(..., max_length=200, description="e.g., '6-9 months'")
+    confidence_level: str = Field(..., description="High | Medium | Low")
+===== llm_review_board.py =====
+from __future__ import annotations
+
+import json
+import re
+from dataclasses import asdict
+from typing import Any, Dict, List
+
+import pandas as pd
+
+from src.review_schemas import (
+    Strategy,
+    StrategyArchetype,
+    StrategyPhase,
+    ReviewerScore,
+    ReviewerEvaluation,
+)
+
+
+def _get_api_key_optional() -> str:
+    try:
+        import streamlit as st
+        return str(st.secrets["OPENAI_API_KEY"]).strip()
+    except Exception:
+        return ""
+
+
+def _sanitize_text(s: str, max_len: int = 400) -> str:
+    s = re.sub(r"\s+", " ", str(s)).strip()
+    return s[:max_len]
+
+
+def _extract_json_object(text: str) -> Dict[str, Any]:
+    if not text or not text.strip():
+        raise ValueError("Empty LLM output.")
+
+    raw = text.strip()
+
+    try:
+        obj = json.loads(raw)
+        if isinstance(obj, dict):
+            return obj
+    except Exception:
+        pass
+
+    start = raw.find("{")
+    end = raw.rfind("}")
+    if start >= 0 and end > start:
+        snippet = raw[start : end + 1]
+        obj = json.loads(snippet)
+        if isinstance(obj, dict):
+            return obj
+
+    raise ValueError("Could not parse JSON object from LLM output.")
+
+
+STRATEGY_ARCHETYPES = {
+    "DIRECT": StrategyArchetype(
+        name="Direct Pivot",
+        code="DIRECT",
+        description="Immediate jump to target role. Highest risk but fastest.",
+        estimated_days=45,
+        risk_level="high",
+    ),
+    "STEPPING": StrategyArchetype(
+        name="Stepping-Stone Pivot",
+        code="STEPPING",
+        description="Use intermediate roles as bridges. Lower risk, longer timeline.",
+        estimated_days=150,
+        risk_level="medium",
+    ),
+    "SKILL_FIRST": StrategyArchetype(
+        name="Skill-First Pivot",
+        code="SKILL_FIRST",
+        description="Master critical missing skills first, then pivot.",
+        estimated_days=120,
+        risk_level="low",
+    ),
+    "PORTFOLIO": StrategyArchetype(
+        name="Portfolio-First Pivot",
+        code="PORTFOLIO",
+        description="Build portfolio artifacts to prove capability before applying.",
+        estimated_days=100,
+        risk_level="medium",
+    ),
+    "HYBRID": StrategyArchetype(
+        name="Hybrid / Balanced",
+        code="HYBRID",
+        description="Combine stepping-stone, skill-building, and portfolio work.",
+        estimated_days=110,
+        risk_level="medium",
+    ),
+}
+
+
+def _build_strategy_gen_prompt(
+    *,
+    current_role: str,
+    target_role: str,
+    archetype: StrategyArchetype,
+    missing_skills: List[str],
+    transfer_skills: List[str],
+    gap_summary: str,
+) -> str:
+    return f"""
+You are a senior career strategist.
+
+Create one structured career pivot strategy.
+
+Current role: {current_role}
+Target role: {target_role}
+
+Archetype:
+- name: {archetype.name}
+- code: {archetype.code}
+- description: {archetype.description}
+- estimated_days: {archetype.estimated_days}
+- risk_level: {archetype.risk_level}
+
+Missing skills:
+{json.dumps(missing_skills, ensure_ascii=False)}
+
+Transferable anchors:
+{json.dumps(transfer_skills, ensure_ascii=False)}
+
+Gap summary:
+{gap_summary}
+
+Return ONLY valid JSON:
+{{
+  "archetype": {{
+    "name": "{archetype.name}",
+    "code": "{archetype.code}",
+    "description": "{archetype.description}",
+    "estimated_days": {archetype.estimated_days},
+    "risk_level": "{archetype.risk_level}"
+  }},
+  "summary": "2-3 sentence strategy summary",
+  "phases": [
+    {{
+      "phase": "0-30 days",
+      "objective": "string",
+      "deliverables": ["string", "string"],
+      "key_actions": ["string", "string"]
+    }},
+    {{
+      "phase": "30-90 days",
+      "objective": "string",
+      "deliverables": ["string", "string"],
+      "key_actions": ["string", "string"]
+    }},
+    {{
+      "phase": "90+ days",
+      "objective": "string",
+      "deliverables": ["string", "string"],
+      "key_actions": ["string", "string"]
+    }}
+  ],
+  "key_missing_skills": ["string", "string"],
+  "transferable_anchors": ["string", "string"],
+  "success_criteria": ["string", "string"],
+  "potential_risks": ["string", "string"],
+  "resources_needed": ["string", "string"]
+}}
+""".strip()
+
+
+def _build_reviewer_prompt(
+    *,
+    reviewer_persona: str,
+    strategy_json: Dict[str, Any],
+    current_role: str,
+    target_role: str,
+) -> str:
+    persona_context = {
+        "HiringManager": "You are a hiring manager focused on role readiness and credibility.",
+        "Recruiter": "You are a recruiter focused on market feasibility and sellability.",
+        "PortfolioEval": "You are a portfolio evaluator focused on proof of skill.",
+        "RiskAnalyst": "You are a risk analyst focused on downside, timing, and realism.",
+        "CareerCoach": "You are a career coach focused on sustainable growth and narrative coherence.",
+    }
+
+    return f"""
+{persona_context.get(reviewer_persona, "")}
+
+Evaluate this pivot strategy for a transition from {current_role} to {target_role}.
+
+Strategy:
+{json.dumps(strategy_json, ensure_ascii=False, indent=2)}
+
+Return ONLY valid JSON:
+{{
+  "reviewer_persona": "{reviewer_persona}",
+  "strategy_code": "{strategy_json.get('archetype', {}).get('code', 'UNKNOWN')}",
+  "alignment_with_role": 0,
+  "market_feasibility": 0,
+  "time_efficiency": 0,
+  "risk_assessment": 0,
+  "narrative_strength": 0,
+  "justification": "2-3 sentence explanation",
+  "concerns": ["string", "string"],
+  "overall_score": 0
+}}
+Scores:
+- the five dimensions are 0-10
+- overall_score is 0-100
+""".strip()
+
+
+def generate_all_strategies(
+    *,
+    current_role: str,
+    target_role: str,
+    gap_df: pd.DataFrame,
+    model: str = "gpt-4o-mini",
+    prefer_online: bool = True,
+) -> Dict[str, Any]:
+    missing = gap_df[gap_df["gap"] > 0].copy()
+    missing_skills = missing.sort_values("gap", ascending=False)["skill"].head(6).astype(str).tolist()
+
+    transfer = gap_df.copy()
+    transfer["overlap"] = transfer[["current_importance", "target_importance"]].min(axis=1)
+    transfer_skills = transfer.sort_values("overlap", ascending=False)["skill"].head(5).astype(str).tolist()
+
+    gap_summary = f"{len(missing)} skill gaps identified. Strongest transferable skills: {', '.join(transfer_skills[:3])}"
+
+    if not prefer_online:
+        return _offline_strategies(
+            current_role=current_role,
+            target_role=target_role,
+            missing_skills=missing_skills,
+            transfer_skills=transfer_skills,
+        )
+
+    api_key = _get_api_key_optional()
+    if not api_key:
+        return _offline_strategies(
+            current_role=current_role,
+            target_role=target_role,
+            missing_skills=missing_skills,
+            transfer_skills=transfer_skills,
+        )
+
+    try:
+        from openai import OpenAI
+    except Exception:
+        return _offline_strategies(
+            current_role=current_role,
+            target_role=target_role,
+            missing_skills=missing_skills,
+            transfer_skills=transfer_skills,
+        )
+
+    trace = {
+        "mode": "online",
+        "model": model,
+        "strategies_generated": 0,
+        "errors": [],
+        "raw_outputs": {},
+    }
+
+    client = OpenAI(api_key=api_key)
+    strategies: List[Strategy] = []
+
+    for code, archetype in STRATEGY_ARCHETYPES.items():
+        try:
+            prompt = _build_strategy_gen_prompt(
+                current_role=current_role,
+                target_role=target_role,
+                archetype=archetype,
+                missing_skills=missing_skills,
+                transfer_skills=transfer_skills,
+                gap_summary=gap_summary,
+            )
+
+            resp = client.responses.create(
+                model=model,
+                input=prompt,
+            )
+
+            raw_text = (resp.output_text or "").strip()
+            trace["raw_outputs"][code] = raw_text
+
+            obj = _extract_json_object(raw_text)
+
+            strategy = Strategy(
+                archetype=StrategyArchetype(**obj.get("archetype", {})),
+                current_role=current_role,
+                target_role=target_role,
+                summary=_sanitize_text(obj.get("summary", ""), 500),
+                phases=[StrategyPhase(**p) for p in obj.get("phases", [])],
+                key_missing_skills=obj.get("key_missing_skills", missing_skills)[:6],
+                transferable_anchors=obj.get("transferable_anchors", transfer_skills)[:5],
+                success_criteria=obj.get("success_criteria", [])[:4],
+                potential_risks=obj.get("potential_risks", [])[:3],
+                resources_needed=obj.get("resources_needed", [])[:5],
+            )
+            strategies.append(strategy)
+            trace["strategies_generated"] += 1
+
+        except Exception as e:
+            trace["errors"].append(f"{code}: {repr(e)}")
+
+    if not strategies:
+        return _offline_strategies(
+            current_role=current_role,
+            target_role=target_role,
+            missing_skills=missing_skills,
+            transfer_skills=transfer_skills,
+        )
+
+    return {
+        "strategies": strategies,
+        "trace": trace,
+        "source": "OpenAI",
+    }
+
+
+def evaluate_strategies_by_reviewers(
+    *,
+    strategies: List[Strategy],
+    current_role: str,
+    target_role: str,
+    model: str = "gpt-4o-mini",
+    prefer_online: bool = True,
+) -> Dict[str, Any]:
+    reviewer_personas = [
+        "HiringManager",
+        "Recruiter",
+        "PortfolioEval",
+        "RiskAnalyst",
+        "CareerCoach",
+    ]
+
+    if not prefer_online:
+        return _offline_evaluations(strategies=strategies, reviewer_personas=reviewer_personas)
+
+    api_key = _get_api_key_optional()
+    if not api_key:
+        return _offline_evaluations(strategies=strategies, reviewer_personas=reviewer_personas)
+
+
+===== review_aggregation.py =====
+from __future__ import annotations
+
+import json
+from typing import Any, Dict, List
+
+import numpy as np
+
+from src.review_schemas import (
+    ReviewerEvaluation,
+    ConsensusResult,
+    JudgeMemo,
+)
+
+
+def _get_api_key_optional() -> str:
+    try:
+        import streamlit as st
+        return str(st.secrets["OPENAI_API_KEY"]).strip()
+    except Exception:
+        return ""
+
+
+def _extract_json_object(text: str) -> Dict[str, Any]:
+    if not text or not text.strip():
+        raise ValueError("Empty LLM output.")
+
+    raw = text.strip()
+
+    try:
+        obj = json.loads(raw)
+        if isinstance(obj, dict):
+            return obj
+    except Exception:
+        pass
+
+    start = raw.find("{")
+    end = raw.rfind("}")
+    if start >= 0 and end > start:
+        snippet = raw[start : end + 1]
+        obj = json.loads(snippet)
+        if isinstance(obj, dict):
+            return obj
+
+    raise ValueError("Could not parse JSON object from LLM output.")
+
+
+def compute_consensus(
+    evaluations: List[ReviewerEvaluation],
+) -> ConsensusResult:
+    if not evaluations:
+        raise ValueError("No evaluations provided")
+
+    strategy_codes = set()
+    for eval_obj in evaluations:
+        for score in eval_obj.strategy_scores:
+            strategy_codes.add(score.strategy_code)
+
+    strategy_codes = sorted(list(strategy_codes))
+    score_matrix: Dict[str, Dict[str, float]] = {code: {} for code in strategy_codes}
+
+    for eval_obj in evaluations:
+        for score in eval_obj.strategy_scores:
+            score_matrix[score.strategy_code][eval_obj.reviewer_persona] = float(score.overall_score)
+
+    mean_scores: Dict[str, float] = {}
+    std_scores: Dict[str, float] = {}
+
+    for code in strategy_codes:
+        scores_list = list(score_matrix[code].values())
+        mean_scores[code] = float(np.mean(scores_list)) if scores_list else 0.0
+        std_scores[code] = float(np.std(scores_list)) if scores_list else 0.0
+
+    ranked = sorted(mean_scores.items(), key=lambda x: x[1], reverse=True)
+    winner_code = ranked[0][0] if ranked else "HYBRID"
+    winner_score = ranked[0][1] if ranked else 0.0
+    runner_up_code = ranked[1][0] if len(ranked) > 1 else winner_code
+    runner_up_score = ranked[1][1] if len(ranked) > 1 else winner_score
+
+    all_stds = [std_scores.get(code, 0.0) for code in strategy_codes]
+    mean_std = float(np.mean(all_stds)) if all_stds else 0.0
+    consensus_strength = max(0.0, min(100.0, 100.0 - (mean_std * 5.0)))
+
+    major_disagreements: List[Dict[str, Any]] = []
+    for code in strategy_codes:
+        std = std_scores.get(code, 0.0)
+        if std > 15.0:
+            reviewer_scores = score_matrix[code]
+            min_score = min(reviewer_scores.values()) if reviewer_scores else 0.0
+            max_score = max(reviewer_scores.values()) if reviewer_scores else 0.0
+            min_reviewer = [k for k, v in reviewer_scores.items() if v == min_score][0] if reviewer_scores else "Unknown"
+            max_reviewer = [k for k, v in reviewer_scores.items() if v == max_score][0] if reviewer_scores else "Unknown"
+
+            major_disagreements.append(
+                {
+                    "strategy": code,
+                    "range": f"{min_score:.0f}-{max_score:.0f}",
+                    "strongest_advocate": max_reviewer,
+                    "strongest_critic": min_reviewer,
+                    "spread": float(max_score - min_score),
+                }
+            )
+
+    major_disagreements.sort(key=lambda x: x["spread"], reverse=True)
+
+    return ConsensusResult(
+        winner_strategy=winner_code,
+        winner_score=winner_score,
+        runner_up_strategy=runner_up_code,
+        runner_up_score=runner_up_score,
+        consensus_strength=consensus_strength,
+        major_disagreements=major_disagreements,
+        strategy_rankings=[(code, score) for code, score in ranked],
+    )
+
+
+def _build_judge_prompt(
+    *,
+    current_role: str,
+    target_role: str,
+    consensus_result: ConsensusResult,
+    evaluations: List[ReviewerEvaluation],
+    gap_summary: str,
+) -> str:
+    rankings_text = "\n".join(
+        [f"{i+1}. {code}: {score:.1f}/100" for i, (code, score) in enumerate(consensus_result.strategy_rankings)]
+    )
+
+    disagreements_text = ""
+    if consensus_result.major_disagreements:
+        disagreements_text = "\nMajor disagreements:\n"
+        for d in consensus_result.major_disagreements[:3]:
+            disagreements_text += (
+                f"- {d['strategy']}: {d['strongest_advocate']} vs {d['strongest_critic']} "
+                f"(spread {d['spread']:.0f})\n"
+            )
+
+    return f"""
+You are the final judge in a career pivot decision system.
+
+Current role: {current_role}
+Target role: {target_role}
+
+Consensus rankings:
+{rankings_text}
+
+Consensus strength: {consensus_result.consensus_strength:.0f}/100
+
+{disagreements_text}
+
+Gap summary:
+{gap_summary}
+
+Return ONLY valid JSON:
+{{
+  "verdict": "Highly Feasible | Feasible with Conditions | Challenging",
+  "recommended_strategy": "{consensus_result.winner_strategy}",
+  "executive_summary": "3-4 sentence summary",
+  "key_success_factors": ["string", "string", "string"],
+  "critical_risks": ["string", "string"],
+  "first_30_day_actions": ["string", "string", "string"],
+  "interview_narrative": "How to pitch this pivot",
+  "success_timeline": "e.g. 6-9 months",
+  "confidence_level": "High | Medium | Low"
+}}
+""".strip()
+
+
+def generate_judge_memo(
+    *,
+    current_role: str,
+    target_role: str,
+    consensus_result: ConsensusResult,
+    evaluations: List[ReviewerEvaluation],
+    gap_summary: str,
+    model: str = "gpt-4o-mini",
+    prefer_online: bool = True,
+) -> Dict[str, Any]:
+    if not prefer_online:
+        return _offline_judge_memo(
+            current_role=current_role,
+            target_role=target_role,
+            consensus_result=consensus_result,
+        )
+
+    api_key = _get_api_key_optional()
+    if not api_key:
+        return _offline_judge_memo(
+            current_role=current_role,
+            target_role=target_role,
+            consensus_result=consensus_result,
+        )
+
+    try:
+        from openai import OpenAI
+    except Exception:
+        return _offline_judge_memo(
+            current_role=current_role,
+            target_role=target_role,
+            consensus_result=consensus_result,
+        )
+
+    try:
+        client = OpenAI(api_key=api_key)
+        prompt = _build_judge_prompt(
+            current_role=current_role,
+            target_role=target_role,
+            consensus_result=consensus_result,
+            evaluations=evaluations,
+            gap_summary=gap_summary,
+        )
+
+        resp = client.responses.create(
+            model=model,
+            input=prompt,
+        )
+
+        raw_text = (resp.output_text or "").strip()
+        memo_obj = _extract_json_object(raw_text)
+
+        return {
+            "memo": JudgeMemo(
+                verdict=memo_obj.get("verdict", "Feasible with Conditions"),
+                recommended_strategy=memo_obj.get("recommended_strategy", consensus_result.winner_strategy),
+                executive_summary=memo_obj.get("executive_summary", ""),
+                key_success_factors=memo_obj.get("key_success_factors", []),
+                critical_risks=memo_obj.get("critical_risks", []),
+                first_30_day_actions=memo_obj.get("first_30_day_actions", []),
+                interview_narrative=memo_obj.get("interview_narrative", ""),
+                success_timeline=memo_obj.get("success_timeline", "6-9 months"),
+                confidence_level=memo_obj.get("confidence_level", "Medium"),
+            ),
+            "source": "OpenAI Judge",
+            "trace": {"raw": raw_text},
+        }
+
+    except Exception as e:
+        return {
+            "memo": None,
+            "source": "Offline (error)",
+            "trace": {"error": repr(e)},
+        }
+
+
+def _offline_judge_memo(
+    *,
+    current_role: str,
+    target_role: str,
+    consensus_result: ConsensusResult,
+) -> Dict[str, Any]:
+    return {
+        "memo": JudgeMemo(
+            verdict="Feasible with Conditions",
+            recommended_strategy=consensus_result.winner_strategy,
+            executive_summary=(
+                f"The {consensus_result.winner_strategy} strategy has the strongest overall reviewer support "
+                f"for moving from {current_role} to {target_role}."
+            ),
+            key_success_factors=[
+                "Build visible proof of capability",
+                "Close the highest-signal gaps first",
+                "Tell a coherent transition story",
+            ],
+            critical_risks=[
+                "Weak credibility signal in the market",
+                "Timeline drift during transition",
+            ],
+            first_30_day_actions=[
+                "Prioritize the highest-signal missing skills",
+                "Start one visible evidence-building project",
+                "Refine the pivot narrative",
+            ],
+            interview_narrative="Frame the pivot as a deliberate move backed by evidence, targeted skill-building, and proof of execution.",
+            success_timeline="6-9 months",
+            confidence_level="Medium",
+        ),
+        "source": "Offline (deterministic)",
+        "trace": {},
+    }
+
+
+def rerank_after_skill_investment(
+    *,
+    evaluations: List[ReviewerEvaluation],
+    invested_skills: List[str],
+    uplift_ratio: float = 0.5,
+) -> ConsensusResult:
+    boosted_evaluations = []
+
+    for eval_obj in evaluations:
+        boosted_scores = []
+        for score in eval_obj.strategy_scores:
+            boost = 0.0
+            if score.strategy_code in {"SKILL_FIRST", "HYBRID"}:
+                boost = 8.0 * uplift_ratio
+            elif score.strategy_code == "PORTFOLIO":
+                boost = 5.0 * uplift_ratio
+
+            boosted_scores.append(
+                score.copy(update={"overall_score": min(100.0, float(score.overall_score) + boost)})
+            )
+
+        boosted_evaluations.append(
+            eval_obj.copy(update={"strategy_scores": boosted_scores})
+        )
+
+    return compute_consensus(boosted_evaluations)
+===== app.py =====
+from __future__ import annotations
+
+from typing import Any, Dict, List, Optional
+
+import numpy as np
+import pandas as pd
+import streamlit as st
+
+from src.model_logic import (
+    load_runtime_artifacts,
+    compute_gap_df,
+    compute_confidence_score,
+    find_pivot_path,
+)
+from src.skill_investment_simulator import (
+    simulate_skill_investment,
+    suggest_best_investment_skills,
+)
+from src.ai_coach import generate_learning_plan_markdown
+from src.llm_review_board import (
+    generate_all_strategies,
+    evaluate_strategies_by_reviewers,
+)
+from src.review_aggregation import (
+    compute_consensus,
+    generate_judge_memo,
+    rerank_after_skill_investment,
+)
+
+# ============================================================
+# Page config
+# ============================================================
+st.set_page_config(page_title="Career Pivot Simulator", page_icon="🧭", layout="wide")
+
+
+# ============================================================
+# Small helpers
+# ============================================================
+def _has_openai_secret() -> bool:
+    try:
+        return bool(str(st.secrets["OPENAI_API_KEY"]).strip())
+    except Exception:
+        return False
+
+
+def _render_table_card(
+    df: pd.DataFrame,
+    columns: List[str],
+    headers: Optional[List[str]] = None,
+    numeric_cols: Optional[List[str]] = None,
+) -> None:
+    if df is None or df.empty:
+        st.info("No data.")
+        return
+
+    view = df[columns].copy()
+    headers = headers or columns
+    numeric_cols_set = set(numeric_cols or [])
+
+    for c in columns:
+        if c in numeric_cols_set:
+            view[c] = pd.to_numeric(view[c], errors="coerce").map(
+                lambda x: "" if pd.isna(x) else f"{float(x):.2f}"
+            )
+
+    th = "".join([f"<th>{h}</th>" for h in headers])
+    rows_html = []
+    for _, r in view.iterrows():
+        tds = []
+        for c in columns:
+            val = r[c]
+            cls = "num" if c in numeric_cols_set else ""
+            safe = str(val).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            tds.append(f"<td class='{cls}'>{safe}</td>")
+        rows_html.append("<tr>" + "".join(tds) + "</tr>")
+
+    html = f"""
+<div class="li-table-wrap">
+  <table class="li-table">
+    <thead><tr>{th}</tr></thead>
+    <tbody>{''.join(rows_html)}</tbody>
+  </table>
+</div>
+"""
+    st.markdown(html, unsafe_allow_html=True)
+
+
+def _learning_plan_source_label(md: str) -> str:
+    text = (md or "").strip()
+    if not text:
+        return "—"
+    if text.startswith("🤖"):
+        return "OpenAI"
+    if text.startswith("⚠️ ONLINE_ERROR"):
+        return "OpenAI error → fallback"
+    if text.startswith("ERROR::"):
+        return "Secret / runtime error"
+    return "Offline"
+
+
+def _extract_review_trace_status(trace: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "mode": trace.get("mode", ""),
+        "model": trace.get("model", ""),
+        "errors": trace.get("errors", []),
+    }
+
+
+# ============================================================
+# CSS
+# ============================================================
+st.markdown(
+    """
+<style>
+:root{
+  --li-blue: #0A66C2;
+  --li-blue-dark: #004182;
+  --li-bg: #F3F2EF;
+  --li-card: #FFFFFF;
+  --li-border-soft: rgba(0,0,0,0.08);
+  --li-text: rgba(0,0,0,0.90);
+  --li-subtext: rgba(0,0,0,0.62);
+  --radius: 10px;
+  --shadow: 0 1px 1px rgba(0,0,0,0.04);
+}
+
+[data-testid="stHeader"]{ height:0px !important; background:transparent !important; }
+[data-testid="stToolbar"]{ display:none !important; }
+#MainMenu{ visibility:hidden; }
+footer{ visibility:hidden; }
+
+html, body, .stApp{
+  background: var(--li-bg) !important;
+  color: var(--li-text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+}
+.block-container{
+  max-width: 1128px !important;
+  padding-top: 18px !important;
+  padding-bottom: 28px !important;
+}
+
+div[data-testid="stVerticalBlockBorderWrapper"]{
+  background: var(--li-card) !important;
+  border: 1px solid var(--li-border-soft) !important;
+  border-radius: var(--radius) !important;
+  box-shadow: var(--shadow) !important;
+  padding: 14px !important;
+}
+section[data-testid="stSidebar"]{
+  background: var(--li-bg) !important;
+  border-right: 1px solid var(--li-border-soft) !important;
+}
+section[data-testid="stSidebar"] div[data-testid="stVerticalBlockBorderWrapper"]{
+  padding: 12px !important;
+}
+
+:root{
+  --primary-color: #0A66C2 !important;
+  --primaryColor: #0A66C2 !important;
+  --primary-color-hover: #004182 !important;
+  --primaryColorHover: #004182 !important;
+}
+.stApp, [data-testid="stAppViewContainer"], [data-testid="stSidebar"]{
+  --primary-color: #0A66C2 !important;
+  --primaryColor: #0A66C2 !important;
+  --primary-color-hover: #004182 !important;
+  --primaryColorHover: #004182 !important;
+}
+
+[data-baseweb="radio"] svg{
+  color: var(--li-blue) !important;
+  fill: var(--li-blue) !important;
+}
+[data-baseweb="radio"] [aria-checked="true"] svg{
+  color: var(--li-blue) !important;
+  fill: var(--li-blue) !important;
+}
+[data-baseweb="radio"] [aria-checked="true"]{
+  border-color: var(--li-blue) !important;
+}
+
+[data-baseweb="switch"] [role="switch"][aria-checked="true"]{
+  background-color: rgba(10,102,194,0.35) !important;
+  border-color: rgba(10,102,194,0.35) !important;
+}
+[data-baseweb="switch"] [role="switch"][aria-checked="true"] > div{
+  background: var(--li-blue) !important;
+}
+
+.stButton > div,
+.stDownloadButton > div{
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+[data-baseweb="button"]{
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+[data-baseweb="button"] > div{
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+.stButton > button, .stDownloadButton > button{
+  background: var(--li-blue) !important;
+  border: 1px solid var(--li-blue) !important;
+  color: #fff !important;
+  border-radius: 999px !important;
+  height: 40px !important;
+  padding: 0 18px !important;
+  font-weight: 800 !important;
+  font-size: 14px !important;
+  box-shadow: none !important;
+  outline: none !important;
+  white-space: nowrap !important;
+  width: auto !important;
+  max-width: 100% !important;
+}
+.stButton > button:hover, .stDownloadButton > button:hover{
+  background: var(--li-blue-dark) !important;
+  border: 1px solid var(--li-blue-dark) !important;
+}
+
+.li-table-wrap{
+  border: 1px solid rgba(0,0,0,0.05) !important;
+  border-radius: 10px !important;
+  overflow: hidden !important;
+  background: #fff !important;
+  margin: 10px 0 14px 0 !important;
+}
+.li-table tbody tr:last-child td{ border-bottom: none !important; }
+
+table.li-table{
+  width: 100% !important;
+  border-collapse: separate !important;
+  border-spacing: 0 !important;
+  font-size: 13px !important;
+}
+.li-table thead th{
+  padding: 10px 12px !important;
+  background: #FBFBFC !important;
+  color: rgba(0,0,0,0.70) !important;
+  border-bottom: 1px solid rgba(0,0,0,0.06) !important;
+  font-weight: 800 !important;
+}
+.li-table tbody td{
+  padding: 10px 12px !important;
+  border-bottom: 1px solid rgba(0,0,0,0.04) !important;
+  color: rgba(0,0,0,0.88) !important;
+}
+.li-table .num{
+  text-align: right !important;
+  font-variant-numeric: tabular-nums !important;
+}
+
+.li-subtitle{
+  margin-top: -4px;
+  margin-bottom: 6px;
+  color: var(--li-subtext);
+  font-size: 13px;
+}
+
+.status-pill{
+  display:inline-block;
+  padding:6px 10px;
+  border-radius:999px;
+  font-size:12px;
+  font-weight:700;
+  margin-right:8px;
+}
+.status-ok{
+  background:#E7F6EC;
+  color:#117A37;
+  border:1px solid #CBEAD5;
+}
+.status-warn{
+  background:#FFF4E5;
+  color:#A05A00;
+  border:1px solid #F3D7A5;
+}
+</style>
+""",
+    unsafe_allow_html=True,
+)
+
+
+# ============================================================
+# Header
+# ============================================================
+with st.container(border=True):
+    st.markdown("## 🧭 Career Pivot Simulator")
+    st.markdown(
+        '<div class="li-subtitle">Career pivot decision support with O*NET skill matching, route analysis, learning plan generation, and an adversarial LLM review board.</div>',
+        unsafe_allow_html=True,
+    )
+    llm_html = (
+        '<span class="status-pill status-ok">LLM ready: Streamlit secret found</span>'
+        if _has_openai_secret()
+        else '<span class="status-pill status-warn">LLM fallback mode: no Streamlit secret found</span>'
+    )
+    st.markdown(llm_html, unsafe_allow_html=True)
+
+
+# ============================================================
+# Load artifacts
+# ============================================================
+@st.cache_data(show_spinner=False)
+def load_artifacts_cached() -> Any:
+    return load_runtime_artifacts("artifacts")
+
+
+try:
+    art = load_artifacts_cached()
+except Exception as e:
+    st.error("Missing or invalid runtime artifacts.")
+    st.info("Run: `python scripts/preprocess_onet.py` to generate artifacts.")
+    st.exception(e)
+    st.stop()
+
+mat: pd.DataFrame = art.matrix
+occupations: list[str] = mat.index.astype(str).tolist()
+X_BASE: np.ndarray = np.asarray(mat.to_numpy(), dtype=np.float32, order="C")
+OCCS: list[str] = occupations
+OCC_TO_IDX: dict[str, int] = {o: i for i, o in enumerate(OCCS)}
+
+
+# ============================================================
+# Session state
+# ============================================================
+DEFAULT_STATE = {
+    "has_run": False,
+    "target_override": None,
+    "route_result": None,
+    "route_config": {"k_neighbors": 10, "max_steps": 6},
+    "learning_plan_md": "",
+    "learning_plan_source": "—",
+    "sim_result": None,
+    "review_board_strategies": None,
+    "review_board_evaluations": None,
+    "review_board_consensus": None,
+    "review_board_judge_memo": None,
+    "review_board_trace": {},
+}
+
+for key, value in DEFAULT_STATE.items():
+    if key not in st.session_state:
+        st.session_state[key] = value
+
+
+# ============================================================
+# Scoring core
+# ============================================================
+@st.cache_resource(show_spinner=False)
+def build_cosine_core(use_idf: bool) -> Dict[str, Any]:
+    X = X_BASE
+    n, d = X.shape
+
+    if use_idf:
+        df = np.sum(X > 0.0, axis=0).astype(np.float32, copy=False)
+        idf = np.log((np.float32(n) + 1.0) / (1.0 + df)) + 1.0
+        idf = np.clip(idf, 1.0, None).astype(np.float32, copy=False)
+        Xw = X * idf[None, :]
+    else:
+        idf = np.ones(d, dtype=np.float32)
+        Xw = X
+
+    norms = np.linalg.norm(Xw, axis=1)
+    norms_safe = np.where(norms == 0.0, 1.0, norms).astype(np.float32, copy=False)
+    Xn = (Xw / norms_safe[:, None]).astype(np.float32, copy=False)
+
+    return {"occs": OCCS, "occ_to_idx": OCC_TO_IDX, "Xn": Xn, "Xn_T": Xn.T}
+
+
+def _percentile_from_sorted(sorted_vals: np.ndarray, x: float) -> float:
+    if sorted_vals.size == 0 or not np.isfinite(x):
+        return 0.0
+    left = int(np.searchsorted(sorted_vals, x, side="left"))
+    right = int(np.searchsorted(sorted_vals, x, side="right"))
+    eq = right - left
+    pct = 100.0 * (left + 0.5 * eq) / float(sorted_vals.size)
+    return float(np.clip(pct, 0.0, 100.0))
+
+
+def _midrank_percentiles(values: np.ndarray) -> np.ndarray:
+    v = np.asarray(values, dtype=np.float32)
+    n = v.size
+    if n == 0:
+        return np.asarray([], dtype=np.float32)
+
+    order = np.argsort(v, kind="mergesort")
+    vs = v[order]
+
+    pct_sorted = np.empty(n, dtype=np.float32)
+    i = 0
+    while i < n:
+        j = i + 1
+        while j < n and vs[j] == vs[i]:
+            j += 1
+        less = i
+        eq = j - i
+        pct_sorted[i:j] = np.float32(100.0 * (less + 0.5 * eq) / float(n))
+        i = j
+
+    pct = np.empty(n, dtype=np.float32)
+    pct[order] = pct_sorted
+    return pct
+
+
+def get_score_distribution(use_idf: bool, current_occ: str) -> Dict[str, Any]:
+    core = build_cosine_core(bool(use_idf))
+    Xn: np.ndarray = core["Xn"]
+    Xn_T: np.ndarray = core["Xn_T"]
+    occ_to_idx: dict[str, int] = core["occ_to_idx"]
+
+    i = occ_to_idx.get(current_occ, -1)
+    if i < 0:
+        return {
+            "scores": np.asarray([], dtype=np.float32),
+            "scores_sorted": np.asarray([], dtype=np.float32),
+            "raw_scores_all": np.asarray([], dtype=np.float32),
+            "mask_other": np.asarray([], dtype=bool),
+        }
+
+    sims = Xn[i] @ Xn_T
+    sims = np.clip(sims, -1.0, 1.0)
+    raw_scores_all = np.maximum(sims, 0.0) * 100.0
+    raw_scores_all = np.clip(raw_scores_all, 0.0, 100.0).astype(np.float32, copy=False)
+
+    mask_other = np.ones(raw_scores_all.shape[0], dtype=bool)
+    mask_other[i] = False
+
+    return {
+        "scores": raw_scores_all[mask_other],
+        "scores_sorted": np.sort(raw_scores_all[mask_other]),
+        "raw_scores_all": raw_scores_all,
+        "mask_other": mask_other,
+    }
+
+
+def recommend_neighbors(use_idf: bool, current_occ: str, top_k: int = 10) -> pd.DataFrame:
+    dist = get_score_distribution(bool(use_idf), str(current_occ))
+    scores_other = dist["scores"]
+    raw_all = dist["raw_scores_all"]
+    mask_other = dist["mask_other"]
+
+    if scores_other.size == 0 or raw_all.size == 0:
+        return pd.DataFrame(columns=["occupation", "match_raw", "match_percentile"])
+
+    pct_other = _midrank_percentiles(scores_other)
+    occ_other = np.asarray(OCCS, dtype=object)[mask_other]
+    raw_other = raw_all[mask_other]
+
+    k = int(min(max(int(top_k), 0), raw_other.size))
+    if k == 0:
+        return pd.DataFrame(columns=["occupation", "match_raw", "match_percentile"])
+
+    idx_part = np.argpartition(-raw_other, kth=k - 1)[:k]
+    idx_sorted = idx_part[np.argsort(-raw_other[idx_part], kind="mergesort")]
+
+    return pd.DataFrame(
+        {
+            "occupation": occ_other[idx_sorted],
+            "match_raw": raw_other[idx_sorted].astype(float),
+            "match_percentile": pct_other[idx_sorted].astype(float),
+        }
+    ).reset_index(drop=True)
+
+
+# ============================================================
+# Sidebar
+# ============================================================
+with st.sidebar:
+    with st.container(border=True):
+        st.subheader("Controls")
+
+        mode = st.radio("Mode", options=["Guided", "Research"], index=0)
+        guided = mode == "Guided"
+
+        st.divider()
+
+        with st.expander("Choose your pivot", expanded=True):
+            current = st.selectbox("Current occupation", options=occupations, index=0)
+            default_target_idx = 1 if len(occupations) > 1 else 0
+            selected_target = st.selectbox("Target occupation", options=occupations, index=default_target_idx)
+
+            target = st.session_state.target_override or selected_target
+
+            if current == target:
+                st.warning("Pick a different target.")
+
+        with st.expander("Scoring", expanded=True):
+            use_idf = st.toggle("Downweight common skills (IDF)", value=True)
+            score_mode = st.radio(
+                "Overview score",
+                options=["Percentile (recommended)", "Raw similarity (transparent)"],
+                index=0,
+            )
+            st.caption("Percentile answers: how strong is this target versus all other options from the current role?")
+
+        if not guided:
+            with st.expander("Research knobs", expanded=False):
+                k_neighbors = st.slider("kNN neighbors", 2, 20, int(st.session_state.route_config["k_neighbors"]), 1)
+                max_steps = st.slider("Max steps", 2, 10, int(st.session_state.route_config["max_steps"]), 1)
+                st.session_state.route_config = {"k_neighbors": int(k_neighbors), "max_steps": int(max_steps)}
+
+        st.divider()
+        if st.button("🚀 Run pivot analysis", use_container_width=True):
+            st.session_state.has_run = True
+
+    with st.container(border=True):
+        st.subheader("Dataset snapshot")
+        st.metric("Occupations", mat.shape[0])
+        st.metric("Skills", mat.shape[1])
+
+
+# ============================================================

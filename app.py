@@ -106,6 +106,16 @@ def _extract_review_trace_status(trace: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def _render_bullet_list(title: str, items: List[str], empty_text: str = "No items.") -> None:
+    st.markdown(f"**{title}**")
+    clean = [str(x).strip() for x in (items or []) if str(x).strip()]
+    if not clean:
+        st.caption(empty_text)
+        return
+    for item in clean[:6]:
+        st.markdown(f"- {item}")
+
+
 # ============================================================
 # CSS
 # ============================================================
@@ -768,20 +778,21 @@ if plan_md:
         st.markdown(plan_md)
 
 
+
 # ============================================================
 # Decision Board (Hero Feature)
 # ============================================================
 with st.container(border=True):
-    st.subheader("⚖️ Adversarial Review Board")
+    st.subheader("⚖️ Career Pivot Decision Engine")
     st.caption(
-        "Hero feature: generate competing strategies, evaluate them with expert personas, compute consensus in Python, and stress-test the recommendation with skill investment."
+        "Generate competing pivot strategies, pressure-test them with multiple expert personas, aggregate disagreement in Python, and re-rank the recommendation under skill-investment counterfactuals."
     )
 
     b1, b2, b3 = st.columns([1, 1, 1])
 
     with b1:
         if st.button("1) Generate strategies", use_container_width=True):
-            with st.spinner("Generating 5 strategy archetypes..."):
+            with st.spinner("Generating differentiated strategy archetypes..."):
                 strategies_bundle = generate_all_strategies(
                     current_role=str(current),
                     target_role=str(target),
@@ -794,13 +805,14 @@ with st.container(border=True):
                 st.session_state.review_board_evaluations = None
                 st.session_state.review_board_consensus = None
                 st.session_state.review_board_judge_memo = None
+                st.session_state.review_board_trace.pop("counterfactual_consensus", None)
 
     with b2:
         if st.button("2) Get expert evals", use_container_width=True):
             if not st.session_state.review_board_strategies:
                 st.error("Generate strategies first.")
             else:
-                with st.spinner("Evaluating strategies with reviewer personas..."):
+                with st.spinner("Running multi-persona review pass..."):
                     evals_bundle = evaluate_strategies_by_reviewers(
                         strategies=st.session_state.review_board_strategies,
                         current_role=str(current),
@@ -812,13 +824,14 @@ with st.container(border=True):
                     st.session_state.review_board_trace["evaluations_bundle"] = evals_bundle.get("trace", {})
                     st.session_state.review_board_consensus = None
                     st.session_state.review_board_judge_memo = None
+                    st.session_state.review_board_trace.pop("counterfactual_consensus", None)
 
     with b3:
         if st.button("3) Compute consensus", use_container_width=True):
             if not st.session_state.review_board_evaluations:
                 st.error("Get expert evals first.")
             else:
-                with st.spinner("Aggregating reviewer scores..."):
+                with st.spinner("Computing confidence-adjusted consensus..."):
                     st.session_state.review_board_consensus = compute_consensus(
                         st.session_state.review_board_evaluations
                     )
@@ -831,19 +844,44 @@ with st.container(border=True):
 
     if strategies:
         st.divider()
-        st.markdown("### Generated strategies")
+        st.markdown("### Competing pivot strategies")
+
+        strategies_trace = st.session_state.review_board_trace.get("strategies_bundle", {})
+        diversity_warnings = strategies_trace.get("diversity_warnings", [])
+        if diversity_warnings:
+            with st.expander("Strategy diversity diagnostics", expanded=False):
+                for msg in diversity_warnings:
+                    st.warning(str(msg))
+
         for i, strat in enumerate(strategies):
             with st.container(border=True):
-                col1, col2 = st.columns([2.2, 1.0])
-                with col1:
+                top_row_left, top_row_right = st.columns([2.0, 1.0])
+
+                with top_row_left:
                     st.markdown(f"**{i + 1}. {strat.archetype.name}**")
                     st.markdown(str(strat.summary))
-                with col2:
+
+                with top_row_right:
                     st.markdown(f"**Code:** `{strat.archetype.code}`")
                     st.markdown(f"**Risk:** {strat.archetype.risk_level}")
-                    st.markdown(f"**Days:** {strat.archetype.estimated_days}")
+                    st.markdown(f"**Estimated days:** {strat.archetype.estimated_days}")
 
-                with st.expander("Details", expanded=False):
+                d1, d2, d3, d4, d5 = st.columns(5)
+                d1.metric("Speed", f"{float(getattr(strat, 'speed_bias', 5.0)):.1f}/10")
+                d2.metric("Risk control", f"{float(getattr(strat, 'risk_bias', 5.0)):.1f}/10")
+                d3.metric("Evidence", f"{float(getattr(strat, 'evidence_burden', 5.0)):.1f}/10")
+                d4.metric("Market signal", f"{float(getattr(strat, 'market_signal_strength', 5.0)):.1f}/10")
+                d5.metric("Gap focus", f"{float(getattr(strat, 'skill_gap_focus', 5.0)):.1f}/10")
+
+                info_left, info_right = st.columns(2)
+                with info_left:
+                    st.markdown(f"**Best for:** {str(getattr(strat, 'best_for_profile', '') or '—')}")
+                    st.markdown(f"**Evidence strategy:** {str(getattr(strat, 'evidence_strategy', '') or '—')}")
+                with info_right:
+                    st.markdown(f"**Key trade-off:** {str(getattr(strat, 'key_tradeoff', '') or '—')}")
+                    st.markdown(f"**Confidence rationale:** {str(getattr(strat, 'confidence_rationale', '') or '—')}")
+
+                with st.expander("Strategy details", expanded=False):
                     phases_rows = []
                     for phase in strat.phases:
                         phases_rows.append(
@@ -861,47 +899,165 @@ with st.container(border=True):
                             numeric_cols=[],
                         )
 
-                    if getattr(strat, "key_missing_skills", None):
-                        st.markdown("**Key missing skills addressed**")
-                        st.write(", ".join(strat.key_missing_skills[:6]))
+                    c_a, c_b = st.columns(2)
+                    with c_a:
+                        _render_bullet_list("Key missing skills addressed", getattr(strat, "key_missing_skills", []))
+                        _render_bullet_list("Success criteria", getattr(strat, "success_criteria", []))
+                    with c_b:
+                        _render_bullet_list("Transferable anchors", getattr(strat, "transferable_anchors", []))
+                        _render_bullet_list("Potential risks", getattr(strat, "potential_risks", []))
 
     if evaluations:
         st.divider()
-        st.markdown("### Reviewer coverage")
+        st.markdown("### Reviewer coverage and disagreement")
+
         review_rows = []
+        detail_rows = []
+
         for ev in evaluations:
             review_rows.append(
                 {
                     "reviewer_persona": ev.reviewer_persona,
                     "strongest_strategy": ev.strongest_strategy,
                     "weakest_strategy": ev.weakest_strategy,
+                    "reviewer_weight": float(getattr(ev, "reviewer_weight", 1.0)),
                 }
             )
+
+            for s in ev.strategy_scores:
+                detail_rows.append(
+                    {
+                        "reviewer_persona": ev.reviewer_persona,
+                        "strategy_code": s.strategy_code,
+                        "overall_score": float(s.overall_score),
+                        "alignment_with_role": float(s.alignment_with_role),
+                        "market_feasibility": float(s.market_feasibility),
+                        "time_efficiency": float(s.time_efficiency),
+                        "risk_assessment": float(s.risk_assessment),
+                        "narrative_strength": float(s.narrative_strength),
+                    }
+                )
+
         review_df = pd.DataFrame(review_rows)
         if not review_df.empty:
             _render_table_card(
                 review_df,
-                columns=["reviewer_persona", "strongest_strategy", "weakest_strategy"],
-                headers=["Reviewer", "Strongest", "Weakest"],
-                numeric_cols=[],
+                columns=["reviewer_persona", "strongest_strategy", "weakest_strategy", "reviewer_weight"],
+                headers=["Reviewer", "Strongest", "Weakest", "Weight"],
+                numeric_cols=["reviewer_weight"],
             )
+
+        detail_df = pd.DataFrame(detail_rows)
+        if not detail_df.empty:
+            with st.expander("Reviewer score matrix", expanded=False):
+                _render_table_card(
+                    detail_df,
+                    columns=[
+                        "reviewer_persona",
+                        "strategy_code",
+                        "overall_score",
+                        "alignment_with_role",
+                        "market_feasibility",
+                        "time_efficiency",
+                        "risk_assessment",
+                        "narrative_strength",
+                    ],
+                    headers=[
+                        "Reviewer",
+                        "Strategy",
+                        "Overall",
+                        "Role Fit",
+                        "Market",
+                        "Time",
+                        "Risk",
+                        "Narrative",
+                    ],
+                    numeric_cols=[
+                        "overall_score",
+                        "alignment_with_role",
+                        "market_feasibility",
+                        "time_efficiency",
+                        "risk_assessment",
+                        "narrative_strength",
+                    ],
+                )
+
+        with st.expander("Reviewer arguments", expanded=False):
+            for ev in evaluations:
+                st.markdown(f"**{ev.reviewer_persona}** — {ev.overall_recommendation}")
+                for s in ev.strategy_scores:
+                    with st.container(border=True):
+                        st.markdown(f"**{s.strategy_code}** · overall {float(s.overall_score):.1f}/100")
+                        st.markdown(str(s.justification))
+                        left_col, right_col = st.columns(2)
+                        with left_col:
+                            st.markdown(f"**Best strength:** {str(getattr(s, 'best_strength', '') or '—')}")
+                            st.markdown(f"**Biggest risk:** {str(getattr(s, 'biggest_risk', '') or '—')}")
+                            st.markdown(f"**Success condition:** {str(getattr(s, 'success_condition', '') or '—')}")
+                        with right_col:
+                            st.markdown(f"**Killer objection:** {str(getattr(s, 'killer_objection', '') or '—')}")
+                            st.markdown(f"**Best candidate fit:** {str(getattr(s, 'best_candidate_fit', '') or '—')}")
+                            concerns = getattr(s, "concerns", []) or []
+                            if concerns:
+                                st.markdown("**Concerns**")
+                                for c in concerns[:4]:
+                                    st.markdown(f"- {c}")
 
     if consensus:
         st.divider()
         st.markdown("### Consensus result")
 
-        c1, c2, c3 = st.columns([1, 1, 1])
+        c1, c2, c3, c4 = st.columns([1, 1, 1, 1])
         c1.metric("Winner", consensus.winner_strategy)
         c2.metric("Winner score", f"{consensus.winner_score:.1f}/100")
         c3.metric("Consensus strength", f"{consensus.consensus_strength:.0f}/100")
+        c4.metric("Robustness", f"{float(getattr(consensus, 'robustness_score', 0.0)):.0f}/100")
 
-        ranking_df = pd.DataFrame(consensus.strategy_rankings, columns=["strategy_code", "avg_score"])
+        c5, c6 = st.columns(2)
+        with c5:
+            st.metric("Controversy", f"{float(getattr(consensus, 'controversy_score', 0.0)):.0f}/100")
+        with c6:
+            st.metric("Fragile winner", "Yes" if bool(getattr(consensus, "fragile_winner", False)) else "No")
+
+        ranking_df = pd.DataFrame(consensus.strategy_rankings, columns=["strategy_code", "confidence_adjusted_score"])
         _render_table_card(
             ranking_df,
-            columns=["strategy_code", "avg_score"],
-            headers=["Strategy", "Average Score"],
-            numeric_cols=["avg_score"],
+            columns=["strategy_code", "confidence_adjusted_score"],
+            headers=["Strategy", "Confidence-Adjusted Score"],
+            numeric_cols=["confidence_adjusted_score"],
         )
+
+        diagnostics = getattr(consensus, "strategy_diagnostics", []) or []
+        if diagnostics:
+            with st.expander("Consensus diagnostics", expanded=False):
+                diagnostic_df = pd.DataFrame(diagnostics)
+                if not diagnostic_df.empty:
+                    _render_table_card(
+                        diagnostic_df,
+                        columns=[
+                            "strategy",
+                            "confidence_adjusted_score",
+                            "raw_mean_score",
+                            "disagreement_penalty",
+                            "std_dev",
+                            "robustness_score",
+                        ],
+                        headers=[
+                            "Strategy",
+                            "Adj. Score",
+                            "Raw Mean",
+                            "Penalty",
+                            "Std Dev",
+                            "Robustness",
+                        ],
+                        numeric_cols=[
+                            "confidence_adjusted_score",
+                            "raw_mean_score",
+                            "disagreement_penalty",
+                            "std_dev",
+                            "robustness_score",
+                        ],
+                    )
 
         if consensus.major_disagreements:
             with st.expander("Major disagreements", expanded=False):
@@ -909,15 +1065,34 @@ with st.container(border=True):
                 if not disagreement_df.empty:
                     _render_table_card(
                         disagreement_df,
-                        columns=["strategy", "strongest_advocate", "strongest_critic", "spread"],
-                        headers=["Strategy", "Advocate", "Critic", "Spread"],
-                        numeric_cols=["spread"],
+                        columns=["strategy", "strongest_advocate", "strongest_critic", "spread", "std_dev"],
+                        headers=["Strategy", "Advocate", "Critic", "Spread", "Std Dev"],
+                        numeric_cols=["spread", "std_dev"],
+                    )
+
+        alignment_summary = getattr(consensus, "reviewer_alignment_summary", []) or []
+        if alignment_summary:
+            with st.expander("Reviewer alignment summary", expanded=False):
+                align_df = pd.DataFrame(alignment_summary)
+                if not align_df.empty:
+                    _render_table_card(
+                        align_df,
+                        columns=["reviewer_persona", "preferred_strategy", "least_preferred_strategy", "reviewer_weight"],
+                        headers=["Reviewer", "Preferred", "Least Preferred", "Weight"],
+                        numeric_cols=["reviewer_weight"],
                     )
 
         if st.button("4) Generate judge memo", use_container_width=True):
             with st.spinner("Generating final judge recommendation..."):
-                missing = gap_df[gap_df["gap"] > 0]["skill"].head(4).tolist()
-                gap_summary = f"Key gaps: {', '.join(missing) if missing else 'None identified'}"
+                missing = gap_df[gap_df["gap"] > 0].sort_values(["gap", "target_importance"], ascending=False)["skill"].head(4).tolist()
+                transfer = gap_df.copy()
+                transfer["overlap"] = np.minimum(transfer["current_importance"], transfer["target_importance"])
+                top_transfer = transfer.sort_values("overlap", ascending=False)["skill"].head(3).tolist()
+
+                gap_summary = (
+                    f"Top missing skills: {', '.join(missing) if missing else 'none'}. "
+                    f"Top transferable anchors: {', '.join(top_transfer) if top_transfer else 'none'}."
+                )
 
                 judge_bundle = generate_judge_memo(
                     current_role=str(current),
@@ -947,14 +1122,14 @@ with st.container(border=True):
         col_sf, col_cr = st.columns(2)
 
         with col_sf:
-            st.markdown("**Success factors**")
-            for factor in judge_memo.key_success_factors[:5]:
-                st.markdown(f"- {factor}")
+            _render_bullet_list("Key success factors", getattr(judge_memo, "key_success_factors", []))
 
         with col_cr:
-            st.markdown("**Critical risks**")
-            for risk in judge_memo.critical_risks[:5]:
-                st.markdown(f"- {risk}")
+            _render_bullet_list("Critical risks", getattr(judge_memo, "critical_risks", []))
+
+        st.markdown("**First 30-day actions**")
+        for action in getattr(judge_memo, "first_30_day_actions", [])[:5]:
+            st.markdown(f"- {action}")
 
         st.markdown("**Interview narrative**")
         st.info(str(judge_memo.interview_narrative))
@@ -983,7 +1158,7 @@ with st.container(border=True):
                 )
 
                 if st.button("Re-evaluate strategies", use_container_width=True, key="rerank_board"):
-                    with st.spinner("Re-ranking strategies..."):
+                    with st.spinner("Re-ranking strategies under counterfactual skill investment..."):
                         new_consensus = rerank_after_skill_investment(
                             evaluations=evaluations,
                             invested_skills=selected_skills,
@@ -993,6 +1168,11 @@ with st.container(border=True):
 
                 new_consensus = st.session_state.review_board_trace.get("counterfactual_consensus")
                 if new_consensus:
+                    cf1, cf2, cf3 = st.columns(3)
+                    cf1.metric("Counterfactual winner", new_consensus.winner_strategy)
+                    cf2.metric("New winner score", f"{new_consensus.winner_score:.1f}/100")
+                    cf3.metric("New robustness", f"{float(getattr(new_consensus, 'robustness_score', 0.0)):.0f}/100")
+
                     ranking_cf_df = pd.DataFrame(
                         new_consensus.strategy_rankings,
                         columns=["strategy_code", "avg_score"],
@@ -1000,15 +1180,16 @@ with st.container(border=True):
                     _render_table_card(
                         ranking_cf_df,
                         columns=["strategy_code", "avg_score"],
-                        headers=["Strategy", "New Avg Score"],
+                        headers=["Strategy", "Counterfactual Score"],
                         numeric_cols=["avg_score"],
                     )
+
                     if new_consensus.winner_strategy != consensus.winner_strategy:
                         st.success(
                             f"Recommendation flipped: {consensus.winner_strategy} → {new_consensus.winner_strategy}"
                         )
                     else:
-                        st.info(f"{new_consensus.winner_strategy} remains the best strategy.")
+                        st.info(f"{new_consensus.winner_strategy} remains the best strategy after skill investment.")
 
 
 # ============================================================
