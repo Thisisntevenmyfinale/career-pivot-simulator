@@ -160,6 +160,13 @@ class ConsensusResult(BaseModel):
     reviewer_alignment_summary: List[Dict[str, Any]] = Field(default_factory=list)
     strategy_diagnostics: List[Dict[str, Any]] = Field(default_factory=list)
 
+    winner_reason: str = ""
+    runner_up_reason: str = ""
+    winner_vulnerability: str = ""
+    switch_conditions: List[str] = Field(default_factory=list)
+    decision_levers: List[str] = Field(default_factory=list)
+    networking_targets: List[Dict[str, str]] = Field(default_factory=list)
+
     strategy_rankings: List[Tuple[str, float]] = Field(default_factory=list)
 
 

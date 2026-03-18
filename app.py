@@ -116,15 +116,6 @@ def _render_bullet_list(title: str, items: List[str], empty_text: str = "No item
         st.markdown(f"- {item}")
         
 
-def _render_bullet_list(title: str, items: List[str], empty_text: str = "No items.") -> None:
-    st.markdown(f"**{title}**")
-    clean = [str(x).strip() for x in (items or []) if str(x).strip()]
-    if not clean:
-        st.caption(empty_text)
-        return
-    for item in clean[:6]:
-        st.markdown(f"- {item}")
-
 
 # ============================================================
 # CSS
@@ -1029,6 +1020,7 @@ with st.container(border=True):
         with c6:
             st.metric("Fragile winner", "Yes" if bool(getattr(consensus, "fragile_winner", False)) else "No")
 
+
         ranking_df = pd.DataFrame(consensus.strategy_rankings, columns=["strategy_code", "confidence_adjusted_score"])
         _render_table_card(
             ranking_df,
@@ -1036,6 +1028,29 @@ with st.container(border=True):
             headers=["Strategy", "Confidence-Adjusted Score"],
             numeric_cols=["confidence_adjusted_score"],
         )
+
+        st.markdown("### Why this recommendation currently wins")
+        st.info(str(getattr(consensus, "winner_reason", "") or "No winner rationale available."))
+
+        x1, x2 = st.columns(2)
+        with x1:
+            st.markdown("**Why the runner-up does not win yet**")
+            st.markdown(str(getattr(consensus, "runner_up_reason", "") or "—"))
+        with x2:
+            st.markdown("**Main vulnerability of the winner**")
+            st.markdown(str(getattr(consensus, "winner_vulnerability", "") or "—"))
+
+        decision_levers = getattr(consensus, "decision_levers", []) or []
+        if decision_levers:
+            _render_bullet_list("Decision levers", decision_levers)
+
+        switch_conditions = getattr(consensus, "switch_conditions", []) or []
+        if switch_conditions:
+            _render_bullet_list("What could flip the recommendation", switch_conditions)
+
+        diagnostics = getattr(consensus, "strategy_diagnostics", []) or []
+        
+
 
         diagnostics = getattr(consensus, "strategy_diagnostics", []) or []
         if diagnostics:
@@ -1143,6 +1158,15 @@ with st.container(border=True):
 
         st.markdown("**Interview narrative**")
         st.info(str(judge_memo.interview_narrative))
+
+        networking_targets = getattr(consensus, "networking_targets", []) or []
+        if networking_targets:
+            st.markdown("**Suggested networking targets**")
+            for row in networking_targets[:4]:
+                with st.container(border=True):
+                    st.markdown(f"**Target:** {row.get('target', '—')}")
+                    st.markdown(f"**Why:** {row.get('why', '—')}")
+                    st.markdown(f"**Question to ask:** {row.get('ask', '—')}")
 
     if evaluations and consensus:
         st.divider()

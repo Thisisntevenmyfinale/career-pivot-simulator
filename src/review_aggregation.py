@@ -47,6 +47,114 @@ def _safe_float(x: Any, default: float = 0.0) -> float:
         return float(default)
 
 
+def _build_decision_levers(
+    winner_code: str,
+    runner_up_code: str,
+    strategy_diagnostics: List[Dict[str, Any]],
+    major_disagreements: List[Dict[str, Any]],
+) -> List[str]:
+    winner_diag = next((d for d in strategy_diagnostics if d["strategy"] == winner_code), None)
+    runner_diag = next((d for d in strategy_diagnostics if d["strategy"] == runner_up_code), None)
+
+    levers: List[str] = []
+
+    if winner_diag and winner_diag["robustness_score"] >= 60:
+        levers.append("Robustness under reviewer disagreement is currently stronger than for the alternatives.")
+    if winner_diag and winner_diag["disagreement_penalty"] <= 3.0:
+        levers.append("The recommendation benefits from relatively low disagreement penalty.")
+    if runner_diag and winner_diag and (winner_diag["confidence_adjusted_score"] - runner_diag["confidence_adjusted_score"]) < 4.0:
+        levers.append("The top recommendation is narrow, so small changes in proof or risk could alter the ranking.")
+    if any(d["strategy"] == "PORTFOLIO" for d in major_disagreements):
+        levers.append("External proof of capability is a major driver of this decision space.")
+    if any(d["strategy"] == "DIRECT" for d in major_disagreements):
+        levers.append("Reviewer skepticism is especially sensitive to high-risk fast-entry strategies.")
+
+    if not levers:
+        levers = [
+            "Visible labor-market proof is likely a decisive factor.",
+            "Transition risk and credibility balance are shaping the ranking.",
+            "The strongest strategy is winning because it better balances readiness and market signal.",
+        ]
+
+    return levers[:4]
+
+
+def _build_switch_conditions(
+    winner_code: str,
+    runner_up_code: str,
+    major_disagreements: List[Dict[str, Any]],
+) -> List[str]:
+    conditions: List[str] = []
+
+    if runner_up_code == "PORTFOLIO":
+        conditions.append("If visible proof of capability improves materially, PORTFOLIO could overtake the current winner.")
+    if runner_up_code == "SKILL_FIRST":
+        conditions.append("If core missing skills become the dominant bottleneck, SKILL_FIRST becomes more attractive.")
+    if runner_up_code == "STEPPING":
+        conditions.append("If the market proves more skeptical than expected, STEPPING could become the safer recommendation.")
+    if winner_code == "HYBRID":
+        conditions.append("HYBRID remains strongest only if the user can maintain focus across both skill-building and proof creation.")
+    if any(d["strategy"] == "PORTFOLIO" for d in major_disagreements):
+        conditions.append("A few strong portfolio artifacts or public-facing proofs could change the ranking meaningfully.")
+    if any(d["strategy"] == "DIRECT" for d in major_disagreements):
+        conditions.append("DIRECT becomes more viable only if early auditions or trials generate unusually strong external validation.")
+
+    return conditions[:5]
+
+
+def _build_networking_targets(winner_code: str) -> List[Dict[str, str]]:
+    base = [
+        {
+            "target": "Practitioners one step inside the target field",
+            "why": "They can explain what really signals readiness at entry level.",
+            "ask": "What proof would make someone with a non-traditional background look credible quickly?",
+        },
+        {
+            "target": "Gatekeepers or evaluators in the target market",
+            "why": "They reveal how selection decisions are actually made.",
+            "ask": "What is the biggest red flag in a pivot like mine, and what evidence would offset it?",
+        },
+        {
+            "target": "People who recently made adjacent transitions",
+            "why": "They can share what worked recently rather than giving abstract advice.",
+            "ask": "What changed your credibility most in the first 90 days?",
+        },
+    ]
+
+    strategy_specific = {
+        "PORTFOLIO": {
+            "target": "People who review portfolios, reels, demos, or public work",
+            "why": "They can tell you what proof actually changes perception.",
+            "ask": "What kind of artifact would instantly separate a serious candidate from an amateur?",
+        },
+        "HYBRID": {
+            "target": "Mentors who combine training with real-world exposure",
+            "why": "They can help sequence proof and readiness instead of overfocusing on one.",
+            "ask": "How would you balance skill-building and visible output for someone in my position?",
+        },
+        "SKILL_FIRST": {
+            "target": "Instructors or coaches focused on core capability gaps",
+            "why": "They can identify the minimum skill threshold for credible entry.",
+            "ask": "Which missing skill would most damage my credibility if I left it underdeveloped?",
+        },
+        "STEPPING": {
+            "target": "Professionals in bridge roles adjacent to the target field",
+            "why": "They can explain which intermediate roles actually help and which are dead ends.",
+            "ask": "Which adjacent role most improves credibility for a later pivot into the target field?",
+        },
+        "DIRECT": {
+            "target": "Fast movers who entered the market without traditional preparation",
+            "why": "They can show whether aggressive market testing is realistic or reckless.",
+            "ask": "What early signal told you that a direct jump was viable rather than just optimistic?",
+        },
+    }
+
+    if winner_code in strategy_specific:
+        base.insert(0, strategy_specific[winner_code])
+
+    return base[:4]
+
+
 def compute_consensus(
     evaluations: List[ReviewerEvaluation],
 ) -> ConsensusResult:
@@ -112,7 +220,7 @@ def compute_consensus(
         penalties[code] = disagreement_penalty
         robustness[code] = robust
 
-        if std >= 5.0 or spread >= 12.0:
+        if std >= 2.5 or spread >= 10.0:
             strongest_advocate = max(reviewer_scores.items(), key=lambda kv: kv[1])[0]
             strongest_critic = min(reviewer_scores.items(), key=lambda kv: kv[1])[0]
             major_disagreements.append(
@@ -147,7 +255,7 @@ def compute_consensus(
     consensus_strength = max(0.0, min(100.0, 100.0 - mean_std * 8.0))
     controversy_score = max(0.0, min(100.0, np.mean(list(penalties.values())) * 4.0 if penalties else 0.0))
     robustness_score = max(0.0, min(100.0, robustness.get(winner_code, winner_score)))
-    fragile_winner = (winner_score - runner_up_score) < 4.0 or std_scores.get(winner_code, 0.0) > 8.0
+    fragile_winner = (winner_score - runner_up_score) < 4.0 or std_scores.get(winner_code, 0.0) > 4.0
 
     for ev in evaluations:
         per_scores = {s.strategy_code: float(s.overall_score) for s in ev.strategy_scores}
@@ -165,6 +273,32 @@ def compute_consensus(
     major_disagreements.sort(key=lambda x: x["spread"], reverse=True)
     strategy_diagnostics.sort(key=lambda x: x["confidence_adjusted_score"], reverse=True)
 
+    winner_reason = (
+        f"{winner_code} wins because it currently combines the strongest confidence-adjusted score "
+        f"with a more defensible balance of realism, proof, and reviewer agreement."
+    )
+    runner_up_reason = (
+        f"{runner_up_code} remains close enough to matter, but loses because its weaknesses create either "
+        f"more disagreement or a weaker risk-adjusted profile."
+    )
+    winner_vulnerability = (
+        f"The current recommendation is vulnerable if the user fails to execute the core trade-off of {winner_code} well, "
+        f"or if the runner-up gains stronger external proof."
+    )
+
+    decision_levers = _build_decision_levers(
+        winner_code=winner_code,
+        runner_up_code=runner_up_code,
+        strategy_diagnostics=strategy_diagnostics,
+        major_disagreements=major_disagreements,
+    )
+    switch_conditions = _build_switch_conditions(
+        winner_code=winner_code,
+        runner_up_code=runner_up_code,
+        major_disagreements=major_disagreements,
+    )
+    networking_targets = _build_networking_targets(winner_code=winner_code)
+
     return ConsensusResult(
         winner_strategy=winner_code,
         winner_score=winner_score,
@@ -177,6 +311,12 @@ def compute_consensus(
         major_disagreements=major_disagreements,
         reviewer_alignment_summary=reviewer_alignment_summary,
         strategy_diagnostics=strategy_diagnostics,
+        winner_reason=winner_reason,
+        runner_up_reason=runner_up_reason,
+        winner_vulnerability=winner_vulnerability,
+        switch_conditions=switch_conditions,
+        decision_levers=decision_levers,
+        networking_targets=networking_targets,
         strategy_rankings=[(code, score) for code, score in ranked],
     )
 
@@ -222,6 +362,15 @@ Robustness score: {consensus_result.robustness_score:.1f}/100
 Controversy score: {consensus_result.controversy_score:.1f}/100
 Fragile winner: {consensus_result.fragile_winner}
 
+Winner reason:
+{consensus_result.winner_reason}
+
+Runner-up reason:
+{consensus_result.runner_up_reason}
+
+Winner vulnerability:
+{consensus_result.winner_vulnerability}
+
 {disagreement_text}
 
 Gap summary:
@@ -251,13 +400,13 @@ def _offline_judge_memo(
     verdict = "Feasible with Conditions"
     if consensus_result.winner_score >= 82 and consensus_result.robustness_score >= 75 and not consensus_result.fragile_winner:
         verdict = "Highly Feasible"
-    elif consensus_result.winner_score < 65 or consensus_result.controversy_score > 40:
+    elif consensus_result.winner_score < 60 or consensus_result.controversy_score > 35:
         verdict = "Challenging"
 
     confidence = "Medium"
-    if consensus_result.robustness_score >= 75 and not consensus_result.fragile_winner:
+    if consensus_result.robustness_score >= 72 and not consensus_result.fragile_winner:
         confidence = "High"
-    elif consensus_result.fragile_winner or consensus_result.controversy_score >= 35:
+    elif consensus_result.fragile_winner or consensus_result.controversy_score >= 30:
         confidence = "Low"
 
     return {
@@ -265,27 +414,28 @@ def _offline_judge_memo(
             verdict=verdict,
             recommended_strategy=consensus_result.winner_strategy,
             executive_summary=(
-                f"The {consensus_result.winner_strategy} strategy currently leads for moving from "
-                f"{current_role} to {target_role}. This recommendation is based on confidence-adjusted reviewer support, "
-                f"not just raw averages, so disagreement and fragility reduce the final rank rather than being ignored."
+                f"The {consensus_result.winner_strategy} strategy currently leads because it offers the strongest "
+                f"confidence-adjusted balance between readiness, proof, and market realism. However, the recommendation "
+                f"is not absolute: the current ranking can still shift if stronger evidence emerges for the runner-up "
+                f"or if execution quality on the winner weakens."
             ),
             key_success_factors=[
-                "Prioritize the highest-leverage missing skills",
-                "Create visible evidence that makes the pivot legible to outsiders",
-                "Use a strategy-specific narrative instead of generic career-change language",
+                "Convert transferable strengths into target-role proof",
+                "Build visible labor-market credibility instead of relying on self-description alone",
+                "Follow the strategy trade-off consistently rather than mixing too many approaches",
             ],
             critical_risks=[
-                "Weak external credibility if execution quality is low",
-                "The best-looking plan may fail if its trade-offs are ignored in practice",
+                "External proof may remain weaker than internal confidence",
+                "The pivot could stall if the user underestimates execution difficulty",
             ],
             first_30_day_actions=[
-                "Choose one high-signal proof artifact or milestone",
-                "Refine the transition narrative around the strongest transferable anchors",
-                "Stress-test the first month plan against real market feedback",
+                "Choose one evidence milestone that outsiders can evaluate",
+                "Talk to one practitioner and one gatekeeper in the target field",
+                "Stress-test the plan against real-world feedback, not just internal optimism",
             ],
             interview_narrative=(
-                "Present the pivot as deliberate, evidence-backed, and role-specific: explain what transfers, "
-                "show what has been built to close the gaps, and make the strategy sound realistic rather than aspirational."
+                "Explain the pivot as a disciplined transition supported by specific evidence, targeted skill-building, "
+                "and a realistic understanding of the target market rather than as a vague passion shift."
             ),
             success_timeline="6-9 months",
             confidence_level=confidence,
