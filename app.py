@@ -35,13 +35,13 @@ from src.review_aggregation import (
     rerank_after_skill_investment,
 )
 
-st.write("🚀 LIVE VERSION CHECK")
+
 # ============================================================
 # Page config
 # ============================================================
 # Streamlit config must be set before most other Streamlit calls.
 st.set_page_config(page_title="Career Pivot Simulator", page_icon="🧭", layout="wide")
-
+st.write("🚀 LIVE VERSION CHECK")
 
 # Global CSS to align the app look-and-feel with a card-based UI.
 # Intent: keep the UI predictable across Streamlit versions by overriding key BaseWeb tokens.
@@ -868,10 +868,9 @@ with right:
         st.markdown("### Learning plan (3 phases)")
 
         c1, c2 = st.columns([1, 1])
-
+                    
         with c1:
             if st.button("Generate plan", use_container_width=True):
-                # Generation may call an external model; keep output cached in session state to avoid repeated calls.
                 with st.spinner("Generating plan (OpenAI if available)…"):
                     md = generate_learning_plan_markdown(
                         current_role=str(current),
@@ -883,7 +882,13 @@ with right:
                         prefer_online=True,
                     )
                     st.session_state.learning_plan_md = md
-                    st.session_state.learning_plan_source = "OpenAI" if md.startswith("🤖") else "Offline"
+
+                    if md.startswith("🤖"):
+                        st.session_state.learning_plan_source = "OpenAI"
+                    elif md.startswith("⚠️"):
+                        st.session_state.learning_plan_source = "OpenAI error → fallback"
+                    else:
+                        st.session_state.learning_plan_source = "Offline"
 
         with c2:
             if st.button("Clear", use_container_width=True):
