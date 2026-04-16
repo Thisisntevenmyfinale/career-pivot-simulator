@@ -208,6 +208,35 @@ st.markdown("""
   white-space:nowrap;
 }
 .li-degree{font-size:10px;color:rgba(0,0,0,0.45);margin-top:4px;}
+/* ── Overview stat cards ── */
+.li-stats-row{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:14px 0 18px 0;}
+.li-stat-card{
+  background:#F3F6F9;border-radius:10px;padding:14px 16px;
+  border:1px solid rgba(0,0,0,0.06);
+}
+.li-stat-val{font-size:26px;font-weight:800;color:#0A66C2;line-height:1.1;margin-bottom:2px;}
+.li-stat-label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:rgba(0,0,0,0.45);}
+.li-stat-sub{font-size:11px;color:rgba(0,0,0,0.4);margin-top:2px;}
+/* ── Tool card header (consistent across all tools) ── */
+.li-tool-header{
+  display:flex;align-items:center;gap:10px;margin-bottom:6px;padding-bottom:10px;
+  border-bottom:1px solid rgba(0,0,0,0.07);
+}
+.li-tool-icon{
+  width:36px;height:36px;border-radius:8px;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;font-size:18px;
+}
+.li-tool-title{font-size:16px;font-weight:800;color:rgba(0,0,0,0.88);line-height:1.2;}
+.li-tool-cap{font-size:12px;color:rgba(0,0,0,0.5);margin-top:1px;}
+/* ── Phase / section separator ── */
+.li-phase{
+  display:flex;align-items:center;gap:10px;margin:20px 0 10px 0;
+}
+.li-phase-line{flex:1;height:1px;background:rgba(0,0,0,0.08);}
+.li-phase-text{
+  font-size:11px;font-weight:800;letter-spacing:0.10em;text-transform:uppercase;
+  color:rgba(0,0,0,0.38);white-space:nowrap;
+}
 </style>
 <nav class="li-topnav">
   <div class="li-nav-left">
@@ -1175,11 +1204,35 @@ with st.container(border=True):
     _r_label = "Strong" if _readiness >= 65 else ("Promising" if _readiness >= 40 else "Early Stage")
     _weeks = max(4, int((_n_gaps * 3.5) * (1 - match_score_display / 200)))  # rough weeks estimate
 
-    m1, m2, m3, m4 = st.columns(4, gap="large")
-    m1.metric("Match Score", f"{match_score_display:.0f} / 100")
-    m2.metric("Confidence", f"{conf['confidence_score']:.0f} / 100")
-    m3.metric("Skill Gaps", f"{_n_gaps} to close")
-    m4.metric("Est. Readiness", f"~{_weeks}w", help="Rough estimate of weeks to be apply-ready based on gap count and match score")
+    _gap_color = "#117A37" if _n_gaps <= 10 else ("#A05A00" if _n_gaps <= 25 else "#B71C1C")
+    _conf_val = int(conf['confidence_score'])
+    _conf_color = "#117A37" if _conf_val >= 70 else ("#A05A00" if _conf_val >= 45 else "#B71C1C")
+    _match_color_ov = "#117A37" if match_score_display >= 70 else ("#A05A00" if match_score_display >= 45 else "#B71C1C")
+    st.markdown(
+        f'<div class="li-stats-row">'
+        f'<div class="li-stat-card">'
+        f'  <div class="li-stat-val" style="color:{_match_color_ov}">{match_score_display:.0f}<span style="font-size:14px;font-weight:600;color:rgba(0,0,0,0.3)">/100</span></div>'
+        f'  <div class="li-stat-label">Match Score</div>'
+        f'  <div class="li-stat-sub">{"Strong" if match_score_display >= 70 else ("Promising" if match_score_display >= 45 else "Hard pivot")}</div>'
+        f'</div>'
+        f'<div class="li-stat-card">'
+        f'  <div class="li-stat-val" style="color:{_conf_color}">{_conf_val}<span style="font-size:14px;font-weight:600;color:rgba(0,0,0,0.3)">/100</span></div>'
+        f'  <div class="li-stat-label">Confidence</div>'
+        f'  <div class="li-stat-sub">Data reliability</div>'
+        f'</div>'
+        f'<div class="li-stat-card">'
+        f'  <div class="li-stat-val" style="color:{_gap_color}">{_n_gaps}</div>'
+        f'  <div class="li-stat-label">Skill Gaps</div>'
+        f'  <div class="li-stat-sub">skills to develop</div>'
+        f'</div>'
+        f'<div class="li-stat-card">'
+        f'  <div class="li-stat-val" style="color:#0A66C2">~{_weeks}<span style="font-size:14px;font-weight:600;color:rgba(0,0,0,0.3)">w</span></div>'
+        f'  <div class="li-stat-label">Est. Readiness</div>'
+        f'  <div class="li-stat-sub">weeks to apply-ready</div>'
+        f'</div>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
 
     st.markdown(
         f'<div style="margin:14px 0 8px 0;display:flex;align-items:center;gap:12px;">'
@@ -1234,8 +1287,9 @@ with st.container(border=True):
 # Smart Apply — AI Job Matching + Application Package Generator
 # ============================================================
 st.markdown(
-    '<div style="font-size:11px;font-weight:700;letter-spacing:0.10em;text-transform:uppercase;'
-    'color:rgba(0,0,0,0.35);margin:8px 0 10px 2px">Jobs · Recommended for you</div>',
+    '<div class="li-phase"><div class="li-phase-line"></div>'
+    '<div class="li-phase-text">Jobs · Recommended for you</div>'
+    '<div class="li-phase-line"></div></div>',
     unsafe_allow_html=True,
 )
 with st.container(border=True):
@@ -1589,8 +1643,9 @@ with st.container(border=True):
 
 
 st.markdown(
-    '<div style="font-size:11px;font-weight:700;letter-spacing:0.10em;text-transform:uppercase;'
-    'color:rgba(0,0,0,0.35);margin:16px 0 10px 2px">Skill Analysis · Your pivot profile</div>',
+    '<div class="li-phase"><div class="li-phase-line"></div>'
+    '<div class="li-phase-text">Skill Analysis · Your pivot profile</div>'
+    '<div class="li-phase-line"></div></div>',
     unsafe_allow_html=True,
 )
 # ============================================================
@@ -1915,16 +1970,23 @@ with st.container(border=True):
 
 
 st.markdown(
-    '<div style="font-size:11px;font-weight:700;letter-spacing:0.10em;text-transform:uppercase;'
-    'color:rgba(0,0,0,0.35);margin:16px 0 10px 2px">Prepare · Close your skill gaps</div>',
+    '<div class="li-phase"><div class="li-phase-line"></div>'
+    '<div class="li-phase-text">Prepare · Close your skill gaps</div>'
+    '<div class="li-phase-line"></div></div>',
     unsafe_allow_html=True,
 )
 # ============================================================
 # LLM Learning Plan
 # ============================================================
 with st.container(border=True):
-    st.subheader("🧠 AI Learning Plan")
-    st.caption("LLM-generated upskilling roadmap based on your skill gaps.")
+    st.markdown(
+        '<div class="li-tool-header">'
+        '<div class="li-tool-icon" style="background:#EEF3FB">🧠</div>'
+        '<div><div class="li-tool-title">AI Learning Plan</div>'
+        '<div class="li-tool-cap">Personalised upskilling roadmap based on your skill gaps</div></div>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
 
     lp1, lp2 = st.columns([2, 1], gap="small")
 
@@ -1958,8 +2020,15 @@ with st.container(border=True):
 # Salary Impact Estimator
 # ============================================================
 with st.container(border=True):
-    st.subheader("💰 Salary Impact Estimator")
     _si_personal = bool(_cv_profile and _cv_profile.get("years_experience", 0) > 0)
+    st.markdown(
+        '<div class="li-tool-header">'
+        '<div class="li-tool-icon" style="background:#FFF8E7">💰</div>'
+        '<div><div class="li-tool-title">Salary Impact Estimator</div>'
+        '<div class="li-tool-cap">Compensation trajectory — entry level vs. senior, with break-even timeline</div></div>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
     st.caption(
         "LLM-estimated compensation trajectory for this pivot — current salary vs. "
         "target entry vs. target senior level, with break-even timeline."
@@ -2102,8 +2171,15 @@ with st.container(border=True):
 # Pivot Narrative Generator
 # ============================================================
 with st.container(border=True):
-    st.subheader("✍️ Pivot Narrative Generator")
     _pn_personal = bool(st.session_state.cv_profile and st.session_state.cv_profile.get("extracted_role"))
+    st.markdown(
+        '<div class="li-tool-header">'
+        '<div class="li-tool-icon" style="background:#F3EEF9">✍️</div>'
+        '<div><div class="li-tool-title">Pivot Narrative Generator</div>'
+        '<div class="li-tool-cap">Cover letter · elevator pitch · LinkedIn About · interview talking points</div></div>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
     st.caption(
         ("Personalised to your CV — cover letter, elevator pitch, LinkedIn About, and interview talking points." if _pn_personal
          else "Generate application materials for this pivot. Upload your CV in the sidebar to personalise the output.")
@@ -2225,8 +2301,15 @@ with st.container(border=True):
 # Job Posting Analyzer
 # ============================================================
 with st.container(border=True):
-    st.subheader("🎯 Job Posting Analyzer")
     _jp_personal = bool(st.session_state.cv_profile and st.session_state.cv_profile.get("extracted_role"))
+    st.markdown(
+        '<div class="li-tool-header">'
+        '<div class="li-tool-icon" style="background:#EEF3FB">🎯</div>'
+        '<div><div class="li-tool-title">Job Posting Analyzer</div>'
+        '<div class="li-tool-cap">Instant match score · advantage/gap breakdown · application readiness verdict</div></div>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
     st.caption(
         "Paste a real job posting — get an instant match score, advantage/gap breakdown, and application readiness verdict."
         + (" Personalised to your CV." if _jp_personal else " Upload your CV for personalised results.")
@@ -2340,19 +2423,26 @@ with st.container(border=True):
 
 
 st.markdown(
-    '<div style="font-size:11px;font-weight:700;letter-spacing:0.10em;text-transform:uppercase;'
-    'color:rgba(0,0,0,0.35);margin:16px 0 10px 2px">Validate · Pressure-test your decision</div>',
+    '<div class="li-phase"><div class="li-phase-line"></div>'
+    '<div class="li-phase-text">Validate · Pressure-test your decision</div>'
+    '<div class="li-phase-line"></div></div>',
     unsafe_allow_html=True,
 )
 # ============================================================
 # Adversarial Pivot Debate
 # ============================================================
 with st.container(border=True):
-    st.subheader("⚔️ Adversarial Pivot Debate")
+    st.markdown(
+        '<div class="li-tool-header">'
+        '<div class="li-tool-icon" style="background:#FEF0F0">⚔️</div>'
+        '<div><div class="li-tool-title">Adversarial Pivot Debate</div>'
+        '<div class="li-tool-cap">Advocate vs. Skeptic vs. Judge · probability-style verdict</div></div>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
     st.caption(
         "Three-agent debate: an Advocate argues FOR the pivot, a Skeptic argues AGAINST, "
-        "a Judge weighs both and delivers a probability-style verdict. "
-        "Architecturally distinct from the review board — adversarial and sequential, not parallel."
+        "a Judge weighs both and delivers a probability-style verdict."
     )
 
     db_col1, db_col2 = st.columns([2, 1], gap="small")
@@ -2494,7 +2584,14 @@ with st.container(border=True):
 # Decision Board (Hero Feature)
 # ============================================================
 with st.container(border=True):
-    st.subheader("Decision Board")
+    st.markdown(
+        '<div class="li-tool-header">'
+        '<div class="li-tool-icon" style="background:#EEF3FB">🏛️</div>'
+        '<div><div class="li-tool-title">Decision Board</div>'
+        '<div class="li-tool-cap">Competing strategies · expert personas · consensus · what could flip the recommendation</div></div>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
     st.caption(
         "Generate competing pivot strategies, pressure-test with expert personas, aggregate disagreement, and identify what could flip the recommendation."
     )
@@ -3111,32 +3208,17 @@ It combines overlap, dataset density, and embedding support.
 
 
 # ============================================================
-# LLM system trace
-# ============================================================
-with st.expander("LLM system trace (advanced)", expanded=False):
-    st.markdown("### Learning plan source")
-    st.write(
-        {
-            "learning_plan_source": st.session_state.learning_plan_source,
-            "streamlit_secret_present": _has_openai_secret(),
-        }
-    )
-
-    st.markdown("### Review Board trace")
-    trace = st.session_state.review_board_trace or {}
-    st.write(
-        {
-            "strategies_bundle": _extract_review_trace_status(trace.get("strategies_bundle", {})),
-            "evaluations_bundle": _extract_review_trace_status(trace.get("evaluations_bundle", {})),
-            "judge_bundle": trace.get("judge_bundle", {}),
-        }
-    )
-
-
-# ============================================================
 # Download Full Report
 # ============================================================
 with st.container(border=True):
+    st.markdown(
+        '<div class="li-tool-header">'
+        '<div class="li-tool-icon" style="background:#F3F6F9">📥</div>'
+        '<div><div class="li-tool-title">Download Pivot Report</div>'
+        '<div class="li-tool-cap">Full markdown report — all completed analyses in one file</div></div>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
     _rpt_sections = []
     _rpt_sections.append(f"# Career Pivot Report\n\n**{current} → {target}**\n")
     _rpt_sections.append(f"## Overview\n- Match Score: {match_score_display:.0f}/100\n- Confidence: {conf['confidence_score']:.0f}/100\n- Skill Gaps: {_n_gaps}\n- Pivot Readiness: {_readiness}/100 ({_r_label})\n")
@@ -3210,27 +3292,27 @@ with st.container(border=True):
 
 
 st.markdown(
-    '<div style="font-size:11px;font-weight:700;letter-spacing:0.10em;text-transform:uppercase;'
-    'color:rgba(0,0,0,0.35);margin:16px 0 10px 2px">AI Advisor · Autonomous deep analysis</div>',
+    '<div class="li-phase"><div class="li-phase-line"></div>'
+    '<div class="li-phase-text">AI Advisor · Autonomous deep analysis</div>'
+    '<div class="li-phase-line"></div></div>',
     unsafe_allow_html=True,
 )
 # ============================================================
 # Career Intelligence Agent (A3)
 # ============================================================
 with st.container(border=True):
-    st.subheader("🤖 Career Intelligence Agent")
     st.markdown(
-        '<div class="li-subtitle">'
-        "Autonomous reasoning agent with 8 tools. Unlike the fixed A2 pipeline, this agent "
-        "decides which tools to call, in what order, and when it has enough evidence — "
-        "including explicit conflict investigation when reviewers disagree."
-        "</div>",
+        '<div class="li-tool-header">'
+        '<div class="li-tool-icon" style="background:#EEF3FB">🤖</div>'
+        '<div><div class="li-tool-title">Career Intelligence Agent</div>'
+        '<div class="li-tool-cap">Autonomous AI that decides which tools to call, in what order, and when it has enough evidence</div></div>'
+        '</div>',
         unsafe_allow_html=True,
     )
 
     # Tabs for context vs action
     agent_tab_run, agent_tab_arch, agent_tab_compare = st.tabs(
-        ["Run Agent", "Model Rationale", "A2 vs A3"]
+        ["Run Agent", "How it works", "Pipeline comparison"]
     )
 
     with agent_tab_arch:
