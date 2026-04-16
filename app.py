@@ -40,6 +40,9 @@ from src.smart_apply import (
     generate_job_listings, generate_application_package, generate_pivot_peers,
     JobListing, ApplicationPackage, PivotPeer,
 )
+from src.salary_estimator import estimate_salary_impact
+import plotly.graph_objects as go
+import plotly.express as px
 
 # ============================================================
 # Page config
@@ -779,6 +782,8 @@ DEFAULT_STATE = {
     "smart_apply_package": None,
     # Pivot Peers
     "pivot_peers": None,
+    # Salary Estimator
+    "salary_result": None,
 }
 
 for key, value in DEFAULT_STATE.items():
@@ -1125,12 +1130,67 @@ with st.container(border=True):
                 unsafe_allow_html=True,
             )
 
-    m1, m2, m3 = st.columns(3, gap="large")
+    # ── Pivot Readiness Score (synthesises match + gap + CV quality) ──
+    _n_gaps = int((gap_df["gap"] > 0).sum()) if not gap_df.empty else 0
+    _n_total = len(gap_df) if not gap_df.empty else 1
+    _gap_ratio = _n_gaps / max(_n_total, 1)
+    _cv_score = min(float(_cv_profile.get("skills_mapped_count", 0)) / 40.0, 1.0) if _cv_profile else 0.5
+    _readiness = int(
+        0.45 * (match_score_display / 100)
+        + 0.30 * (1 - _gap_ratio)
+        + 0.25 * _cv_score
+        * 100
+    )
+    _readiness = max(5, min(_readiness, 97))  # keep in [5, 97] — never claim 0 or 100
+    _r_color = "#117A37" if _readiness >= 65 else ("#A05A00" if _readiness >= 40 else "#B71C1C")
+    _r_label = "Strong" if _readiness >= 65 else ("Promising" if _readiness >= 40 else "Early Stage")
+    _weeks = max(4, int((_n_gaps * 3.5) * (1 - match_score_display / 200)))  # rough weeks estimate
+
+    m1, m2, m3, m4 = st.columns(4, gap="large")
     m1.metric("Match Score", f"{match_score_display:.0f} / 100")
     m2.metric("Confidence", f"{conf['confidence_score']:.0f} / 100")
-    m3.metric("Gap Analysis", "Personal (CV)" if _personal_mode else "Role Average (O*NET)")
+    m3.metric("Skill Gaps", f"{_n_gaps} to close")
+    m4.metric("Est. Readiness", f"~{_weeks}w", help="Rough estimate of weeks to be apply-ready based on gap count and match score")
 
-    st.markdown("<div style='margin-top:12px'></div>", unsafe_allow_html=True)
+    st.markdown(
+        f'<div style="margin:14px 0 8px 0;display:flex;align-items:center;gap:12px;">'
+        f'<div style="flex:1;background:rgba(0,0,0,0.07);border-radius:4px;height:8px;overflow:hidden;">'
+        f'<div style="width:{_readiness}%;height:8px;background:{_r_color};border-radius:4px;transition:width 0.6s;"></div></div>'
+        f'<div style="font-size:13px;font-weight:800;color:{_r_color};white-space:nowrap">'
+        f'Pivot Readiness: {_readiness}/100 · {_r_label}</div>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+
+    # ── Match score distribution sparkline ──────────────────────
+    if scores_all_sorted.size > 10:
+        _hist_counts, _hist_edges = np.histogram(scores_all_sorted, bins=40)
+        _bin_centers = (_hist_edges[:-1] + _hist_edges[1:]) / 2
+        _fig_dist = go.Figure()
+        _fig_dist.add_trace(go.Bar(
+            x=_bin_centers, y=_hist_counts,
+            marker_color=["#0A66C2" if abs(bc - raw_target) < 2.5 else "rgba(10,102,194,0.18)"
+                          for bc in _bin_centers],
+            hovertemplate="%{x:.0f} score · %{y} roles<extra></extra>",
+        ))
+        _fig_dist.add_vline(
+            x=raw_target, line_color="#0A66C2", line_width=2, line_dash="solid",
+            annotation_text=f"  {target[:25]}… ({raw_target:.0f})",
+            annotation_font_size=11, annotation_font_color="#0A66C2",
+        )
+        _fig_dist.update_layout(
+            margin=dict(l=0, r=0, t=24, b=0), height=110,
+            paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+            title=dict(text="Where this pivot sits among all possible pivots from your current role",
+                       font_size=11, font_color="rgba(0,0,0,0.45)", x=0),
+            showlegend=False,
+            xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+            yaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+            bargap=0.05,
+        )
+        st.plotly_chart(_fig_dist, use_container_width=True, config={"displayModeBar": False})
+
+    st.markdown("<div style='margin-top:4px'></div>", unsafe_allow_html=True)
     if _personal_mode:
         st.info("Personal mode active — skill gaps reflect YOUR CV profile vs. the target role, not the O*NET role average.")
     if match_score_display >= 70:
@@ -1660,6 +1720,51 @@ with st.container(border=True):
                     numeric_cols=["current_importance", "target_importance", "gap"],
                 )
 
+        # ── Skill gap visual chart ────────────────────────────────
+        if not gap_df.empty:
+            _chart_df = gap_df.copy()
+            _chart_df["overlap"] = np.minimum(
+                _chart_df["current_importance"], _chart_df["target_importance"]
+            )
+            _top_skills = (
+                _chart_df.assign(
+                    abs_target=_chart_df["target_importance"]
+                ).sort_values("abs_target", ascending=False).head(14)
+            )
+            _fig_gap = go.Figure()
+            _fig_gap.add_trace(go.Bar(
+                name="You have",
+                x=_top_skills["skill"],
+                y=_top_skills["current_importance"],
+                marker_color="#0A66C2",
+                hovertemplate="%{x}<br>Your level: %{y:.1f}<extra></extra>",
+            ))
+            _fig_gap.add_trace(go.Bar(
+                name="Role requires",
+                x=_top_skills["skill"],
+                y=(_top_skills["target_importance"] - _top_skills["current_importance"]).clip(lower=0),
+                base=_top_skills["current_importance"],
+                marker_color="rgba(183,28,28,0.35)",
+                hovertemplate="%{x}<br>Gap: %{y:.1f}<extra></extra>",
+            ))
+            _fig_gap.update_layout(
+                barmode="stack",
+                height=240,
+                margin=dict(l=0, r=0, t=28, b=60),
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(0,0,0,0)",
+                title=dict(
+                    text="Skill profile: your level (blue) vs. gap to close (red) · Top 14 skills by target importance",
+                    font_size=11, font_color="rgba(0,0,0,0.45)", x=0,
+                ),
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1,
+                            font_size=11),
+                xaxis=dict(tickfont_size=10, tickangle=-30, showgrid=False),
+                yaxis=dict(showgrid=True, gridcolor="rgba(0,0,0,0.06)", zeroline=False,
+                           title=dict(text="O*NET level (0–7)", font_size=10)),
+            )
+            st.plotly_chart(_fig_gap, use_container_width=True, config={"displayModeBar": False})
+
     # ── Tab 4: My Profile (only when CV loaded) ────────────────
     if _personal_mode and main_tab_profile is not None and _cv_profile:
         with main_tab_profile:
@@ -1759,6 +1864,150 @@ with st.container(border=True):
         st.divider()
         st.caption(f"Source: {st.session_state.learning_plan_source}")
         st.markdown(plan_md)
+
+# ============================================================
+# Salary Impact Estimator
+# ============================================================
+with st.container(border=True):
+    st.subheader("💰 Salary Impact Estimator")
+    _si_personal = bool(_cv_profile and _cv_profile.get("years_experience", 0) > 0)
+    st.caption(
+        "LLM-estimated compensation trajectory for this pivot — current salary vs. "
+        "target entry vs. target senior level, with break-even timeline."
+        + (" Personalised to your CV." if _si_personal else "")
+    )
+    st.markdown(
+        '<span style="font-size:10px;color:rgba(0,0,0,0.4);font-style:italic">'
+        'Figures are AI-estimated based on US labour market data — use as directional guidance only.</span>',
+        unsafe_allow_html=True,
+    )
+
+    si_col1, si_col2 = st.columns([2, 1], gap="small")
+    with si_col1:
+        if st.button("Estimate salary impact", use_container_width=True, key="run_salary"):
+            with st.spinner("Modelling compensation trajectory…"):
+                _si_key = ""
+                try:
+                    _si_key = str(st.secrets.get("OPENAI_API_KEY", "")).strip()
+                except Exception:
+                    pass
+                _yrs = float(_cv_profile.get("years_experience", 0)) if _cv_profile else 0.0
+                st.session_state.salary_result = estimate_salary_impact(
+                    current_role=str(current),
+                    target_role=str(target),
+                    match_score=match_score_display,
+                    years_experience=_yrs,
+                    model="gpt-4o-mini",
+                    prefer_online=_has_openai_secret(),
+                    api_key=_si_key or None,
+                )
+            st.rerun()
+    with si_col2:
+        if st.session_state.salary_result:
+            if st.button("Clear", key="clear_salary", type="secondary", use_container_width=True):
+                st.session_state.salary_result = None
+
+    _sr = st.session_state.salary_result
+    if _sr:
+        st.divider()
+        _s1, _s2, _s3, _s4 = st.columns(4, gap="large")
+        _s1.metric(
+            "Current (median)",
+            f"${_sr['current_median']:,.0f}",
+            help=f"Range: ${_sr['current_range'][0]:,.0f} – ${_sr['current_range'][1]:,.0f}",
+        )
+        _entry_delta = _sr["entry_delta_pct"]
+        _s2.metric(
+            "Target entry (median)",
+            f"${_sr['target_entry_median']:,.0f}",
+            delta=f"{_entry_delta:+.1f}%",
+            delta_color="inverse" if _entry_delta < 0 else "normal",
+        )
+        _ceiling_delta = _sr["ceiling_delta_pct"]
+        _s3.metric(
+            "Target senior (median)",
+            f"${_sr['target_senior_median']:,.0f}",
+            delta=f"{_ceiling_delta:+.1f}%",
+            delta_color="normal",
+        )
+        _s4.metric(
+            "Break-even",
+            f"{_sr['months_to_breakeven']} months",
+            help="Months from entering target role until salary exceeds current",
+        )
+
+        # ── Salary trajectory chart ──────────────────────────────
+        _traj = _sr.get("trajectory", [])
+        if _traj:
+            _months = [p["month"] for p in _traj]
+            _salaries = [p["salary"] for p in _traj]
+            _phases = [p.get("phase", "") for p in _traj]
+            _current_line = [_sr["current_median"]] * len(_months)
+
+            _fig_sal = go.Figure()
+            # Current role flat line
+            _fig_sal.add_trace(go.Scatter(
+                x=_months, y=_current_line,
+                mode="lines",
+                name="Current role (stay)",
+                line=dict(color="rgba(0,0,0,0.25)", width=1.5, dash="dot"),
+                hovertemplate="Month %{x}: $%{y:,.0f} (stay)<extra></extra>",
+            ))
+            # Target trajectory
+            _point_colors = ["#0A66C2" if s == "Growth" else "#A05A00" for s in _phases]
+            _fig_sal.add_trace(go.Scatter(
+                x=_months, y=_salaries,
+                mode="lines+markers",
+                name="Pivot trajectory",
+                line=dict(color="#0A66C2", width=2.5),
+                marker=dict(size=8, color=_point_colors, line=dict(color="#fff", width=1.5)),
+                hovertemplate="Month %{x}: $%{y:,.0f}<extra></extra>",
+                fill="tonexty",
+                fillcolor="rgba(10,102,194,0.06)",
+            ))
+            # Break-even line
+            if _sr["months_to_breakeven"] <= 36:
+                _fig_sal.add_vline(
+                    x=_sr["months_to_breakeven"],
+                    line_color="#117A37", line_width=1.5, line_dash="dash",
+                    annotation_text=f"  Break-even: month {_sr['months_to_breakeven']}",
+                    annotation_font_size=10, annotation_font_color="#117A37",
+                )
+
+            _fig_sal.update_layout(
+                height=240,
+                margin=dict(l=0, r=0, t=28, b=0),
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(0,0,0,0)",
+                title=dict(
+                    text="Estimated 36-month salary trajectory · AI simulation based on US market data",
+                    font_size=11, font_color="rgba(0,0,0,0.45)", x=0,
+                ),
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1,
+                            font_size=11),
+                xaxis=dict(
+                    title=dict(text="Months after pivot start", font_size=10),
+                    showgrid=False, zeroline=False,
+                    tickvals=[0, 6, 12, 18, 24, 36],
+                    ticktext=["Now", "6m", "12m", "18m", "24m", "36m"],
+                ),
+                yaxis=dict(
+                    title=dict(text="Annual salary (USD)", font_size=10),
+                    showgrid=True, gridcolor="rgba(0,0,0,0.06)", zeroline=False,
+                    tickformat="$,.0f",
+                ),
+            )
+            st.plotly_chart(_fig_sal, use_container_width=True, config={"displayModeBar": False})
+
+        # Insights
+        for insight in _sr.get("insights", []):
+            st.markdown(
+                f'<div style="display:flex;gap:8px;margin-bottom:6px;font-size:13px;'
+                f'color:rgba(0,0,0,0.7);line-height:1.5">'
+                f'<span style="color:#0A66C2;flex-shrink:0">›</span>{insight}</div>',
+                unsafe_allow_html=True,
+            )
+
 
 # ============================================================
 # Pivot Narrative Generator
@@ -2793,6 +3042,82 @@ with st.expander("LLM system trace (advanced)", expanded=False):
             "judge_bundle": trace.get("judge_bundle", {}),
         }
     )
+
+
+# ============================================================
+# Download Full Report
+# ============================================================
+with st.container(border=True):
+    _rpt_sections = []
+    _rpt_sections.append(f"# Career Pivot Report\n\n**{current} → {target}**\n")
+    _rpt_sections.append(f"## Overview\n- Match Score: {match_score_display:.0f}/100\n- Confidence: {conf['confidence_score']:.0f}/100\n- Skill Gaps: {_n_gaps}\n- Pivot Readiness: {_readiness}/100 ({_r_label})\n")
+
+    if st.session_state.salary_result:
+        _sr2 = st.session_state.salary_result
+        _rpt_sections.append(
+            f"## Salary Impact\n"
+            f"- Current median: ${_sr2['current_median']:,.0f}\n"
+            f"- Target entry: ${_sr2['target_entry_median']:,.0f} ({_sr2['entry_delta_pct']:+.1f}%)\n"
+            f"- Target senior: ${_sr2['target_senior_median']:,.0f} ({_sr2['ceiling_delta_pct']:+.1f}%)\n"
+            f"- Break-even: {_sr2['months_to_breakeven']} months\n\n"
+            + "\n".join(f"- {i}" for i in _sr2.get("insights", []))
+        )
+
+    if not gap_df.empty:
+        _top_t = (gap_df.assign(ov=lambda d: np.minimum(d["current_importance"], d["target_importance"]))
+                  .sort_values("ov", ascending=False).head(5)["skill"].tolist())
+        _top_m = (gap_df[gap_df["gap"] > 0].sort_values(["gap","target_importance"],ascending=False)
+                  .head(5)["skill"].tolist())
+        _rpt_sections.append(f"## Skill Profile\n**Transferable:** {', '.join(_top_t)}\n**To develop:** {', '.join(_top_m)}\n")
+
+    if st.session_state.learning_plan_md:
+        _rpt_sections.append(f"## AI Learning Plan\n{st.session_state.learning_plan_md}\n")
+
+    if st.session_state.pivot_narrative:
+        _pn2 = st.session_state.pivot_narrative
+        _rpt_sections.append(f"## Cover Letter\n{_pn2.get('cover_letter','')}\n")
+        _rpt_sections.append(f"## Elevator Pitch\n{_pn2.get('elevator_pitch','')}\n")
+
+    if st.session_state.debate_result:
+        _v2 = st.session_state.debate_result.get("verdict")
+        if _v2:
+            _rpt_sections.append(
+                f"## Adversarial Debate Verdict\n"
+                f"- Viability: {_v2.pivot_viability_pct}% — {_v2.verdict_label}\n"
+                f"- Decisive factor: {_v2.decisive_factor}\n"
+                f"- Recommended action: {_v2.recommended_next_action}\n"
+            )
+
+    if st.session_state.agent_result:
+        _ag2 = st.session_state.agent_result
+        _rpt_sections.append(f"## AI Agent Summary\n{_ag2.executive_summary}\n")
+
+    _full_report = "\n\n---\n\n".join(_rpt_sections)
+    _full_report += f"\n\n---\n*Generated by Career Pivot Simulator · {current} → {target}*\n"
+
+    dl_col, info_col = st.columns([1, 3])
+    with dl_col:
+        st.download_button(
+            label="📥 Download Pivot Report",
+            data=_full_report,
+            file_name=f"pivot_report_{current[:15].replace(' ','_')}_{target[:15].replace(' ','_')}.md",
+            mime="text/markdown",
+            use_container_width=True,
+        )
+    with info_col:
+        _report_sections_done = sum([
+            bool(st.session_state.salary_result),
+            bool(st.session_state.learning_plan_md),
+            bool(st.session_state.pivot_narrative),
+            bool(st.session_state.debate_result),
+            bool(st.session_state.agent_result),
+        ])
+        st.markdown(
+            f'<div style="font-size:12px;color:rgba(0,0,0,0.55);padding-top:6px">'
+            f'Report includes {_report_sections_done + 2}/7 sections completed. '
+            f'Run more analyses above to enrich the report.</div>',
+            unsafe_allow_html=True,
+        )
 
 
 st.markdown(
