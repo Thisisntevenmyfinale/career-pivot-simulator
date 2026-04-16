@@ -56,6 +56,11 @@ class JobListing:
     hiring_manager_title: str
     network_connections: int    # "X people you know work here"
     seniority: str              # "Mid-Senior level"
+    # Real job fields (populated when sourced from SerpAPI)
+    apply_link: str = ""
+    apply_source: str = ""
+    full_description: str = ""   # full job posting text → feeds into tailored cover letter
+    is_real_job: bool = False    # True = sourced from real job board via SerpAPI
 
 
 @dataclass
@@ -357,15 +362,25 @@ def generate_application_package(
     transfer_str = ", ".join((top_transfer or [])[:5])
     missing_str = ", ".join((top_missing or [])[:3])
 
+    # Use full job description if available (real job from SerpAPI), else preview
+    _job_desc = (job.full_description or job.description_preview or "")[:3000]
+    _real_note = (
+        f"\nNOTE: This is a REAL job posting sourced from {job.apply_source or 'a live job board'}. "
+        "Reference specific details from the job description in the cover letter and InMail.\n"
+        if job.is_real_job else ""
+    )
+
     prompt = f"""You are a senior career coach. Create a complete application package for this candidate.
 
 JOB:
 - Title: {job.title}
 - Company: {job.company}
-- Seniority: {job.seniority}
-- Key requirements: {'; '.join(job.key_requirements)}
-- Hiring manager: {job.hiring_manager_name}, {job.hiring_manager_title}
-- Description: {job.description_preview}
+- Seniority: {job.seniority or "Not specified"}
+- Location: {job.location}
+- Job type: {job.job_type}
+- Full job description:
+{_job_desc}
+{_real_note}
 
 PIVOT:
 - From: {current_role}

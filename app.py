@@ -41,6 +41,7 @@ from src.smart_apply import (
     JobListing, ApplicationPackage, PivotPeer,
 )
 from src.salary_estimator import estimate_salary_impact
+from src.job_search import search_real_jobs, real_job_to_listing, extract_cv_text
 import plotly.graph_objects as go
 import plotly.express as px
 
@@ -778,6 +779,7 @@ DEFAULT_STATE = {
     "debate_result": None,
     # Smart Apply
     "smart_apply_jobs": None,
+    "smart_apply_jobs_source": "ai",   # "ai" or "real"
     "smart_apply_selected_idx": None,
     "smart_apply_package": None,
     # Pivot Peers
@@ -968,53 +970,80 @@ with st.sidebar:
         st.session_state.route_config = {"k_neighbors": int(k_neighbors), "max_steps": int(max_steps)}
 
     st.divider()
-    # ── CV Upload ─────────────────────────────────────────────
+    # ── CV Upload — drag & drop ────────────────────────────────
     st.markdown(
-        '<div style="font-size:11px;font-weight:800;letter-spacing:0.06em;text-transform:uppercase;color:rgba(0,0,0,0.45);margin-bottom:6px">Your Profile (optional)</div>',
+        '<div style="font-size:11px;font-weight:800;letter-spacing:0.06em;'
+        'text-transform:uppercase;color:rgba(0,0,0,0.45);margin-bottom:6px">'
+        'Your Profile (optional)</div>',
         unsafe_allow_html=True,
     )
 
-    cv_text_input = st.text_area(
-        "Paste your CV / résumé",
-        value=st.session_state.cv_text,
-        height=120,
-        placeholder="Paste your CV text here to personalise the analysis...",
+    # File uploader (drag & drop PDF / DOCX)
+    cv_uploaded_file = st.file_uploader(
+        "Upload CV",
+        type=["pdf", "docx", "doc", "txt"],
         label_visibility="collapsed",
+        help="Drag & drop your CV here — PDF, DOCX, or TXT",
     )
+
+    # If a new file was dropped, auto-extract text and trigger analysis
+    if cv_uploaded_file is not None:
+        _file_key = f"{cv_uploaded_file.name}_{cv_uploaded_file.size}"
+        if st.session_state.get("_cv_file_key") != _file_key:
+            st.session_state["_cv_file_key"] = _file_key
+            with st.spinner("Reading your CV…"):
+                _extracted = extract_cv_text(cv_uploaded_file)
+            st.session_state.cv_text = _extracted
+
+    # Optional: also allow manual text paste as fallback
+    with st.expander("Or paste CV text manually", expanded=not bool(cv_uploaded_file)):
+        cv_text_input = st.text_area(
+            "CV text",
+            value=st.session_state.cv_text,
+            height=100,
+            placeholder="Paste your CV text here…",
+            label_visibility="collapsed",
+        )
+    # Sync text area back if user types manually
+    if not cv_uploaded_file:
+        st.session_state.cv_text = cv_text_input if "cv_text_input" in dir() else st.session_state.cv_text
 
     cv_col_a, cv_col_b = st.columns([2, 1])
     with cv_col_a:
-        if st.button("Extract my skills", use_container_width=True):
-            if cv_text_input.strip():
-                with st.spinner("Analysing CV..."):
-                    st.session_state.cv_text = cv_text_input
+        _cv_ready = bool((st.session_state.cv_text or "").strip())
+        if st.button(
+            "✓ Analyse my profile",
+            use_container_width=True,
+            disabled=not _cv_ready,
+            help="Upload or paste your CV first",
+        ):
+            if _cv_ready:
+                with st.spinner("Mapping your skills to O*NET…"):
                     api_key_for_cv = ""
                     try:
                         api_key_for_cv = str(st.secrets.get("OPENAI_API_KEY", "")).strip()
                     except Exception:
                         pass
                     result = parse_cv(
-                        cv_text=cv_text_input,
+                        cv_text=st.session_state.cv_text,
                         skill_columns=list(mat.columns),
                         model="gpt-4o-mini",
                         prefer_online=_has_openai_secret(),
                         api_key=api_key_for_cv or None,
                     )
                     st.session_state.cv_profile = result
-                    # Recompute personal gap df using current target
                     if "skill_vector" in result:
                         st.session_state.cv_gap_df = compute_personal_gap_df(
                             result["skill_vector"], str(selected_target), mat
                         )
                 st.rerun()
-            else:
-                st.warning("Paste your CV text first.")
     with cv_col_b:
         if st.session_state.cv_profile:
             if st.button("Clear", use_container_width=True, key="clear_cv", type="secondary"):
                 st.session_state.cv_text = ""
                 st.session_state.cv_profile = None
                 st.session_state.cv_gap_df = None
+                st.session_state["_cv_file_key"] = None
                 st.rerun()
 
     if st.session_state.cv_profile:
@@ -1243,9 +1272,9 @@ with st.container(border=True):
         .sort_values(["gap", "target_importance"], ascending=False)["skill"].head(4).tolist()
     )
 
-    sa_col1, sa_col2 = st.columns([2, 1], gap="small")
+    sa_col1, sa_col2, sa_col3 = st.columns([5, 5, 2], gap="small")
     with sa_col1:
-        if st.button("🔍 Find matching jobs", use_container_width=True, key="sa_find_jobs"):
+        if st.button("🤖 AI-curated jobs", use_container_width=True, key="sa_find_jobs"):
             with st.spinner("AI is curating job matches for you…"):
                 _sa_key = ""
                 try:
@@ -1264,22 +1293,61 @@ with st.container(border=True):
                     prefer_online=_has_openai_secret(),
                     api_key=_sa_key or None,
                 )
+                st.session_state.smart_apply_jobs_source = "ai"
                 st.session_state.smart_apply_selected_idx = None
                 st.session_state.smart_apply_package = None
             st.rerun()
     with sa_col2:
+        _serp_key = ""
+        try:
+            _serp_key = str(st.secrets.get("SERP_API_KEY", "")).strip()
+        except Exception:
+            pass
+        _real_jobs_btn_label = "🌐 Search live jobs" if _serp_key else "🌐 Live jobs (add SERP_API_KEY)"
+        if st.button(_real_jobs_btn_label, use_container_width=True, key="sa_real_jobs", disabled=not bool(_serp_key)):
+            with st.spinner("Searching live job boards (LinkedIn · Indeed · Glassdoor)…"):
+                _raw_jobs = search_real_jobs(
+                    target_role=str(target),
+                    location="United States",
+                    n_jobs=5,
+                    serp_api_key=_serp_key,
+                )
+                if _raw_jobs and not _raw_jobs[0].get("error"):
+                    st.session_state.smart_apply_jobs = [
+                        real_job_to_listing(r, idx=i, match_score=max(50, match_score_display - 5 + i * 3))
+                        for i, r in enumerate(_raw_jobs)
+                    ]
+                    st.session_state.smart_apply_jobs_source = "real"
+                else:
+                    err = _raw_jobs[0].get("error", "Unknown error") if _raw_jobs else "No results"
+                    st.warning(f"Live job search failed: {err}")
+                st.session_state.smart_apply_selected_idx = None
+                st.session_state.smart_apply_package = None
+            st.rerun()
+    with sa_col3:
         if st.session_state.smart_apply_jobs:
             if st.button("Clear", key="clear_smart_apply", type="secondary", use_container_width=True):
                 st.session_state.smart_apply_jobs = None
+                st.session_state.smart_apply_jobs_source = "ai"
                 st.session_state.smart_apply_selected_idx = None
                 st.session_state.smart_apply_package = None
 
     # ── Job Cards ──────────────────────────────────────────────
     sa_jobs: Optional[List[JobListing]] = st.session_state.smart_apply_jobs
+    _sa_jobs_source = st.session_state.get("smart_apply_jobs_source", "ai")
     if sa_jobs:
+        _src_badge = (
+            '<span style="background:#057642;color:#fff;font-size:10px;font-weight:800;'
+            'letter-spacing:0.04em;border-radius:10px;padding:2px 9px;margin-left:8px">'
+            '🟢 LIVE · Google Jobs</span>'
+        ) if _sa_jobs_source == "real" else (
+            '<span style="background:#7B5EA7;color:#fff;font-size:10px;font-weight:800;'
+            'letter-spacing:0.04em;border-radius:10px;padding:2px 9px;margin-left:8px">'
+            '🤖 AI-curated</span>'
+        )
         st.markdown(
-            f'<div style="font-size:13px;font-weight:700;color:rgba(0,0,0,0.55);margin:16px 0 10px 0">'
-            f'{len(sa_jobs)} jobs matched for you · {target}</div>',
+            f'<div style="font-size:13px;font-weight:700;color:rgba(0,0,0,0.55);margin:16px 0 10px 0;display:flex;align-items:center">'
+            f'{len(sa_jobs)} jobs matched for you · {target}{_src_badge}</div>',
             unsafe_allow_html=True,
         )
 
@@ -1295,15 +1363,24 @@ with st.container(border=True):
             _easy = '<span class="li-job-tag li-job-tag-easy">⚡ Easy Apply</span>' if job.is_easy_apply else ""
             _net = (f'<span class="li-network-note">👥 {job.network_connections} connection{"s" if job.network_connections > 1 else ""} work here</span>'
                     if job.network_connections > 0 else "")
+            _real_badge = (
+                f'<span style="background:#057642;color:#fff;font-size:9px;font-weight:800;'
+                f'border-radius:8px;padding:1px 7px;margin-left:6px">🟢 LIVE</span>'
+            ) if getattr(job, "is_real_job", False) else ""
+            _via_line = (
+                f'<div class="li-job-detail" style="color:#0A66C2;font-weight:600">'
+                f'via {getattr(job, "apply_source", "")}</div>'
+            ) if getattr(job, "is_real_job", False) and getattr(job, "apply_source", "") else ""
 
             st.markdown(
                 f'<div class="li-job-card">'
                 f'  <div class="li-job-header">'
                 f'    <div class="li-job-logo">{job.company_emoji}</div>'
                 f'    <div class="li-job-meta">'
-                f'      <div class="li-job-title">{job.title}</div>'
+                f'      <div class="li-job-title">{job.title}{_real_badge}</div>'
                 f'      <div class="li-job-company">{job.company}</div>'
                 f'      <div class="li-job-detail">{job.location} · {job.job_type} · {job.salary_range}</div>'
+                f'      {_via_line}'
                 f'      <div class="li-job-detail">{job.seniority}</div>'
                 f'    </div>'
                 f'  </div>'
@@ -1329,8 +1406,13 @@ with st.container(border=True):
                 unsafe_allow_html=True,
             )
 
-            # Apply button per job
-            apply_col_a, apply_col_b = st.columns([2, 3])
+            # Apply button per job — real jobs get "Apply Now" external link + package generator
+            _is_real = getattr(job, "is_real_job", False)
+            _apply_link = getattr(job, "apply_link", "")
+            if _is_real and _apply_link:
+                apply_col_a, apply_col_b = st.columns([3, 4])
+            else:
+                apply_col_a, apply_col_b = st.columns([2, 3])
             with apply_col_a:
                 if st.button(
                     f"{'⚡ Easy Apply' if job.is_easy_apply else '📄 Generate Application Package'}",
@@ -1351,6 +1433,13 @@ with st.container(border=True):
                             api_key=_sa_api_key or None,
                         )
                     st.rerun()
+            if _is_real and _apply_link:
+                with apply_col_b:
+                    st.link_button(
+                        "🔗 Apply Now",
+                        url=_apply_link,
+                        use_container_width=True,
+                    )
 
             # Show package if this is the selected job
             pkg: Optional[ApplicationPackage] = st.session_state.smart_apply_package
