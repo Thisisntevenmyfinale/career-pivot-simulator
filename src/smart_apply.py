@@ -82,6 +82,7 @@ class ApplicationPackage:
     interview_prep: List[Dict]  # [{question, model_answer, why_asked}]
     positioning_statement: str  # 1-sentence pitch for this specific job
     source: str = "online"
+    quality_eval: Optional[Dict] = None  # populated by evaluator.py second-pass
 
 
 @dataclass

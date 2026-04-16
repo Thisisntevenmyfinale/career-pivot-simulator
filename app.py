@@ -42,6 +42,7 @@ from src.smart_apply import (
 )
 from src.salary_estimator import estimate_salary_impact
 from src.job_search import search_real_jobs, real_job_to_listing, extract_cv_text
+from src.evaluator import evaluate_application_package, evaluate_learning_plan
 import plotly.graph_objects as go
 import plotly.express as px
 
@@ -815,6 +816,9 @@ DEFAULT_STATE = {
     "pivot_peers": None,
     # Salary Estimator
     "salary_result": None,
+    # Quality Evaluations (second-pass LLM evaluation layer)
+    "pkg_quality_eval": None,      # ApplicationPackage quality score
+    "plan_quality_eval": None,     # Learning plan quality score
 }
 
 for key, value in DEFAULT_STATE.items():
@@ -1282,6 +1286,114 @@ with st.container(border=True):
     else:
         st.warning("Hard pivot — use route analysis, skill investment, and the review board before deciding.")
 
+    # ── Pivot Intelligence Brief ─────────────────────────────
+    # Rule-based synthesis of the current session state — always visible,
+    # always current, no API call needed.
+    _done_list = []
+    _next_list = []
+    if st.session_state.salary_result:      _done_list.append("salary trajectory")
+    else:                                   _next_list.append("Salary Estimator")
+    if st.session_state.learning_plan_md:   _done_list.append("learning roadmap")
+    else:                                   _next_list.append("AI Learning Plan")
+    if st.session_state.pivot_narrative:    _done_list.append("pivot narrative")
+    else:                                   _next_list.append("Pivot Narrative")
+    if st.session_state.job_analysis:       _done_list.append("job posting analysis")
+    if st.session_state.debate_result:      _done_list.append("adversarial debate")
+    if st.session_state.smart_apply_package: _done_list.append("application package")
+    if st.session_state.agent_result:       _done_list.append("agent deep analysis")
+
+    _situation_text = (
+        f"<b>{'Hard' if match_score_display < 45 else ('Promising' if match_score_display < 70 else 'Strong')} pivot</b> "
+        f"({match_score_display:.0f}/100 match · {_n_gaps} skill gaps · ~{_weeks}w to readiness)."
+    )
+    _done_text = (
+        f"Completed: {', '.join(_done_list)}." if _done_list
+        else "No analyses run yet — start with a tool below."
+    )
+    _next_text = (
+        f"<b>Recommended next:</b> {_next_list[0]}."
+        if _next_list else "<b>All core analyses complete.</b> Download your report."
+    )
+    _brief_readiness_color = "#117A37" if _readiness >= 65 else ("#A05A00" if _readiness >= 40 else "#B71C1C")
+
+    st.markdown(
+        f'<div style="background:#F8FAFF;border:1px solid #C7D8F0;border-radius:10px;'
+        f'padding:14px 18px;margin:16px 0 4px 0;">'
+        f'<div style="font-size:10px;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;'
+        f'color:#0A66C2;margin-bottom:8px">📋 Pivot Intelligence Brief</div>'
+        f'<div style="font-size:13px;color:rgba(0,0,0,0.75);line-height:1.7">'
+        f'<div>{_situation_text}</div>'
+        f'<div style="color:rgba(0,0,0,0.5);font-size:12px;margin-top:3px">{_done_text}</div>'
+        f'<div style="margin-top:5px;color:rgba(0,0,0,0.75)">{_next_text}</div>'
+        f'</div>'
+        f'<div style="margin-top:10px;display:flex;align-items:center;gap:8px">'
+        f'<div style="height:4px;flex:1;background:rgba(0,0,0,0.07);border-radius:2px;overflow:hidden">'
+        f'<div style="width:{_readiness}%;height:4px;background:{_brief_readiness_color};border-radius:2px"></div>'
+        f'</div>'
+        f'<span style="font-size:11px;font-weight:800;color:{_brief_readiness_color};white-space:nowrap">'
+        f'Readiness {_readiness}/100</span>'
+        f'</div>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+
+
+# ── Pivot Journey Board ──────────────────────────────────────────────────────
+# Progress funnel always visible — shows exactly where the user is in the
+# Assess → Plan → Prepare → Execute pipeline.
+_phase_assess_done  = True  # always done once roles are selected
+_phase_plan_done    = bool(st.session_state.salary_result or st.session_state.learning_plan_md)
+_phase_prepare_done = bool(
+    st.session_state.pivot_narrative
+    or st.session_state.job_analysis
+    or st.session_state.smart_apply_package
+)
+_phase_execute_done = bool(st.session_state.smart_apply_jobs)
+
+def _phase_node(label: str, sublabel: str, done: bool, active: bool = False) -> str:
+    if done:
+        bg, border, text, icon = "#E7F6EC", "#117A37", "#117A37", "✓"
+    elif active:
+        bg, border, text, icon = "#EEF3FB", "#0A66C2", "#0A66C2", "◉"
+    else:
+        bg, border, text, icon = "#F3F6F9", "rgba(0,0,0,0.15)", "rgba(0,0,0,0.35)", "○"
+    return (
+        f'<div style="display:flex;flex-direction:column;align-items:center;flex:1">'
+        f'  <div style="width:36px;height:36px;border-radius:50%;background:{bg};'
+        f'  border:2px solid {border};display:flex;align-items:center;justify-content:center;'
+        f'  font-size:14px;font-weight:800;color:{text}">{icon}</div>'
+        f'  <div style="font-size:12px;font-weight:700;color:{text};margin-top:5px">{label}</div>'
+        f'  <div style="font-size:10px;color:rgba(0,0,0,0.4);text-align:center;max-width:80px">{sublabel}</div>'
+        f'</div>'
+    )
+
+def _phase_arrow(done: bool) -> str:
+    color = "#117A37" if done else "rgba(0,0,0,0.15)"
+    return f'<div style="flex:0 0 28px;height:2px;background:{color};margin-top:17px"></div>'
+
+_active_phase = (
+    "prepare" if _phase_plan_done else
+    "plan"    if _phase_assess_done else
+    "assess"
+)
+
+st.markdown(
+    f'<div style="background:#fff;border:1px solid rgba(0,0,0,0.08);border-radius:12px;'
+    f'padding:16px 20px;margin:0 0 4px 0">'
+    f'<div style="font-size:10px;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;'
+    f'color:rgba(0,0,0,0.35);margin-bottom:12px">Your pivot journey</div>'
+    f'<div style="display:flex;align-items:flex-start;gap:0">'
+    + _phase_node("Assess",  f"{match_score_display:.0f}/100", _phase_assess_done)
+    + _phase_arrow(_phase_assess_done)
+    + _phase_node("Plan",    "salary + roadmap", _phase_plan_done, _active_phase == "plan")
+    + _phase_arrow(_phase_plan_done)
+    + _phase_node("Prepare", "narrative + CV", _phase_prepare_done, _active_phase == "prepare")
+    + _phase_arrow(_phase_prepare_done)
+    + _phase_node("Execute", "apply + track", _phase_execute_done, _phase_prepare_done and not _phase_execute_done)
+    + f'</div></div>',
+    unsafe_allow_html=True,
+)
+
 
 # ============================================================
 # Smart Apply — AI Job Matching + Application Package Generator
@@ -1475,7 +1587,7 @@ with st.container(border=True):
                 ):
                     with st.spinner(f"Generating your personalised package for {job.company}…"):
                         st.session_state.smart_apply_selected_idx = i
-                        st.session_state.smart_apply_package = generate_application_package(
+                        _pkg = generate_application_package(
                             job=job,
                             current_role=str(current),
                             target_role=str(target),
@@ -1486,6 +1598,25 @@ with st.container(border=True):
                             prefer_online=_has_openai_secret(),
                             api_key=_sa_api_key or None,
                         )
+                        st.session_state.smart_apply_package = _pkg
+                        st.session_state.pkg_quality_eval = None  # reset
+                    with st.spinner("Evaluating application quality…"):
+                        _pkg_eval = evaluate_application_package(
+                            cover_letter=_pkg.cover_letter,
+                            linkedin_inmail=_pkg.linkedin_inmail,
+                            cv_rewrites=[
+                                {"skill_highlighted": r.skill_highlighted, "rewritten": r.rewritten}
+                                for r in _pkg.cv_bullet_rewrites
+                            ],
+                            job_title=job.title,
+                            company=job.company,
+                            job_description=getattr(job, "full_description", ""),
+                            cv_text=st.session_state.cv_text or "",
+                            model="gpt-4o-mini",
+                            prefer_online=_has_openai_secret(),
+                            api_key=_sa_api_key or None,
+                        )
+                        st.session_state.pkg_quality_eval = _pkg_eval
                     st.rerun()
             if _is_real and _apply_link:
                 with apply_col_b:
@@ -1497,13 +1628,47 @@ with st.container(border=True):
 
             # Show package if this is the selected job
             pkg: Optional[ApplicationPackage] = st.session_state.smart_apply_package
+            _pkg_eval = st.session_state.pkg_quality_eval
             if pkg and st.session_state.smart_apply_selected_idx == i:
+                # ── Quality score header ─────────────────────────────────
+                _eval_html = ""
+                if _pkg_eval:
+                    _qs = _pkg_eval.get("overall_score", 0)
+                    _qc = "#117A37" if _qs >= 75 else ("#A05A00" if _qs >= 55 else "#B71C1C")
+                    _ql = "Strong" if _qs >= 75 else ("Acceptable" if _qs >= 55 else "Needs work")
+                    _dims = _pkg_eval.get("dimension_scores", {})
+                    _verdict = _pkg_eval.get("one_line_verdict", "")
+                    _regen_note = (
+                        '<span style="background:#FFF3CD;color:#856404;font-size:10px;font-weight:700;'
+                        'border-radius:8px;padding:2px 8px;margin-left:6px">⚠ Regenerate recommended</span>'
+                        if _pkg_eval.get("regenerate_recommended") else ""
+                    )
+                    _dim_pills = "".join([
+                        f'<span style="background:{("#E7F6EC" if v>=75 else ("#FFF8E7" if v>=55 else "#FEECEC"))};'
+                        f'color:{("#117A37" if v>=75 else ("#A05A00" if v>=55 else "#B71C1C"))};'
+                        f'font-size:10px;font-weight:700;border-radius:8px;padding:2px 7px">'
+                        f'{k.replace("_"," ").title()} {v}</span>'
+                        for k, v in _dims.items()
+                    ])
+                    _eval_html = (
+                        f'<div style="margin-top:10px;padding-top:10px;border-top:1px solid rgba(10,102,194,0.15)">'
+                        f'<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'
+                        f'<span style="font-size:10px;font-weight:800;letter-spacing:0.06em;text-transform:uppercase;color:rgba(0,0,0,0.4)">AI Quality Evaluation</span>'
+                        f'<span style="font-size:18px;font-weight:900;color:{_qc}">{_qs}</span>'
+                        f'<span style="font-size:11px;font-weight:700;color:{_qc}">/100 · {_ql}</span>'
+                        f'{_regen_note}'
+                        f'</div>'
+                        f'<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px">{_dim_pills}</div>'
+                        f'<div style="font-size:12px;color:rgba(0,0,0,0.6);font-style:italic">{_verdict}</div>'
+                        f'</div>'
+                    )
                 st.markdown(
                     f'<div style="background:#EEF3FB;border-radius:10px;padding:16px 20px;margin:8px 0 16px 0;">'
                     f'<div style="font-size:10px;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;'
                     f'color:#0A66C2;margin-bottom:4px">Application Package · {pkg.job_title} @ {pkg.company}</div>'
                     f'<div style="font-size:13px;font-weight:600;color:rgba(0,0,0,0.75);font-style:italic;line-height:1.5">'
-                    f'"{pkg.positioning_statement}"</div></div>',
+                    f'"{pkg.positioning_statement}"</div>'
+                    f'{_eval_html}</div>',
                     unsafe_allow_html=True,
                 )
 
@@ -1992,7 +2157,12 @@ with st.container(border=True):
 
     with lp1:
         if st.button("Generate learning plan", use_container_width=True):
-            with st.spinner("Generating..."):
+            _lp_key = ""
+            try:
+                _lp_key = str(st.secrets.get("OPENAI_API_KEY", "")).strip()
+            except Exception:
+                pass
+            with st.spinner("Generating roadmap…"):
                 md = generate_learning_plan_markdown(
                     current_role=str(current),
                     target_role=str(target),
@@ -2004,14 +2174,60 @@ with st.container(border=True):
                 )
                 st.session_state.learning_plan_md = md
                 st.session_state.learning_plan_source = _learning_plan_source_label(md)
+                st.session_state.plan_quality_eval = None
+            with st.spinner("Evaluating plan quality…"):
+                _gap_names = (
+                    gap_df[gap_df["gap"] > 0].sort_values("gap", ascending=False)["skill"]
+                    .head(8).tolist()
+                )
+                st.session_state.plan_quality_eval = evaluate_learning_plan(
+                    plan_markdown=md,
+                    skill_gaps=_gap_names,
+                    target_role=str(target),
+                    model="gpt-4o-mini",
+                    api_key=_lp_key or None,
+                    prefer_online=_has_openai_secret(),
+                )
 
     with lp2:
         if st.button("Clear", use_container_width=True, key="clear_learning_plan", type="secondary"):
             st.session_state.learning_plan_md = ""
             st.session_state.learning_plan_source = "—"
+            st.session_state.plan_quality_eval = None
 
     plan_md = (st.session_state.learning_plan_md or "").strip()
     if plan_md:
+        # ── Plan quality badge ────────────────────────────────
+        _plan_eval = st.session_state.plan_quality_eval
+        if _plan_eval:
+            _pqs = _plan_eval.get("overall_score", 0)
+            _pqc = "#117A37" if _pqs >= 75 else ("#A05A00" if _pqs >= 55 else "#B71C1C")
+            _pdims = _plan_eval.get("dimension_scores", {})
+            _pverdict = _plan_eval.get("one_line_verdict", "")
+            _pregen = (
+                '<span style="background:#FFF3CD;color:#856404;font-size:10px;font-weight:700;'
+                'border-radius:8px;padding:2px 8px;margin-left:6px">⚠ Regenerate recommended</span>'
+                if _plan_eval.get("regenerate_recommended") else ""
+            )
+            _pdim_pills = "".join([
+                f'<span style="background:{("#E7F6EC" if v>=75 else ("#FFF8E7" if v>=55 else "#FEECEC"))};'
+                f'color:{("#117A37" if v>=75 else ("#A05A00" if v>=55 else "#B71C1C"))};'
+                f'font-size:10px;font-weight:700;border-radius:8px;padding:2px 7px">'
+                f'{k.replace("_"," ").title()} {v}</span>'
+                for k, v in _pdims.items()
+            ])
+            st.markdown(
+                f'<div style="background:#F8FAFF;border:1px solid #C7D8F0;border-radius:8px;'
+                f'padding:10px 14px;margin:10px 0 2px 0;display:flex;align-items:center;gap:10px;flex-wrap:wrap">'
+                f'<span style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:0.06em;color:rgba(0,0,0,0.4)">AI Quality Eval</span>'
+                f'<span style="font-size:20px;font-weight:900;color:{_pqc}">{_pqs}</span>'
+                f'<span style="font-size:11px;font-weight:700;color:{_pqc}">/100</span>'
+                f'{_pregen}'
+                f'<div style="width:100%;display:flex;flex-wrap:wrap;gap:5px;margin-top:4px">{_pdim_pills}</div>'
+                f'<div style="width:100%;font-size:12px;color:rgba(0,0,0,0.55);font-style:italic;margin-top:2px">{_pverdict}</div>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
         st.divider()
         st.caption(f"Source: {st.session_state.learning_plan_source}")
         st.markdown(plan_md)
