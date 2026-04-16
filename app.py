@@ -909,19 +909,36 @@ def recommend_neighbors(use_idf: bool, current_occ: str, top_k: int = 10) -> pd.
 # Sidebar
 # ============================================================
 with st.sidebar:
-    st.markdown("### Controls")
+    # LinkedIn profile card header
+    st.markdown(
+        '<div style="background:linear-gradient(135deg,#0A66C2,#004182);'
+        'border-radius:8px 8px 0 0;height:52px;margin:-8px -8px 0 -8px;"></div>'
+        '<div style="display:flex;flex-direction:column;align-items:center;'
+        'margin-top:-28px;margin-bottom:12px;">'
+        '<div style="width:56px;height:56px;border-radius:50%;background:#fff;'
+        'border:3px solid #fff;display:flex;align-items:center;justify-content:center;'
+        'font-size:22px;font-weight:900;color:#0A66C2;box-shadow:0 2px 8px rgba(0,0,0,0.15)">JP</div>'
+        '<div style="font-size:13px;font-weight:700;color:rgba(0,0,0,0.88);margin-top:6px">Career Pivot Planner</div>'
+        '<div style="font-size:11px;color:rgba(0,0,0,0.5);margin-top:1px">Career Intelligence · Jobs</div>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
 
     mode = st.radio("Mode", options=["Guided", "Research"], index=0, horizontal=True)
     guided = mode == "Guided"
 
     st.divider()
 
-    st.markdown("**Your pivot**")
+    st.markdown(
+        '<div style="font-size:11px;font-weight:800;letter-spacing:0.06em;text-transform:uppercase;'
+        'color:rgba(0,0,0,0.45);margin-bottom:6px">Your Pivot</div>',
+        unsafe_allow_html=True,
+    )
     current = st.selectbox("Current occupation", options=occupations, index=0, label_visibility="collapsed")
-    st.caption("Current")
+    st.caption("↑ Current occupation")
     default_target_idx = 1 if len(occupations) > 1 else 0
     selected_target = st.selectbox("Target occupation", options=occupations, index=default_target_idx, label_visibility="collapsed")
-    st.caption("Target")
+    st.caption("↑ Target occupation")
 
     target = st.session_state.target_override or selected_target
 
@@ -1125,442 +1142,13 @@ with st.container(border=True):
 
 
 # ============================================================
-# Main layout — tabbed
-# ============================================================
-with st.container(border=True):
-    _tab_labels = ["Career Neighborhood", "Route & Simulation", "Skill Gaps"]
-    if _personal_mode:
-        _tab_labels.append("My Profile")
-    _tabs = st.tabs(_tab_labels)
-    main_tab_nbhd = _tabs[0]
-    main_tab_route = _tabs[1]
-    main_tab_explain = _tabs[2]
-    main_tab_profile = _tabs[3] if _personal_mode else None
-
-    # ── Tab 1: Career Neighborhood ─────────────────────────────
-    with main_tab_nbhd:
-        st.caption("Closest roles to your current occupation — useful stepping-stone candidates.")
-
-        show_df = neighbors_df.copy()
-        show_df["match_raw"] = show_df["match_raw"].round(2)
-        show_df["match_percentile"] = show_df["match_percentile"].round(2)
-
-        # Summary chips above table
-        if not show_df.empty:
-            top_match = show_df.iloc[0]
-            st.markdown(
-                f'<span class="status-pill status-ok">Top match: {str(top_match["occupation"])[:35]} ({float(top_match["match_percentile"]):.0f}th pct)</span>'
-                f'<span class="status-pill status-warn">{len(show_df)} neighbors found</span>',
-                unsafe_allow_html=True,
-            )
-            st.markdown("<div style='margin-bottom:8px'></div>", unsafe_allow_html=True)
-
-        _render_table_card(
-            show_df,
-            columns=["occupation", "match_percentile", "match_raw"],
-            headers=["Occupation", "Match (pct)", "Match (raw)"],
-            numeric_cols=["match_percentile", "match_raw"],
-        )
-
-        st.markdown("**Set a stepping-stone as target**")
-        if show_df.empty:
-            st.info("No recommendations available.")
-        else:
-            label_to_occ: Dict[str, str] = {}
-            options = []
-            for _, r in show_df.head(8).iterrows():
-                occ = str(r["occupation"])
-                label = f"{occ} — {float(r['match_percentile']):.0f} pct"
-                options.append(label)
-                label_to_occ[label] = occ
-
-            pick = st.selectbox("Recommended targets", options=options, index=0, label_visibility="collapsed")
-            if st.button("Use as target →", use_container_width=True):
-                st.session_state.target_override = label_to_occ[pick]
-                st.session_state.has_run = True
-                st.session_state.route_result = None
-                st.session_state.review_board_strategies = None
-                st.session_state.review_board_evaluations = None
-                st.session_state.review_board_consensus = None
-                st.session_state.review_board_judge_memo = None
-                st.rerun()
-
-    # ── Tab 2: Route & Simulation ──────────────────────────────
-    with main_tab_route:
-        route_col, sim_col = st.columns([1, 1], gap="large")
-
-        with route_col:
-            st.markdown("**Stepping-stone route**")
-            if guided:
-                st.caption("Find intermediate roles that make the pivot more realistic.")
-                col_a, col_b = st.columns([1, 1])
-                with col_a:
-                    if st.button("Find route", use_container_width=True):
-                        with st.spinner("Finding a route..."):
-                            st.session_state.route_result = find_pivot_path(
-                                mat,
-                                start_occ=str(current),
-                                target_occ=str(target),
-                                k_neighbors=12,
-                                max_steps=6,
-                            )
-                with col_b:
-                    if st.button("Reset", use_container_width=True, key="reset_route_guided", type="secondary"):
-                        st.session_state.route_result = None
-            else:
-                st.caption("Research mode: custom graph settings from the sidebar.")
-                col_a, col_b = st.columns([1, 1])
-                with col_a:
-                    if st.button("Find route", use_container_width=True):
-                        cfg = st.session_state.route_config
-                        with st.spinner("Finding a route..."):
-                            st.session_state.route_result = find_pivot_path(
-                                mat,
-                                start_occ=str(current),
-                                target_occ=str(target),
-                                k_neighbors=int(cfg["k_neighbors"]),
-                                max_steps=int(cfg["max_steps"]),
-                            )
-                with col_b:
-                    if st.button("Reset", use_container_width=True, key="reset_route_research", type="secondary"):
-                        st.session_state.route_result = None
-
-            route = st.session_state.route_result
-            if not route:
-                st.info("Route not computed yet.")
-            elif not route.get("reachable"):
-                st.warning("No route found with the current assumptions.")
-            else:
-                path = route.get("path", [])
-                if path:
-                    # Visual path display
-                    path_html = " <span style='color:#0A66C2;font-weight:800'>→</span> ".join(
-                        [f"<span style='font-weight:600'>{p}</span>" for p in path]
-                    )
-                    st.markdown(
-                        f'<div style="background:#EEF3FB;border-radius:8px;padding:12px 16px;font-size:13px;margin-top:8px">{path_html}</div>',
-                        unsafe_allow_html=True,
-                    )
-                    st.caption(f"{len(path)} steps · {len(path)-1} hops")
-                else:
-                    st.success("Route computed.")
-
-        with sim_col:
-            st.markdown("**Skill investment simulator**")
-            st.caption("Counterfactual: how much does the match improve if you close selected gaps?")
-
-            sim_candidates_df = suggest_best_investment_skills(gap_df, top_k=8)
-
-            if sim_candidates_df.empty:
-                st.info("No positive skill gaps available for simulation.")
-            else:
-                skill_options = sim_candidates_df["skill"].astype(str).tolist()
-                default_pick = skill_options[: min(3, len(skill_options))]
-
-                selected_sim_skills = st.multiselect(
-                    "Skills to improve",
-                    options=skill_options,
-                    default=default_pick,
-                    label_visibility="collapsed",
-                )
-
-                uplift_ratio = st.slider(
-                    "Gap closure %",
-                    min_value=0.10,
-                    max_value=1.00,
-                    value=0.50,
-                    step=0.05,
-                    format="%.0f%%",
-                    help="How much of each skill gap you close",
-                )
-
-                q1, q2 = st.columns([2, 1])
-                with q1:
-                    if st.button("Run simulation", use_container_width=True):
-                        st.session_state.sim_result = simulate_skill_investment(
-                            mat,
-                            current_role=str(current),
-                            target_role=str(target),
-                            selected_skills=selected_sim_skills,
-                            uplift_ratio=float(uplift_ratio),
-                        )
-                with q2:
-                    if st.button("Clear", use_container_width=True, key="clear_sim", type="secondary"):
-                        st.session_state.sim_result = None
-
-            sim_result = st.session_state.sim_result
-            if sim_result:
-                st.divider()
-                before = float(sim_result.get("similarity_before", 0))
-                after = float(sim_result.get("similarity_after", 0))
-                delta = after - before
-                s1, s2, s3 = st.columns(3)
-                s1.metric("Before", f"{before:.1f}")
-                s2.metric("After", f"{after:.1f}", delta=f"+{delta:.1f}" if delta > 0 else f"{delta:.1f}")
-                s3.metric("Skills invested", len(sim_result.get("invested_skills", [])))
-
-    # ── Tab 3: Skill Gaps ──────────────────────────────────────
-    with main_tab_explain:
-        st.caption("High-signal view: what transfers versus what blocks this pivot.")
-
-        n_missing = int((gap_df["gap"] > 0).sum()) if not gap_df.empty else 0
-        n_transfer = len(gap_df) - n_missing if not gap_df.empty else 0
-        st.markdown(
-            f'<span class="status-pill status-ok">{n_transfer} transferable skills</span>'
-            f'<span class="status-pill status-challenge">{n_missing} skill gaps</span>',
-            unsafe_allow_html=True,
-        )
-        st.markdown("<div style='margin-bottom:8px'></div>", unsafe_allow_html=True)
-
-        c1, c2 = st.columns(2, gap="large")
-
-        with c1:
-            st.markdown("**Top transferable skills**")
-            top_transfer = gap_df.copy()
-            top_transfer["overlap"] = np.minimum(top_transfer["current_importance"], top_transfer["target_importance"])
-            top_transfer = top_transfer.sort_values("overlap", ascending=False).head(10)
-
-            _render_table_card(
-                top_transfer,
-                columns=["skill", "current_importance", "target_importance", "overlap"],
-                headers=["Skill", "Current", "Target", "Overlap"],
-                numeric_cols=["current_importance", "target_importance", "overlap"],
-            )
-
-        with c2:
-            st.markdown("**Top missing skills**")
-            top_missing = gap_df[gap_df["gap"] > 0].sort_values(["gap", "target_importance"], ascending=False).head(10)
-            if top_missing.empty:
-                st.success("No missing skills detected.")
-            else:
-                _render_table_card(
-                    top_missing,
-                    columns=["skill", "current_importance", "target_importance", "gap"],
-                    headers=["Skill", "Current", "Target", "Gap"],
-                    numeric_cols=["current_importance", "target_importance", "gap"],
-                )
-
-    # ── Tab 4: My Profile (only when CV loaded) ────────────────
-    if _personal_mode and main_tab_profile is not None and _cv_profile:
-        with main_tab_profile:
-            p = _cv_profile
-            st.caption("Your extracted skill profile, mapped to the O*NET skill space.")
-
-            # Header metrics
-            pm1, pm2, pm3, pm4 = st.columns(4)
-            pm1.metric("Role (from CV)", str(p.get("extracted_role", "—") or "—")[:25])
-            pm2.metric("Experience", f"{p.get('years_experience', 0):.0f} years")
-            pm3.metric("Education", str(p.get("education_level", "—") or "—")[:20])
-            pm4.metric("Skills mapped", f"{p.get('skills_mapped_count', 0)} / {len(mat.columns)}")
-
-            conf_val = float(p.get("confidence", 0))
-            conf_cls = "status-ok" if conf_val >= 0.7 else ("status-warn" if conf_val >= 0.4 else "status-challenge")
-            st.markdown(
-                f'<span class="status-pill {conf_cls}">Extraction confidence: {conf_val:.0%}</span>'
-                f'<span class="status-pill status-ok">Source: {p.get("source","?")}</span>',
-                unsafe_allow_html=True,
-            )
-            st.markdown("<div style='margin-bottom:12px'></div>", unsafe_allow_html=True)
-
-            # Top skills
-            top_skills = p.get("top_skills", [])
-            if top_skills:
-                st.markdown("**Your strongest skills (O*NET mapped)**")
-                vec = p.get("skill_vector")
-                if vec is not None:
-                    top_df = pd.DataFrame({
-                        "skill": top_skills,
-                        "your_level": [round(float(vec[s]), 2) if s in vec.index else 0.0 for s in top_skills],
-                        "target_level": [
-                            round(float(mat.loc[str(target), s]), 2)
-                            if str(target) in mat.index and s in mat.columns else 0.0
-                            for s in top_skills
-                        ],
-                    })
-                    top_df["gap"] = (top_df["target_level"] - top_df["your_level"]).clip(lower=0).round(2)
-                    _render_table_card(
-                        top_df,
-                        columns=["skill", "your_level", "target_level", "gap"],
-                        headers=["Skill", "Your Level", "Target Level", "Gap"],
-                        numeric_cols=["your_level", "target_level", "gap"],
-                    )
-
-            # Raw extracted skills
-            raw = p.get("extracted_skills_raw", [])
-            if raw:
-                with st.expander("Raw extracted skills from CV", expanded=False):
-                    raw_df = pd.DataFrame(raw)
-                    if not raw_df.empty and "skill" in raw_df.columns:
-                        _render_table_card(
-                            raw_df,
-                            columns=[c for c in ["skill", "level", "evidence"] if c in raw_df.columns],
-                            headers=[c.title() for c in ["skill", "level", "evidence"] if c in raw_df.columns],
-                        )
-
-
-
-
-# ============================================================
-# LLM Learning Plan
-# ============================================================
-with st.container(border=True):
-    st.subheader("🧠 AI Learning Plan")
-    st.caption("LLM-generated upskilling roadmap based on your skill gaps.")
-
-    lp1, lp2 = st.columns([2, 1], gap="small")
-
-    with lp1:
-        if st.button("Generate learning plan", use_container_width=True):
-            with st.spinner("Generating..."):
-                md = generate_learning_plan_markdown(
-                    current_role=str(current),
-                    target_role=str(target),
-                    gap_df=gap_df,
-                    language="en",
-                    model="gpt-4o-mini",
-                    max_missing=6,
-                    prefer_online=True,
-                )
-                st.session_state.learning_plan_md = md
-                st.session_state.learning_plan_source = _learning_plan_source_label(md)
-
-    with lp2:
-        if st.button("Clear", use_container_width=True, key="clear_learning_plan", type="secondary"):
-            st.session_state.learning_plan_md = ""
-            st.session_state.learning_plan_source = "—"
-
-    plan_md = (st.session_state.learning_plan_md or "").strip()
-    if plan_md:
-        st.divider()
-        st.caption(f"Source: {st.session_state.learning_plan_source}")
-        st.markdown(plan_md)
-
-# ============================================================
-# Pivot Narrative Generator
-# ============================================================
-with st.container(border=True):
-    st.subheader("✍️ Pivot Narrative Generator")
-    _pn_personal = bool(st.session_state.cv_profile and st.session_state.cv_profile.get("extracted_role"))
-    st.caption(
-        ("Personalised to your CV — cover letter, elevator pitch, LinkedIn About, and interview talking points." if _pn_personal
-         else "Generate application materials for this pivot. Upload your CV in the sidebar to personalise the output.")
-    )
-    if _pn_personal:
-        st.markdown(
-            '<span class="status-pill status-ok">✓ Personal mode — output tailored to your CV</span>',
-            unsafe_allow_html=True,
-        )
-        st.markdown("<div style='margin-bottom:6px'></div>", unsafe_allow_html=True)
-
-    pn1, pn2 = st.columns([2, 1], gap="small")
-    with pn1:
-        if st.button("Generate pivot narrative", use_container_width=True):
-            with st.spinner("Generating your personalised pivot materials..."):
-                _top_transfer_pn = (
-                    gap_df.assign(overlap=lambda d: np.minimum(d["current_importance"], d["target_importance"]))
-                    .sort_values("overlap", ascending=False)["skill"].head(5).tolist()
-                )
-                _top_missing_pn = (
-                    gap_df[gap_df["gap"] > 0]
-                    .sort_values(["gap", "target_importance"], ascending=False)["skill"].head(4).tolist()
-                )
-                _agent_summary = None
-                if st.session_state.agent_result:
-                    _agent_summary = st.session_state.agent_result.executive_summary
-                _api_key_pn = ""
-                try:
-                    _api_key_pn = str(st.secrets.get("OPENAI_API_KEY", "")).strip()
-                except Exception:
-                    pass
-                narrative = generate_pivot_narrative(
-                    current_role=str(current),
-                    target_role=str(target),
-                    recommended_strategy=(
-                        st.session_state.agent_result.recommended_strategy
-                        if st.session_state.agent_result else
-                        (st.session_state.review_board_consensus.winner_strategy
-                         if st.session_state.review_board_consensus else "HYBRID")
-                    ),
-                    top_transfer=_top_transfer_pn,
-                    top_missing=_top_missing_pn,
-                    match_score=match_score_display,
-                    verdict=(
-                        st.session_state.agent_result.verdict
-                        if st.session_state.agent_result else "Feasible with Conditions"
-                    ),
-                    cv_profile=st.session_state.cv_profile,
-                    agent_executive_summary=_agent_summary,
-                    model="gpt-4o-mini",
-                    prefer_online=_has_openai_secret(),
-                    api_key=_api_key_pn or None,
-                )
-                st.session_state.pivot_narrative = narrative
-    with pn2:
-        if st.session_state.pivot_narrative:
-            if st.button("Clear", key="clear_narrative", type="secondary", use_container_width=True):
-                st.session_state.pivot_narrative = None
-
-    pn = st.session_state.pivot_narrative
-    if pn:
-        st.divider()
-        src_label = "Personalised (CV + analysis)" if pn.get("personalized") else "Role-based (O*NET)"
-        st.caption(f"Source: {pn.get('source','?')} · {src_label}")
-
-        pn_tab1, pn_tab2, pn_tab3, pn_tab4 = st.tabs(
-            ["Cover Letter", "Elevator Pitch", "LinkedIn About", "Talking Points"]
-        )
-
-        with pn_tab1:
-            cl_text = pn.get("cover_letter", "")
-            if cl_text:
-                st.markdown(
-                    f'<div style="background:#fff;border:1px solid rgba(0,0,0,0.08);border-radius:10px;padding:24px 28px;font-size:14px;line-height:1.75;white-space:pre-wrap">{cl_text}</div>',
-                    unsafe_allow_html=True,
-                )
-                st.download_button(
-                    "Download cover letter",
-                    data=cl_text,
-                    file_name=f"cover_letter_{str(target).replace(' ', '_').lower()}.txt",
-                    mime="text/plain",
-                )
-
-        with pn_tab2:
-            pitch = pn.get("elevator_pitch", "")
-            if pitch:
-                st.markdown(
-                    f'<div class="agent-verdict-hero"><div class="agent-verdict-title">Elevator Pitch</div>'
-                    f'<div class="agent-verdict-summary">{pitch}</div></div>',
-                    unsafe_allow_html=True,
-                )
-
-        with pn_tab3:
-            about = pn.get("linkedin_about", "")
-            if about:
-                st.markdown(
-                    f'<div style="background:#fff;border:1px solid rgba(0,0,0,0.08);border-radius:10px;padding:20px 24px;font-size:14px;line-height:1.75;white-space:pre-wrap">{about}</div>',
-                    unsafe_allow_html=True,
-                )
-                st.download_button(
-                    "Copy LinkedIn About",
-                    data=about,
-                    file_name="linkedin_about.txt",
-                    mime="text/plain",
-                    key="dl_linkedin",
-                )
-
-        with pn_tab4:
-            points = pn.get("talking_points", [])
-            for i, pt in enumerate(points, 1):
-                st.markdown(
-                    f'<div style="padding:12px 16px;border-left:3px solid #0A66C2;background:#F8FAFF;border-radius:0 8px 8px 0;margin-bottom:10px;font-size:14px">'
-                    f'<span style="font-weight:700;color:#0A66C2;margin-right:8px">{i}.</span>{pt}</div>',
-                    unsafe_allow_html=True,
-                )
-
-
-# ============================================================
 # Smart Apply — AI Job Matching + Application Package Generator
 # ============================================================
+st.markdown(
+    '<div style="font-size:11px;font-weight:700;letter-spacing:0.10em;text-transform:uppercase;'
+    'color:rgba(0,0,0,0.35);margin:8px 0 10px 2px">Jobs · Recommended for you</div>',
+    unsafe_allow_html=True,
+)
 with st.container(border=True):
     st.markdown(
         '<div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">'
@@ -1851,6 +1439,450 @@ with st.container(border=True):
         st.markdown(peers_html, unsafe_allow_html=True)
 
 
+st.markdown(
+    '<div style="font-size:11px;font-weight:700;letter-spacing:0.10em;text-transform:uppercase;'
+    'color:rgba(0,0,0,0.35);margin:16px 0 10px 2px">Skill Analysis · Your pivot profile</div>',
+    unsafe_allow_html=True,
+)
+# ============================================================
+# Main layout — tabbed
+# ============================================================
+with st.container(border=True):
+    _tab_labels = ["Career Neighborhood", "Route & Simulation", "Skill Gaps"]
+    if _personal_mode:
+        _tab_labels.append("My Profile")
+    _tabs = st.tabs(_tab_labels)
+    main_tab_nbhd = _tabs[0]
+    main_tab_route = _tabs[1]
+    main_tab_explain = _tabs[2]
+    main_tab_profile = _tabs[3] if _personal_mode else None
+
+    # ── Tab 1: Career Neighborhood ─────────────────────────────
+    with main_tab_nbhd:
+        st.caption("Closest roles to your current occupation — useful stepping-stone candidates.")
+
+        show_df = neighbors_df.copy()
+        show_df["match_raw"] = show_df["match_raw"].round(2)
+        show_df["match_percentile"] = show_df["match_percentile"].round(2)
+
+        # Summary chips above table
+        if not show_df.empty:
+            top_match = show_df.iloc[0]
+            st.markdown(
+                f'<span class="status-pill status-ok">Top match: {str(top_match["occupation"])[:35]} ({float(top_match["match_percentile"]):.0f}th pct)</span>'
+                f'<span class="status-pill status-warn">{len(show_df)} neighbors found</span>',
+                unsafe_allow_html=True,
+            )
+            st.markdown("<div style='margin-bottom:8px'></div>", unsafe_allow_html=True)
+
+        _render_table_card(
+            show_df,
+            columns=["occupation", "match_percentile", "match_raw"],
+            headers=["Occupation", "Match (pct)", "Match (raw)"],
+            numeric_cols=["match_percentile", "match_raw"],
+        )
+
+        st.markdown("**Set a stepping-stone as target**")
+        if show_df.empty:
+            st.info("No recommendations available.")
+        else:
+            label_to_occ: Dict[str, str] = {}
+            options = []
+            for _, r in show_df.head(8).iterrows():
+                occ = str(r["occupation"])
+                label = f"{occ} — {float(r['match_percentile']):.0f} pct"
+                options.append(label)
+                label_to_occ[label] = occ
+
+            pick = st.selectbox("Recommended targets", options=options, index=0, label_visibility="collapsed")
+            if st.button("Use as target →", use_container_width=True):
+                st.session_state.target_override = label_to_occ[pick]
+                st.session_state.has_run = True
+                st.session_state.route_result = None
+                st.session_state.review_board_strategies = None
+                st.session_state.review_board_evaluations = None
+                st.session_state.review_board_consensus = None
+                st.session_state.review_board_judge_memo = None
+                st.rerun()
+
+    # ── Tab 2: Route & Simulation ──────────────────────────────
+    with main_tab_route:
+        route_col, sim_col = st.columns([1, 1], gap="large")
+
+        with route_col:
+            st.markdown("**Stepping-stone route**")
+            if guided:
+                st.caption("Find intermediate roles that make the pivot more realistic.")
+                col_a, col_b = st.columns([1, 1])
+                with col_a:
+                    if st.button("Find route", use_container_width=True):
+                        with st.spinner("Finding a route..."):
+                            st.session_state.route_result = find_pivot_path(
+                                mat,
+                                start_occ=str(current),
+                                target_occ=str(target),
+                                k_neighbors=12,
+                                max_steps=6,
+                            )
+                with col_b:
+                    if st.button("Reset", use_container_width=True, key="reset_route_guided", type="secondary"):
+                        st.session_state.route_result = None
+            else:
+                st.caption("Research mode: custom graph settings from the sidebar.")
+                col_a, col_b = st.columns([1, 1])
+                with col_a:
+                    if st.button("Find route", use_container_width=True):
+                        cfg = st.session_state.route_config
+                        with st.spinner("Finding a route..."):
+                            st.session_state.route_result = find_pivot_path(
+                                mat,
+                                start_occ=str(current),
+                                target_occ=str(target),
+                                k_neighbors=int(cfg["k_neighbors"]),
+                                max_steps=int(cfg["max_steps"]),
+                            )
+                with col_b:
+                    if st.button("Reset", use_container_width=True, key="reset_route_research", type="secondary"):
+                        st.session_state.route_result = None
+
+            route = st.session_state.route_result
+            if not route:
+                st.info("Route not computed yet.")
+            elif not route.get("reachable"):
+                st.warning("No route found with the current assumptions.")
+            else:
+                path = route.get("path", [])
+                if path:
+                    # Visual path display
+                    path_html = " <span style='color:#0A66C2;font-weight:800'>→</span> ".join(
+                        [f"<span style='font-weight:600'>{p}</span>" for p in path]
+                    )
+                    st.markdown(
+                        f'<div style="background:#EEF3FB;border-radius:8px;padding:12px 16px;font-size:13px;margin-top:8px">{path_html}</div>',
+                        unsafe_allow_html=True,
+                    )
+                    st.caption(f"{len(path)} steps · {len(path)-1} hops")
+                else:
+                    st.success("Route computed.")
+
+        with sim_col:
+            st.markdown("**Skill investment simulator**")
+            st.caption("Counterfactual: how much does the match improve if you close selected gaps?")
+
+            sim_candidates_df = suggest_best_investment_skills(gap_df, top_k=8)
+
+            if sim_candidates_df.empty:
+                st.info("No positive skill gaps available for simulation.")
+            else:
+                skill_options = sim_candidates_df["skill"].astype(str).tolist()
+                default_pick = skill_options[: min(3, len(skill_options))]
+
+                selected_sim_skills = st.multiselect(
+                    "Skills to improve",
+                    options=skill_options,
+                    default=default_pick,
+                    label_visibility="collapsed",
+                )
+
+                uplift_ratio = st.slider(
+                    "Gap closure %",
+                    min_value=0.10,
+                    max_value=1.00,
+                    value=0.50,
+                    step=0.05,
+                    format="%.0f%%",
+                    help="How much of each skill gap you close",
+                )
+
+                q1, q2 = st.columns([2, 1])
+                with q1:
+                    if st.button("Run simulation", use_container_width=True):
+                        st.session_state.sim_result = simulate_skill_investment(
+                            mat,
+                            current_role=str(current),
+                            target_role=str(target),
+                            selected_skills=selected_sim_skills,
+                            uplift_ratio=float(uplift_ratio),
+                        )
+                with q2:
+                    if st.button("Clear", use_container_width=True, key="clear_sim", type="secondary"):
+                        st.session_state.sim_result = None
+
+            sim_result = st.session_state.sim_result
+            if sim_result:
+                st.divider()
+                before = float(sim_result.get("similarity_before", 0))
+                after = float(sim_result.get("similarity_after", 0))
+                delta = after - before
+                s1, s2, s3 = st.columns(3)
+                s1.metric("Before", f"{before:.1f}")
+                s2.metric("After", f"{after:.1f}", delta=f"+{delta:.1f}" if delta > 0 else f"{delta:.1f}")
+                s3.metric("Skills invested", len(sim_result.get("invested_skills", [])))
+
+    # ── Tab 3: Skill Gaps ──────────────────────────────────────
+    with main_tab_explain:
+        st.caption("High-signal view: what transfers versus what blocks this pivot.")
+
+        n_missing = int((gap_df["gap"] > 0).sum()) if not gap_df.empty else 0
+        n_transfer = len(gap_df) - n_missing if not gap_df.empty else 0
+        st.markdown(
+            f'<span class="status-pill status-ok">{n_transfer} transferable skills</span>'
+            f'<span class="status-pill status-challenge">{n_missing} skill gaps</span>',
+            unsafe_allow_html=True,
+        )
+        st.markdown("<div style='margin-bottom:8px'></div>", unsafe_allow_html=True)
+
+        c1, c2 = st.columns(2, gap="large")
+
+        with c1:
+            st.markdown("**Top transferable skills**")
+            top_transfer = gap_df.copy()
+            top_transfer["overlap"] = np.minimum(top_transfer["current_importance"], top_transfer["target_importance"])
+            top_transfer = top_transfer.sort_values("overlap", ascending=False).head(10)
+
+            _render_table_card(
+                top_transfer,
+                columns=["skill", "current_importance", "target_importance", "overlap"],
+                headers=["Skill", "Current", "Target", "Overlap"],
+                numeric_cols=["current_importance", "target_importance", "overlap"],
+            )
+
+        with c2:
+            st.markdown("**Top missing skills**")
+            top_missing = gap_df[gap_df["gap"] > 0].sort_values(["gap", "target_importance"], ascending=False).head(10)
+            if top_missing.empty:
+                st.success("No missing skills detected.")
+            else:
+                _render_table_card(
+                    top_missing,
+                    columns=["skill", "current_importance", "target_importance", "gap"],
+                    headers=["Skill", "Current", "Target", "Gap"],
+                    numeric_cols=["current_importance", "target_importance", "gap"],
+                )
+
+    # ── Tab 4: My Profile (only when CV loaded) ────────────────
+    if _personal_mode and main_tab_profile is not None and _cv_profile:
+        with main_tab_profile:
+            p = _cv_profile
+            st.caption("Your extracted skill profile, mapped to the O*NET skill space.")
+
+            # Header metrics
+            pm1, pm2, pm3, pm4 = st.columns(4)
+            pm1.metric("Role (from CV)", str(p.get("extracted_role", "—") or "—")[:25])
+            pm2.metric("Experience", f"{p.get('years_experience', 0):.0f} years")
+            pm3.metric("Education", str(p.get("education_level", "—") or "—")[:20])
+            pm4.metric("Skills mapped", f"{p.get('skills_mapped_count', 0)} / {len(mat.columns)}")
+
+            conf_val = float(p.get("confidence", 0))
+            conf_cls = "status-ok" if conf_val >= 0.7 else ("status-warn" if conf_val >= 0.4 else "status-challenge")
+            st.markdown(
+                f'<span class="status-pill {conf_cls}">Extraction confidence: {conf_val:.0%}</span>'
+                f'<span class="status-pill status-ok">Source: {p.get("source","?")}</span>',
+                unsafe_allow_html=True,
+            )
+            st.markdown("<div style='margin-bottom:12px'></div>", unsafe_allow_html=True)
+
+            # Top skills
+            top_skills = p.get("top_skills", [])
+            if top_skills:
+                st.markdown("**Your strongest skills (O*NET mapped)**")
+                vec = p.get("skill_vector")
+                if vec is not None:
+                    top_df = pd.DataFrame({
+                        "skill": top_skills,
+                        "your_level": [round(float(vec[s]), 2) if s in vec.index else 0.0 for s in top_skills],
+                        "target_level": [
+                            round(float(mat.loc[str(target), s]), 2)
+                            if str(target) in mat.index and s in mat.columns else 0.0
+                            for s in top_skills
+                        ],
+                    })
+                    top_df["gap"] = (top_df["target_level"] - top_df["your_level"]).clip(lower=0).round(2)
+                    _render_table_card(
+                        top_df,
+                        columns=["skill", "your_level", "target_level", "gap"],
+                        headers=["Skill", "Your Level", "Target Level", "Gap"],
+                        numeric_cols=["your_level", "target_level", "gap"],
+                    )
+
+            # Raw extracted skills
+            raw = p.get("extracted_skills_raw", [])
+            if raw:
+                with st.expander("Raw extracted skills from CV", expanded=False):
+                    raw_df = pd.DataFrame(raw)
+                    if not raw_df.empty and "skill" in raw_df.columns:
+                        _render_table_card(
+                            raw_df,
+                            columns=[c for c in ["skill", "level", "evidence"] if c in raw_df.columns],
+                            headers=[c.title() for c in ["skill", "level", "evidence"] if c in raw_df.columns],
+                        )
+
+
+
+
+st.markdown(
+    '<div style="font-size:11px;font-weight:700;letter-spacing:0.10em;text-transform:uppercase;'
+    'color:rgba(0,0,0,0.35);margin:16px 0 10px 2px">Prepare · Close your skill gaps</div>',
+    unsafe_allow_html=True,
+)
+# ============================================================
+# LLM Learning Plan
+# ============================================================
+with st.container(border=True):
+    st.subheader("🧠 AI Learning Plan")
+    st.caption("LLM-generated upskilling roadmap based on your skill gaps.")
+
+    lp1, lp2 = st.columns([2, 1], gap="small")
+
+    with lp1:
+        if st.button("Generate learning plan", use_container_width=True):
+            with st.spinner("Generating..."):
+                md = generate_learning_plan_markdown(
+                    current_role=str(current),
+                    target_role=str(target),
+                    gap_df=gap_df,
+                    language="en",
+                    model="gpt-4o-mini",
+                    max_missing=6,
+                    prefer_online=True,
+                )
+                st.session_state.learning_plan_md = md
+                st.session_state.learning_plan_source = _learning_plan_source_label(md)
+
+    with lp2:
+        if st.button("Clear", use_container_width=True, key="clear_learning_plan", type="secondary"):
+            st.session_state.learning_plan_md = ""
+            st.session_state.learning_plan_source = "—"
+
+    plan_md = (st.session_state.learning_plan_md or "").strip()
+    if plan_md:
+        st.divider()
+        st.caption(f"Source: {st.session_state.learning_plan_source}")
+        st.markdown(plan_md)
+
+# ============================================================
+# Pivot Narrative Generator
+# ============================================================
+with st.container(border=True):
+    st.subheader("✍️ Pivot Narrative Generator")
+    _pn_personal = bool(st.session_state.cv_profile and st.session_state.cv_profile.get("extracted_role"))
+    st.caption(
+        ("Personalised to your CV — cover letter, elevator pitch, LinkedIn About, and interview talking points." if _pn_personal
+         else "Generate application materials for this pivot. Upload your CV in the sidebar to personalise the output.")
+    )
+    if _pn_personal:
+        st.markdown(
+            '<span class="status-pill status-ok">✓ Personal mode — output tailored to your CV</span>',
+            unsafe_allow_html=True,
+        )
+        st.markdown("<div style='margin-bottom:6px'></div>", unsafe_allow_html=True)
+
+    pn1, pn2 = st.columns([2, 1], gap="small")
+    with pn1:
+        if st.button("Generate pivot narrative", use_container_width=True):
+            with st.spinner("Generating your personalised pivot materials..."):
+                _top_transfer_pn = (
+                    gap_df.assign(overlap=lambda d: np.minimum(d["current_importance"], d["target_importance"]))
+                    .sort_values("overlap", ascending=False)["skill"].head(5).tolist()
+                )
+                _top_missing_pn = (
+                    gap_df[gap_df["gap"] > 0]
+                    .sort_values(["gap", "target_importance"], ascending=False)["skill"].head(4).tolist()
+                )
+                _agent_summary = None
+                if st.session_state.agent_result:
+                    _agent_summary = st.session_state.agent_result.executive_summary
+                _api_key_pn = ""
+                try:
+                    _api_key_pn = str(st.secrets.get("OPENAI_API_KEY", "")).strip()
+                except Exception:
+                    pass
+                narrative = generate_pivot_narrative(
+                    current_role=str(current),
+                    target_role=str(target),
+                    recommended_strategy=(
+                        st.session_state.agent_result.recommended_strategy
+                        if st.session_state.agent_result else
+                        (st.session_state.review_board_consensus.winner_strategy
+                         if st.session_state.review_board_consensus else "HYBRID")
+                    ),
+                    top_transfer=_top_transfer_pn,
+                    top_missing=_top_missing_pn,
+                    match_score=match_score_display,
+                    verdict=(
+                        st.session_state.agent_result.verdict
+                        if st.session_state.agent_result else "Feasible with Conditions"
+                    ),
+                    cv_profile=st.session_state.cv_profile,
+                    agent_executive_summary=_agent_summary,
+                    model="gpt-4o-mini",
+                    prefer_online=_has_openai_secret(),
+                    api_key=_api_key_pn or None,
+                )
+                st.session_state.pivot_narrative = narrative
+    with pn2:
+        if st.session_state.pivot_narrative:
+            if st.button("Clear", key="clear_narrative", type="secondary", use_container_width=True):
+                st.session_state.pivot_narrative = None
+
+    pn = st.session_state.pivot_narrative
+    if pn:
+        st.divider()
+        src_label = "Personalised (CV + analysis)" if pn.get("personalized") else "Role-based (O*NET)"
+        st.caption(f"Source: {pn.get('source','?')} · {src_label}")
+
+        pn_tab1, pn_tab2, pn_tab3, pn_tab4 = st.tabs(
+            ["Cover Letter", "Elevator Pitch", "LinkedIn About", "Talking Points"]
+        )
+
+        with pn_tab1:
+            cl_text = pn.get("cover_letter", "")
+            if cl_text:
+                st.markdown(
+                    f'<div style="background:#fff;border:1px solid rgba(0,0,0,0.08);border-radius:10px;padding:24px 28px;font-size:14px;line-height:1.75;white-space:pre-wrap">{cl_text}</div>',
+                    unsafe_allow_html=True,
+                )
+                st.download_button(
+                    "Download cover letter",
+                    data=cl_text,
+                    file_name=f"cover_letter_{str(target).replace(' ', '_').lower()}.txt",
+                    mime="text/plain",
+                )
+
+        with pn_tab2:
+            pitch = pn.get("elevator_pitch", "")
+            if pitch:
+                st.markdown(
+                    f'<div class="agent-verdict-hero"><div class="agent-verdict-title">Elevator Pitch</div>'
+                    f'<div class="agent-verdict-summary">{pitch}</div></div>',
+                    unsafe_allow_html=True,
+                )
+
+        with pn_tab3:
+            about = pn.get("linkedin_about", "")
+            if about:
+                st.markdown(
+                    f'<div style="background:#fff;border:1px solid rgba(0,0,0,0.08);border-radius:10px;padding:20px 24px;font-size:14px;line-height:1.75;white-space:pre-wrap">{about}</div>',
+                    unsafe_allow_html=True,
+                )
+                st.download_button(
+                    "Copy LinkedIn About",
+                    data=about,
+                    file_name="linkedin_about.txt",
+                    mime="text/plain",
+                    key="dl_linkedin",
+                )
+
+        with pn_tab4:
+            points = pn.get("talking_points", [])
+            for i, pt in enumerate(points, 1):
+                st.markdown(
+                    f'<div style="padding:12px 16px;border-left:3px solid #0A66C2;background:#F8FAFF;border-radius:0 8px 8px 0;margin-bottom:10px;font-size:14px">'
+                    f'<span style="font-weight:700;color:#0A66C2;margin-right:8px">{i}.</span>{pt}</div>',
+                    unsafe_allow_html=True,
+                )
+
+
 # ============================================================
 # Job Posting Analyzer
 # ============================================================
@@ -1969,6 +2001,11 @@ with st.container(border=True):
                 st.markdown(pills, unsafe_allow_html=True)
 
 
+st.markdown(
+    '<div style="font-size:11px;font-weight:700;letter-spacing:0.10em;text-transform:uppercase;'
+    'color:rgba(0,0,0,0.35);margin:16px 0 10px 2px">Validate · Pressure-test your decision</div>',
+    unsafe_allow_html=True,
+)
 # ============================================================
 # Adversarial Pivot Debate
 # ============================================================
@@ -2758,6 +2795,11 @@ with st.expander("LLM system trace (advanced)", expanded=False):
     )
 
 
+st.markdown(
+    '<div style="font-size:11px;font-weight:700;letter-spacing:0.10em;text-transform:uppercase;'
+    'color:rgba(0,0,0,0.35);margin:16px 0 10px 2px">AI Advisor · Autonomous deep analysis</div>',
+    unsafe_allow_html=True,
+)
 # ============================================================
 # Career Intelligence Agent (A3)
 # ============================================================
