@@ -1970,6 +1970,86 @@ if guided:
         else:
             st.markdown('<div style="height:4px"></div>', unsafe_allow_html=True)
 
+    # ── BONUS: LinkedIn Profile Optimizer (unlocked after sprint) ───────
+    if all(_sp_done):
+        with st.container(border=True):
+            st.markdown(
+                '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">'
+                '<div style="width:26px;height:26px;border-radius:50%;background:#0A66C2;'
+                'display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;color:#fff;flex-shrink:0">✦</div>'
+                '<div><div style="font-size:14px;font-weight:800;color:rgba(0,0,0,0.88)">'
+                'Bonus · Optimise your LinkedIn profile</div>'
+                '<div style="font-size:11px;color:rgba(0,0,0,0.45)">3 min · AI rewrites headline, about, and experience — paste-ready</div>'
+                '</div></div>',
+                unsafe_allow_html=True,
+            )
+            _li_sp = st.session_state.linkedin_profile
+            if _li_sp and not _li_sp.get("_eval"):
+                # Profile generated but not yet evaluated
+                _li_sp_key = ""
+                try:
+                    _li_sp_key = str(st.secrets.get("OPENAI_API_KEY", "")).strip()
+                except Exception:
+                    pass
+                with st.spinner("Evaluating LinkedIn profile…"):
+                    _li_sp_eval = evaluate_linkedin_profile(
+                        profile=_li_sp, current_role=str(current), target_role=str(target),
+                        api_key=_li_sp_key or None, prefer_online=bool(_li_sp_key),
+                    )
+                st.session_state.linkedin_profile["_eval"] = _li_sp_eval
+                st.rerun()
+            elif _li_sp:
+                _li_eval_sp = _li_sp.get("_eval") or {}
+                _li_sc = _li_eval_sp.get("overall_score")
+                _li_sc_c = "#117A37" if (_li_sc or 0) >= 75 else "#A05A00"
+                st.markdown(
+                    f'<div style="background:#F0FAF4;border-left:3px solid #0A66C2;border-radius:0 8px 8px 0;'
+                    f'padding:10px 14px;font-size:12px;color:rgba(0,0,0,0.65);margin-bottom:8px">'
+                    f'✓ LinkedIn profile optimised'
+                    + (f' · Profile score: <strong style="color:{_li_sc_c}">{_li_sc}/100</strong>' if _li_sc else "")
+                    + f'</div>',
+                    unsafe_allow_html=True,
+                )
+                _li_verdict = _li_eval_sp.get("one_line_verdict", "")
+                if _li_verdict:
+                    st.caption(_li_verdict)
+                with st.expander("View LinkedIn profile sections"):
+                    st.markdown(f"**Headline:**\n> {_li_sp.get('headline','')}")
+                    st.markdown(f"**About:**\n{_li_sp.get('about','')}")
+                    _li_bullets = _li_sp.get("experience_bullets", [])
+                    if _li_bullets:
+                        st.markdown("**Experience bullets:**")
+                        for _lb in _li_bullets:
+                            st.markdown(f"- {_lb}")
+                    _li_skills = _li_sp.get("skills_list", [])
+                    if _li_skills:
+                        st.markdown(f"**Skills to list:** {' · '.join(_li_skills)}")
+            else:
+                _li_gen_key = ""
+                try:
+                    _li_gen_key = str(st.secrets.get("OPENAI_API_KEY", "")).strip()
+                except Exception:
+                    pass
+                _top_t_li = (
+                    gap_df.assign(ov=lambda d: np.minimum(d["current_importance"], d["target_importance"]))
+                    .sort_values("ov", ascending=False).head(6)["skill"].tolist()
+                ) if not gap_df.empty else []
+                _top_g_li = (
+                    gap_df[gap_df["gap"] > 0].sort_values("gap", ascending=False).head(5)["skill"].tolist()
+                ) if not gap_df.empty else []
+                if st.button("✦ Optimise my LinkedIn profile", key="sp_li_opt", use_container_width=True, type="primary"):
+                    with st.spinner("Writing your LinkedIn profile…"):
+                        _li_new = generate_linkedin_profile(
+                            current_role=str(current), target_role=str(target),
+                            cv_text=st.session_state.cv_text or "",
+                            top_transferable_skills=_top_t_li,
+                            top_gap_skills=_top_g_li,
+                            api_key=_li_gen_key or None,
+                            prefer_online=bool(_li_gen_key),
+                        )
+                    st.session_state.linkedin_profile = _li_new
+                    st.rerun()
+
     # ── Sprint finish line ────────────────────────────────────────────────
     if all(_sp_done):
         # Collect quality scores from each step
@@ -2099,6 +2179,25 @@ if guided:
                     if _e_pb.get("coached_answer"):
                         _playbook_lines.append(f"\n**Coached answer:**\n{_e_pb['coached_answer']}")
                 _playbook_lines.append("")
+            _playbook_lines.append("\n---\n")
+
+        # Bonus: LinkedIn profile
+        _li_pb = st.session_state.linkedin_profile
+        if _li_pb and _li_pb.get("headline"):
+            _playbook_lines += [
+                "## LinkedIn Profile (Optimised)\n",
+                f"**Headline:**\n> {_li_pb.get('headline','')}\n",
+                f"**About:**\n{_li_pb.get('about','')}\n",
+                "**Experience bullets:**",
+            ]
+            for _lb2 in _li_pb.get("experience_bullets", []):
+                _playbook_lines.append(f"- {_lb2}")
+            _skills_pb = _li_pb.get("skills_list", [])
+            if _skills_pb:
+                _playbook_lines.append(f"\n**Skills to list:** {' · '.join(_skills_pb)}")
+            _li_eval_pb = _li_pb.get("_eval") or {}
+            if _li_eval_pb.get("overall_score"):
+                _playbook_lines.append(f"\n*Profile score: {_li_eval_pb['overall_score']}/100 — {_li_eval_pb.get('one_line_verdict','')}*")
             _playbook_lines.append("\n---\n")
 
         _playbook_md = "\n".join(_playbook_lines)
