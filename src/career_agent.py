@@ -108,6 +108,127 @@ MODEL_RATIONALE: Dict[str, Dict[str, str]] = {
             "enterprise API access and violates LinkedIn ToS if scraped directly."
         ),
     },
+    "application_package_generation": {
+        "model": "gpt-4o",
+        "why": (
+            "Generating a tailored cover letter, LinkedIn InMail, and CV bullet rewrites requires "
+            "high narrative quality and the ability to mirror the tone of a real job description. "
+            "gpt-4o's superior instruction-following and writing quality produce materials that "
+            "pass the hiring-manager review bar. The output directly affects whether a candidate "
+            "gets a callback — quality is the deciding factor, not cost."
+        ),
+        "alternative_considered": (
+            "gpt-4o-mini produces acceptable first drafts but shows measurably weaker keyword "
+            "mirroring from the job description and less persuasive narrative structure. "
+            "The downstream quality evaluator (gpt-4o-mini) would flag these as needing regeneration, "
+            "costing more in total than using gpt-4o upfront."
+        ),
+    },
+    "application_package_evaluation": {
+        "model": "gpt-4o-mini",
+        "why": (
+            "Second-pass evaluation is a structured scoring task: the model receives a rubric with "
+            "four dimensions (job_relevance, narrative_specificity, inmail_impact, cv_rewrite_quality) "
+            "and must assign integer scores 0-100 plus short justification text. "
+            "This is a well-constrained JSON-generation task, not open-ended reasoning. "
+            "Mini is sufficient and the 20x cost reduction is significant for a step that runs "
+            "every time the user generates application materials. "
+            "A heuristic fallback (word-count + keyword signals) is always available so quality "
+            "scores are shown even when the API is unavailable."
+        ),
+        "alternative_considered": "gpt-4o would give richer justification but the scoring deltas are negligible for a rubric task.",
+    },
+    "learning_plan_generation": {
+        "model": "gpt-4o-mini",
+        "why": (
+            "A structured learning plan with phase headings, named resources, and time estimates "
+            "is a well-defined template-filling task. The skill gaps are already computed by the "
+            "O*NET analysis — the model's job is to map gaps onto specific courses, projects, and "
+            "timelines. Mini handles this reliably at 5x lower cost than gpt-4o."
+        ),
+        "alternative_considered": "gpt-4o would surface more obscure high-quality resources but the improvement is marginal vs. cost.",
+    },
+    "learning_plan_evaluation": {
+        "model": "gpt-4o-mini",
+        "why": (
+            "Evaluating a learning plan across gap_coverage, resource_specificity, timeline_realism, "
+            "and actionability is a structured scoring task identical in shape to application package "
+            "evaluation. Mini is cost-effective and a heuristic fallback ensures scores always display."
+        ),
+        "alternative_considered": "None — identical reasoning to application_package_evaluation.",
+    },
+    "salary_estimation": {
+        "model": "gpt-4o-mini",
+        "why": (
+            "Salary estimation takes the target role, years of experience, and location as inputs "
+            "and produces percentile-range JSON (p25/p50/p75/p90). This is a lookup-and-format task "
+            "drawing on the model's training knowledge of compensation benchmarks. "
+            "Mini is sufficient; the output is explicitly labelled as LLM-estimated, not live data."
+        ),
+        "alternative_considered": (
+            "Levels.fyi / Glassdoor API would provide real-time compensation data but requires "
+            "paid API access. The LLM estimate gives a directionally accurate range for the "
+            "simulation without external dependencies."
+        ),
+    },
+    "adversarial_advocate": {
+        "model": "gpt-4o-mini",
+        "why": (
+            "The advocate generates the strongest possible case for the user's pivot by surfacing "
+            "transferable skills, favourable market timing, and analogous success stories. "
+            "This is a structured argument-generation task within a fixed JSON schema — mini handles "
+            "it well. The quality of the debate comes from the persona contrast, not model power."
+        ),
+        "alternative_considered": "gpt-4o would produce richer arguments but the debate format constrains output length anyway.",
+    },
+    "adversarial_skeptic": {
+        "model": "gpt-4o-mini",
+        "why": (
+            "The skeptic identifies the most credible obstacles: skill gaps, credential requirements, "
+            "market saturation, and career-gap risks. Same rationale as the advocate — "
+            "a constrained JSON generation task where persona framing drives quality."
+        ),
+        "alternative_considered": "gpt-4o-mini is matched to the advocate to ensure symmetric debate quality.",
+    },
+    "adversarial_judge": {
+        "model": "gpt-4o",
+        "why": (
+            "The judge must synthesise two opposing structured arguments into a nuanced verdict with "
+            "concrete recommendations and a confidence-calibrated go/no-go signal. "
+            "This is the only debate step that requires genuine reasoning — the judge must weigh "
+            "asymmetric evidence, identify which objections are decisive, and produce a coherent "
+            "narrative. gpt-4o's stronger chain-of-thought and instruction-following produce "
+            "verdicts that hold up under user scrutiny."
+        ),
+        "alternative_considered": (
+            "gpt-4o-mini produced verdicts that often restated both sides without resolving the "
+            "tension — the go/no-go signal was ambiguous and the recommendations were generic. "
+            "gpt-4o is justified here despite the cost premium."
+        ),
+    },
+    "pivot_narrative": {
+        "model": "gpt-4o-mini",
+        "why": (
+            "The pivot narrative generates a short LinkedIn-style 'career story' paragraph bridging "
+            "the user's current role to their target role. The output is a single paragraph of "
+            "200-300 words with a fixed tone and structure — a well-constrained writing task "
+            "that mini handles reliably."
+        ),
+        "alternative_considered": "gpt-4o would produce marginally more polished prose but the quality difference is invisible to most users.",
+    },
+    "job_listing_generation": {
+        "model": "gpt-4o-mini",
+        "why": (
+            "When SerpAPI is unavailable or unconfigured, the tool generates simulated job listings "
+            "with realistic company names, locations, salary ranges, and key requirements. "
+            "This is structured data generation (JSON) and mini is fully capable. "
+            "Real listings from SerpAPI are always preferred when the API key is present."
+        ),
+        "alternative_considered": (
+            "SerpAPI Google Jobs engine (preferred path) — aggregates real LinkedIn/Indeed/Glassdoor "
+            "listings with full job descriptions. LLM generation is a fallback only."
+        ),
+    },
 }
 
 

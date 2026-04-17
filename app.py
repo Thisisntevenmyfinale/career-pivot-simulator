@@ -43,6 +43,7 @@ from src.smart_apply import (
 from src.salary_estimator import estimate_salary_impact
 from src.job_search import search_real_jobs, real_job_to_listing, extract_cv_text
 from src.evaluator import evaluate_application_package, evaluate_learning_plan
+from src.interview_coach import generate_interview_questions, evaluate_interview_answer
 import plotly.graph_objects as go
 import plotly.express as px
 
@@ -819,6 +820,11 @@ DEFAULT_STATE = {
     # Quality Evaluations (second-pass LLM evaluation layer)
     "pkg_quality_eval": None,      # ApplicationPackage quality score
     "plan_quality_eval": None,     # Learning plan quality score
+    # Interview Coach
+    "interview_questions": None,   # List[Dict] — generated questions
+    "interview_answers": {},       # {idx: answer_text}
+    "interview_evals": {},         # {idx: eval_dict}
+    "interview_prep_done": False,  # True when ≥1 answer evaluated
     # Phase navigation
     "current_phase": "assess",     # "assess" | "plan" | "validate" | "execute"
 }
@@ -1101,34 +1107,82 @@ with st.sidebar:
 # Empty state
 # ============================================================
 if not st.session_state.has_run:
+    # ── Product hero — first thing the professor sees ──
     st.markdown(
-        '<div style="background:#fff;border-radius:10px;border:1px solid rgba(0,0,0,0.08);'
-        'padding:32px 36px;margin-bottom:16px;">'
-        '<div style="font-size:22px;font-weight:800;color:rgba(0,0,0,0.88);margin-bottom:6px">'
-        'Find your next role with confidence</div>'
-        '<div style="font-size:14px;color:rgba(0,0,0,0.55);margin-bottom:24px;line-height:1.6">'
-        'AI-powered career pivot analysis — skill matching, gap analysis, smart job discovery, '
-        'and ready-to-send application packages. Powered by O*NET data + GPT-4.</div>'
-        '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;">'
-        '<div style="background:#EEF3FB;border-radius:8px;padding:16px 18px;">'
-        '<div style="font-size:20px;margin-bottom:6px">🎯</div>'
-        '<div style="font-size:13px;font-weight:700;color:rgba(0,0,0,0.85);margin-bottom:3px">Skill Match Analysis</div>'
-        '<div style="font-size:12px;color:rgba(0,0,0,0.55)">Cosine similarity across 161 O*NET skill dimensions. Percentile-ranked against 900+ occupations.</div>'
+        '<div style="background:linear-gradient(135deg,#0A66C2 0%,#004182 100%);'
+        'border-radius:12px;padding:36px 40px;margin-bottom:20px;color:#fff">'
+
+        # Eyebrow
+        '<div style="font-size:10px;font-weight:800;letter-spacing:0.14em;text-transform:uppercase;'
+        'opacity:0.7;margin-bottom:8px">Career Pivot Simulator</div>'
+
+        # Headline
+        '<div style="font-size:28px;font-weight:900;line-height:1.2;margin-bottom:10px;'
+        'letter-spacing:-0.5px">'
+        'From career thought to<br>interview-ready — in one session.'
         '</div>'
-        '<div style="background:#EEF3FB;border-radius:8px;padding:16px 18px;">'
-        '<div style="font-size:20px;margin-bottom:6px">🤖</div>'
-        '<div style="font-size:13px;font-weight:700;color:rgba(0,0,0,0.85);margin-bottom:3px">9-Tool AI Agent</div>'
-        '<div style="font-size:12px;color:rgba(0,0,0,0.55)">Autonomous agentic loop: market signal, route finding, adversarial debate, skill simulation.</div>'
+
+        # Sub
+        '<div style="font-size:14px;opacity:0.8;line-height:1.6;max-width:560px;margin-bottom:24px">'
+        'Pick your current and target role. The simulator takes you through a structured '
+        '5-phase journey: skill analysis → learning plan → adversarial validation → '
+        'real job applications → AI interview coaching. '
+        'Every AI output is scored by a second LLM — nothing leaves raw.'
         '</div>'
-        '<div style="background:#EEF3FB;border-radius:8px;padding:16px 18px;">'
-        '<div style="font-size:20px;margin-bottom:6px">📄</div>'
-        '<div style="font-size:13px;font-weight:700;color:rgba(0,0,0,0.85);margin-bottom:3px">Smart Apply</div>'
-        '<div style="font-size:12px;color:rgba(0,0,0,0.55)">AI-curated job matches + instant application kit: cover letter, CV rewrites, InMail, interview prep.</div>'
+
+        # Journey mini-stepper in hero
+        '<div style="display:flex;align-items:center;gap:0;margin-bottom:24px">'
+        + "".join(
+            f'<div style="display:flex;align-items:center;gap:0">'
+            f'<div style="background:rgba(255,255,255,0.2);border:1.5px solid rgba(255,255,255,0.5);'
+            f'border-radius:20px;padding:4px 12px;font-size:11px;font-weight:700;color:#fff;white-space:nowrap">'
+            f'{name}</div>'
+            + (f'<div style="width:20px;height:1.5px;background:rgba(255,255,255,0.3)"></div>' if i < 4 else "")
+            + f'</div>'
+            for i, name in enumerate(["🔍 Assess", "📋 Plan", "⚔️ Validate", "🚀 Execute", "🎤 Interview"])
+        )
+        + '</div>'
+
+        # Stats row
+        '<div style="display:flex;gap:32px">'
+        '<div><div style="font-size:20px;font-weight:900">900+</div>'
+        '<div style="font-size:11px;opacity:0.6">O*NET occupations</div></div>'
+        '<div><div style="font-size:20px;font-weight:900">161</div>'
+        '<div style="font-size:11px;opacity:0.6">skill dimensions</div></div>'
+        '<div><div style="font-size:20px;font-weight:900">15</div>'
+        '<div style="font-size:11px;opacity:0.6">LLM components</div></div>'
+        '<div><div style="font-size:20px;font-weight:900">3×</div>'
+        '<div style="font-size:11px;opacity:0.6">evaluation layers</div></div>'
         '</div>'
-        '</div>'
-        '<div style="margin-top:20px;font-size:13px;color:rgba(0,0,0,0.5)">'
-        '← Select your current and target occupation in the sidebar, then click <strong>Run pivot analysis</strong></div>'
         '</div>',
+        unsafe_allow_html=True,
+    )
+
+    # How it works — 5 columns, one per phase
+    _hero_phases = [
+        ("🔍", "1 · Assess", "O*NET cosine similarity · skill gap · route analysis · confidence score"),
+        ("📋", "2 · Plan", "AI learning plan · salary trajectory · LLM evaluation score"),
+        ("⚔️", "3 · Validate", "Adversarial debate · 5-persona decision board · aggregation formula"),
+        ("🚀", "4 · Execute", "Real job search (SerpAPI) · cover letter + InMail + CV rewrites · quality eval"),
+        ("🎤", "5 · Interview", "Role-specific questions · answer scoring · coached rewrites · readiness 0–100"),
+    ]
+    _hero_cols = st.columns(5, gap="small")
+    for _hci, (_hicon, _hname, _hdesc) in enumerate(_hero_phases):
+        with _hero_cols[_hci]:
+            st.markdown(
+                f'<div style="background:#F8FAFF;border:1px solid #C7D8F0;border-radius:8px;'
+                f'padding:14px 12px;height:100%">'
+                f'<div style="font-size:20px;margin-bottom:6px">{_hicon}</div>'
+                f'<div style="font-size:12px;font-weight:800;color:#0A66C2;margin-bottom:5px">{_hname}</div>'
+                f'<div style="font-size:11px;color:rgba(0,0,0,0.55);line-height:1.5">{_hdesc}</div>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+
+    st.markdown(
+        '<div style="margin-top:20px;text-align:center;font-size:13px;color:rgba(0,0,0,0.45)">'
+        '← Select your current and target occupation in the sidebar · then click '
+        '<strong style="color:#0A66C2">Run pivot analysis</strong> to start</div>',
         unsafe_allow_html=True,
     )
     st.stop()
@@ -1194,18 +1248,38 @@ with st.container(border=True):
                 unsafe_allow_html=True,
             )
 
-    # ── Pivot Readiness Score (synthesises match + gap + CV quality) ──
+    # ── Pivot Readiness Score (milestone-based journey progress) ──────
+    # Each completed phase milestone contributes fixed points toward 100.
+    # The base score (0-30) reflects skill match quality — it's always present.
+    # Milestone contributions reward completing the full career pivot journey.
     _n_gaps = int((gap_df["gap"] > 0).sum()) if not gap_df.empty else 0
     _n_total = len(gap_df) if not gap_df.empty else 1
     _gap_ratio = _n_gaps / max(_n_total, 1)
     _cv_score = min(float(_cv_profile.get("skills_mapped_count", 0)) / 40.0, 1.0) if _cv_profile else 0.5
-    _readiness = int(
-        0.45 * (match_score_display / 100)
-        + 0.30 * (1 - _gap_ratio)
-        + 0.25 * _cv_score
-        * 100
-    )
-    _readiness = max(5, min(_readiness, 97))  # keep in [5, 97] — never claim 0 or 100
+
+    # Base: 0-30 pts from skill match quality (continuous signal)
+    _base_pts = int((0.45 * (match_score_display / 100) + 0.30 * (1 - _gap_ratio) + 0.25 * _cv_score) * 30)
+
+    # Milestone pts — each tool completion moves the needle toward 100
+    _readiness = max(5, min(
+        _base_pts
+        + (8  if bool((st.session_state.cv_text or "").strip())      else 0)  # CV uploaded (+8)
+        + (10 if bool(st.session_state.learning_plan_md)             else 0)  # Learning plan (+10)
+        + (12 if bool(st.session_state.debate_result)                else 0)  # Debate done (+12)
+        + (10 if bool(st.session_state.review_board_strategies)      else 0)  # Decision board (+10)
+        + (15 if bool(st.session_state.smart_apply_package)          else 0)  # Application pkg (+15)
+        + (15 if bool(st.session_state.interview_prep_done)          else 0)  # Interview prep (+15)
+    , 100))
+    # Milestone breakdown shown in tooltip
+    _milestone_labels = [
+        ("Skill assessed",    True),
+        ("CV uploaded",       bool((st.session_state.cv_text or "").strip())),
+        ("Learning plan",     bool(st.session_state.learning_plan_md)),
+        ("Debate complete",   bool(st.session_state.debate_result)),
+        ("Decision board",    bool(st.session_state.review_board_strategies)),
+        ("Application ready", bool(st.session_state.smart_apply_package)),
+        ("Interview prepped", bool(st.session_state.interview_prep_done)),
+    ]
     _r_color = "#117A37" if _readiness >= 65 else ("#A05A00" if _readiness >= 40 else "#B71C1C")
     _r_label = "Strong" if _readiness >= 65 else ("Promising" if _readiness >= 40 else "Early Stage")
     _weeks = max(4, int((_n_gaps * 3.5) * (1 - match_score_display / 200)))  # rough weeks estimate
@@ -1293,17 +1367,19 @@ with st.container(border=True):
     # always current, no API call needed.
     _done_list = []
     _next_list = []
-    if st.session_state.salary_result:       _done_list.append("salary trajectory")
-    else:                                    _next_list.append("Salary Estimator")
-    if st.session_state.learning_plan_md:    _done_list.append("learning roadmap")
-    else:                                    _next_list.append("AI Learning Plan")
-    if st.session_state.debate_result:       _done_list.append("adversarial debate")
-    else:                                    _next_list.append("Pivot Debate")
+    if st.session_state.salary_result:          _done_list.append("salary trajectory")
+    else:                                        _next_list.append("Salary Estimator")
+    if st.session_state.learning_plan_md:        _done_list.append("learning roadmap")
+    else:                                        _next_list.append("AI Learning Plan")
+    if st.session_state.debate_result:           _done_list.append("adversarial debate")
+    else:                                        _next_list.append("Pivot Debate")
     if st.session_state.review_board_strategies: _done_list.append("decision board")
-    if st.session_state.pivot_narrative:     _done_list.append("pivot narrative")
-    if st.session_state.job_analysis:        _done_list.append("job posting analysis")
-    if st.session_state.smart_apply_package: _done_list.append("application package")
-    if st.session_state.agent_result:        _done_list.append("agent deep analysis")
+    if st.session_state.pivot_narrative:         _done_list.append("pivot narrative")
+    if st.session_state.job_analysis:            _done_list.append("job posting analysis")
+    if st.session_state.smart_apply_package:     _done_list.append("application package")
+    if st.session_state.agent_result:            _done_list.append("agent deep analysis")
+    if st.session_state.interview_prep_done:     _done_list.append("interview preparation")
+    else:                                        _next_list.append("Interview Coach")
 
     _situation_text = (
         f"<b>{'Hard' if match_score_display < 45 else ('Promising' if match_score_display < 70 else 'Strong')} pivot</b> "
@@ -1315,26 +1391,35 @@ with st.container(border=True):
     )
     _next_text = (
         f"<b>Recommended next:</b> {_next_list[0]}."
-        if _next_list else "<b>All core analyses complete.</b> Download your report."
+        if _next_list else "<b>Journey complete — you're interview-ready.</b> Download your report."
     )
     _brief_readiness_color = "#117A37" if _readiness >= 65 else ("#A05A00" if _readiness >= 40 else "#B71C1C")
+
+    # Build milestone checklist pills
+    _milestone_pills_html = "".join(
+        f'<span style="font-size:10px;padding:2px 8px;border-radius:10px;margin-right:4px;margin-bottom:4px;display:inline-block;'
+        f'{"background:#E7F6EC;color:#117A37;border:1px solid #A8DDB8" if _done else "background:#F3F6F9;color:#5F6B7A;border:1px solid #C0CCDA"}">'
+        f'{"✓" if _done else "○"} {_label}</span>'
+        for _label, _done in _milestone_labels
+    )
 
     st.markdown(
         f'<div style="background:#F8FAFF;border:1px solid #C7D8F0;border-radius:10px;'
         f'padding:14px 18px;margin:16px 0 4px 0;">'
-        f'<div style="font-size:10px;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;'
-        f'color:#0A66C2;margin-bottom:8px">📋 Pivot Intelligence Brief</div>'
+        f'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">'
+        f'<div style="font-size:10px;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;color:#0A66C2">'
+        f'📋 Pivot Intelligence Brief</div>'
+        f'<div style="font-size:18px;font-weight:900;color:{_brief_readiness_color}">{_readiness}'
+        f'<span style="font-size:11px;font-weight:600;color:rgba(0,0,0,0.35)">/100</span></div>'
+        f'</div>'
+        f'<div style="height:6px;background:rgba(0,0,0,0.07);border-radius:3px;overflow:hidden;margin-bottom:10px">'
+        f'<div style="width:{_readiness}%;height:6px;background:{_brief_readiness_color};border-radius:3px;transition:width 0.8s"></div>'
+        f'</div>'
+        f'<div style="margin-bottom:8px">{_milestone_pills_html}</div>'
         f'<div style="font-size:13px;color:rgba(0,0,0,0.75);line-height:1.7">'
         f'<div>{_situation_text}</div>'
         f'<div style="color:rgba(0,0,0,0.5);font-size:12px;margin-top:3px">{_done_text}</div>'
         f'<div style="margin-top:5px;color:rgba(0,0,0,0.75)">{_next_text}</div>'
-        f'</div>'
-        f'<div style="margin-top:10px;display:flex;align-items:center;gap:8px">'
-        f'<div style="height:4px;flex:1;background:rgba(0,0,0,0.07);border-radius:2px;overflow:hidden">'
-        f'<div style="width:{_readiness}%;height:4px;background:{_brief_readiness_color};border-radius:2px"></div>'
-        f'</div>'
-        f'<span style="font-size:11px;font-weight:800;color:{_brief_readiness_color};white-space:nowrap">'
-        f'Readiness {_readiness}/100</span>'
         f'</div>'
         f'</div>',
         unsafe_allow_html=True,
@@ -1342,14 +1427,95 @@ with st.container(border=True):
 
 
 
+# ── Journey Stepper ────────────────────────────────────────────────────────
+# Always-visible 5-phase progress bar. Shows the professor (and user) that this
+# is a product with a clear end-goal — not a collection of disconnected tools.
+_journey_phases = [
+    ("🔍", "Assess",    "Skill landscape",   True),                                                  # always done
+    ("📋", "Plan",      "Salary + roadmap",  bool(st.session_state.learning_plan_md or st.session_state.salary_result)),
+    ("⚔️", "Validate",  "Debate + decision", bool(st.session_state.debate_result or st.session_state.review_board_consensus)),
+    ("🚀", "Execute",   "Apply + materials", bool(st.session_state.smart_apply_package or st.session_state.pivot_narrative)),
+    ("🎤", "Interview", "Prep + Coach",      bool(st.session_state.interview_prep_done)),
+]
+_n_phases_done = sum(1 for _, _, _, _done in _journey_phases if _done)
+_journey_pct = int(_n_phases_done / len(_journey_phases) * 100)
+
+_phase_nodes_html = ""
+for _pi, (_, _phase_name, _phase_sub, _phase_done) in enumerate(_journey_phases):
+    _is_last = _pi == len(_journey_phases) - 1
+    _node_color   = "#0A66C2" if _phase_done else "rgba(0,0,0,0.12)"
+    _node_bg      = "#0A66C2" if _phase_done else "#fff"
+    _label_color  = "rgba(0,0,0,0.88)" if _phase_done else "rgba(0,0,0,0.38)"
+    _check        = "✓" if _phase_done else str(_pi + 1)
+    _connector    = (
+        f'<div style="flex:1;height:2px;margin:0 4px;'
+        f'background:{"#0A66C2" if _phase_done else "rgba(0,0,0,0.1)"};'
+        f'border-radius:1px;margin-top:-18px"></div>'
+        if not _is_last else ""
+    )
+    _phase_nodes_html += (
+        f'<div style="display:flex;flex-direction:column;align-items:center;gap:5px;min-width:64px">'
+        f'<div style="width:32px;height:32px;border-radius:50%;background:{_node_bg};'
+        f'border:2px solid {_node_color};display:flex;align-items:center;justify-content:center;'
+        f'font-size:12px;font-weight:900;color:{"#fff" if _phase_done else "rgba(0,0,0,0.25)"}">{_check}</div>'
+        f'<div style="font-size:11px;font-weight:800;color:{_label_color};text-align:center;line-height:1.2">{_phase_name}</div>'
+        f'<div style="font-size:9px;color:rgba(0,0,0,0.35);text-align:center;line-height:1.2">{_phase_sub}</div>'
+        f'</div>'
+        + _connector
+    )
+
+_readiness_bar_color = "#117A37" if _readiness >= 65 else ("#0A66C2" if _readiness >= 40 else "#A05A00")
+
+st.markdown(
+    f'<div style="background:#fff;border:1px solid rgba(0,0,0,0.1);border-radius:12px;'
+    f'padding:16px 24px 14px 24px;margin:12px 0 8px 0;'
+    f'box-shadow:0 1px 4px rgba(0,0,0,0.05)">'
+
+    # Top row: tagline left, readiness score right
+    f'<div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:14px">'
+    f'<div>'
+    f'<div style="font-size:13px;font-weight:900;color:#1D2226;letter-spacing:-0.2px">'
+    f'{str(current).replace("_", " ")} → {str(target).replace("_", " ")}'
+    f'</div>'
+    f'<div style="font-size:11px;color:rgba(0,0,0,0.45);margin-top:2px">'
+    f'Career Pivot Simulator · from career thought to interview-ready in one session'
+    f'</div>'
+    f'</div>'
+    f'<div style="text-align:right;flex-shrink:0;padding-left:16px">'
+    f'<div style="font-size:22px;font-weight:900;color:{_readiness_bar_color};line-height:1">'
+    f'{_readiness}<span style="font-size:11px;font-weight:600;color:rgba(0,0,0,0.3)">/100</span></div>'
+    f'<div style="font-size:9px;font-weight:800;letter-spacing:0.06em;text-transform:uppercase;'
+    f'color:rgba(0,0,0,0.4)">Pivot Readiness</div>'
+    f'</div>'
+    f'</div>'
+
+    # Journey stepper nodes
+    f'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">'
+    f'{_phase_nodes_html}'
+    f'</div>'
+
+    # Progress bar
+    f'<div style="height:4px;background:rgba(0,0,0,0.07);border-radius:2px;overflow:hidden">'
+    f'<div style="width:{_journey_pct}%;height:4px;background:{_readiness_bar_color};'
+    f'border-radius:2px;transition:width 0.8s"></div>'
+    f'</div>'
+    f'<div style="display:flex;justify-content:space-between;margin-top:4px">'
+    f'<div style="font-size:9px;color:rgba(0,0,0,0.35)">{_n_phases_done}/{len(_journey_phases)} phases complete</div>'
+    f'<div style="font-size:9px;font-weight:700;color:{_readiness_bar_color}">'
+    + ("Interview-ready ✓" if _journey_pct == 100 else f"{100 - _journey_pct}% to interview-ready")
+    + f'</div>'
+    f'</div>'
+    f'</div>',
+    unsafe_allow_html=True,
+)
+
 # ── Phase Tabs ─────────────────────────────────────────────────────────────
-# 4-phase navigation: Assess → Plan → Validate → Execute
-# Each phase shows only its own tools — no more infinite scroll.
-_tab_assess, _tab_plan, _tab_validate, _tab_execute = st.tabs([
+_tab_assess, _tab_plan, _tab_validate, _tab_execute, _tab_interview = st.tabs([
     "🔍 Assess · Skill landscape",
     "📋 Plan · Salary + roadmap",
     "⚔️ Validate · Debate + decision",
     "🚀 Execute · Apply + materials",
+    "🎤 Interview · Prep + Coach",
 ])
 
 with _tab_assess:
@@ -2601,7 +2767,17 @@ with _tab_validate:
         # ── Aggregation Documentation (always visible when consensus exists) ──────
         if consensus:
             st.divider()
-            with st.expander("⚙️ How the aggregation works — formula & conflict handling", expanded=False):
+            _controversy = getattr(consensus, "controversy_score", 0) or 0
+            _agg_expanded = bool(_controversy > 50)
+            if _agg_expanded:
+                st.markdown(
+                    '<div style="background:#FFF4F0;border:1px solid #F0A880;border-radius:6px;'
+                    'padding:8px 14px;margin-bottom:6px;font-size:12px;color:#B24020;">'
+                    f'⚠️ High reviewer disagreement detected (controversy score: {_controversy:.0f}/100) — '
+                    'aggregation formula applied below</div>',
+                    unsafe_allow_html=True,
+                )
+            with st.expander("⚙️ How the aggregation works — formula & conflict handling", expanded=_agg_expanded):
                 st.markdown(
                     "This section documents the Python aggregation layer that processes raw LLM scores "
                     "into the final recommendation. LLM outputs are **never used raw** — they are "
@@ -3492,20 +3668,139 @@ with _tab_execute:
         )
 
         # Tabs for context vs action
-        agent_tab_run, agent_tab_arch, agent_tab_compare = st.tabs(
-            ["Run Agent", "How it works", "Pipeline comparison"]
+        agent_tab_run, agent_tab_arch, agent_tab_compare, agent_tab_reflect = st.tabs(
+            ["Run Agent", "How it works", "Pipeline comparison", "Dev reflection"]
         )
 
         with agent_tab_arch:
-            for role, info in MODEL_RATIONALE.items():
-                col_label, col_model = st.columns([3, 1])
-                col_label.markdown(f"**{role.replace('_', ' ').title()}**")
-                col_model.code(info["model"])
-                st.markdown(f"{info['why']}")
-                st.caption(f"Alternative considered: {info['alternative_considered']}")
-                if "cost_note" in info:
-                    st.caption(info["cost_note"])
-                st.divider()
+            st.markdown(
+                '<div style="font-size:11px;font-weight:800;letter-spacing:0.08em;'
+                'text-transform:uppercase;color:#0A66C2;margin-bottom:14px">'
+                '🏗 Architecture layers — every LLM call is explicit and justified'
+                '</div>',
+                unsafe_allow_html=True,
+            )
+
+            # Layer definitions with color + components
+            _arch_layers = [
+                {
+                    "layer": "DATA",
+                    "color": "#5F6B7A",
+                    "bg": "#F3F6F9",
+                    "desc": "Raw inputs — no LLM involved",
+                    "components": [
+                        ("O*NET Skill Database", "Python", "grey", "27,000 occupations × 35 standardised skills"),
+                        ("Uploaded CV / LinkedIn URL", "Python", "grey", "PDF/DOCX text extraction (pypdf, python-docx)"),
+                        ("SerpAPI Google Jobs", "API", "grey", "Real job listings from LinkedIn · Indeed · Glassdoor"),
+                    ],
+                },
+                {
+                    "layer": "ANALYSIS",
+                    "color": "#057642",
+                    "bg": "#F0FAF4",
+                    "desc": "Extraction & gap quantification",
+                    "components": [
+                        ("CV Skill Extraction", "gpt-4o-mini", "green", "Maps free-text CV → O*NET skill vector (2-pass)"),
+                        ("Market Signal", "gpt-4o-mini", "green", "LLM knowledge: demand trends, hot skills, salary ranges"),
+                        ("O*NET Cosine Similarity", "Python", "grey", "Deterministic — no LLM; PCA + dot-product in NumPy"),
+                    ],
+                },
+                {
+                    "layer": "GENERATION",
+                    "color": "#0A66C2",
+                    "bg": "#F0F7FF",
+                    "desc": "Long-form content creation — quality-critical steps use gpt-4o",
+                    "components": [
+                        ("Application Package", "gpt-4o", "blue", "Cover letter · InMail · CV rewrites (quality > cost)"),
+                        ("Adversarial Advocate", "gpt-4o-mini", "green", "Structured argument — persona framing drives quality"),
+                        ("Adversarial Skeptic", "gpt-4o-mini", "green", "Symmetric to advocate; JSON schema constrains output"),
+                        ("Adversarial Judge", "gpt-4o", "blue", "Synthesis requires genuine reasoning; mini produced ambiguous verdicts"),
+                        ("Learning Plan", "gpt-4o-mini", "green", "Template-filling task; gaps pre-computed by O*NET analysis"),
+                        ("Salary Estimation", "gpt-4o-mini", "green", "Percentile-range lookup from training knowledge"),
+                        ("Pivot Narrative", "gpt-4o-mini", "green", "200-word LinkedIn story — constrained writing task"),
+                        ("Job Listing Fallback", "gpt-4o-mini", "green", "Simulated listings when SerpAPI key not configured"),
+                        ("Review Board Strategies", "gpt-4o-mini", "green", "5 parallel calls; Pydantic validates schema"),
+                    ],
+                },
+                {
+                    "layer": "EVALUATION",
+                    "color": "#B24020",
+                    "bg": "#FFF4F0",
+                    "desc": "Second-pass LLM scoring — LLM outputs are never used raw",
+                    "components": [
+                        ("Application Evaluation", "gpt-4o-mini", "orange", "4 dimensions: job relevance · specificity · InMail impact · CV rewrite quality"),
+                        ("Learning Plan Evaluation", "gpt-4o-mini", "orange", "4 dimensions: gap coverage · resource specificity · timeline · actionability"),
+                        ("Review Personas × 5", "gpt-4o-mini", "orange", "5 reviewer archetypes score strategies on 5 axes each"),
+                    ],
+                },
+                {
+                    "layer": "ORCHESTRATION",
+                    "color": "#7A3E9D",
+                    "bg": "#F8F3FD",
+                    "desc": "Agent loop + Python aggregation — the hard logic lives here",
+                    "components": [
+                        ("Agent Loop", "gpt-4o", "purple", "Tool selection + chain-of-thought; mini shows higher tool-selection error"),
+                        ("Python Aggregation", "Python", "grey", "Confidence-adjusted score = weighted_mean − penalty(std, spread)"),
+                        ("Judge Synthesis", "gpt-4o-mini", "green", "Template-fill: hard maths done in Python before the call"),
+                    ],
+                },
+            ]
+
+            _badge_css = {
+                "blue":   "background:#E8F1FB;color:#0A66C2;border:1px solid #A0C3F0",
+                "green":  "background:#E8F9EE;color:#057642;border:1px solid #90D4A8",
+                "orange": "background:#FFF0EA;color:#B24020;border:1px solid #F0A880",
+                "purple": "background:#F3EDF9;color:#7A3E9D;border:1px solid #C8A8E8",
+                "grey":   "background:#F3F6F9;color:#5F6B7A;border:1px solid #C0CCDA",
+            }
+
+            for _layer in _arch_layers:
+                _lc = _layer["color"]
+                _lbg = _layer["bg"]
+                _rows_html = ""
+                for _comp_name, _comp_model, _comp_color, _comp_desc in _layer["components"]:
+                    _badge_style = _badge_css[_comp_color]
+                    _rows_html += (
+                        f'<tr>'
+                        f'<td style="padding:7px 10px 7px 0;font-size:13px;font-weight:600;color:#1D2226;white-space:nowrap">{_comp_name}</td>'
+                        f'<td style="padding:7px 8px;"><span style="font-size:11px;font-weight:700;padding:3px 9px;border-radius:20px;{_badge_style}">{_comp_model}</span></td>'
+                        f'<td style="padding:7px 0 7px 8px;font-size:12px;color:#5F6B7A;line-height:1.4">{_comp_desc}</td>'
+                        f'</tr>'
+                    )
+                st.markdown(
+                    f'<div style="background:{_lbg};border-left:4px solid {_lc};border-radius:6px;'
+                    f'padding:12px 16px;margin-bottom:12px">'
+                    f'<div style="font-size:10px;font-weight:900;letter-spacing:0.12em;color:{_lc};margin-bottom:2px">{_layer["layer"]}</div>'
+                    f'<div style="font-size:12px;color:#5F6B7A;margin-bottom:10px">{_layer["desc"]}</div>'
+                    f'<table style="width:100%;border-collapse:collapse">{_rows_html}</table>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+
+            # Per-component drill-down
+            st.markdown("---")
+            st.markdown(
+                '<div style="font-size:11px;font-weight:800;letter-spacing:0.08em;'
+                'text-transform:uppercase;color:#5F6B7A;margin-bottom:10px">'
+                'Full rationale — why each model was chosen</div>',
+                unsafe_allow_html=True,
+            )
+            for _role, _info in MODEL_RATIONALE.items():
+                _model_val = _info["model"]
+                _is_4o = _model_val == "gpt-4o"
+                _mbadge_style = _badge_css["blue"] if _is_4o else _badge_css["green"]
+                with st.expander(
+                    f"{_role.replace('_', ' ').title()}  ·  {_model_val}",
+                    expanded=False,
+                ):
+                    st.markdown(
+                        f'<span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;{_mbadge_style}">{_model_val}</span>',
+                        unsafe_allow_html=True,
+                    )
+                    st.markdown(f"**Why:** {_info['why']}")
+                    st.caption(f"Alternative considered: {_info['alternative_considered']}")
+                    if "cost_note" in _info:
+                        st.info(_info["cost_note"])
 
         with agent_tab_compare:
             c_a, c_b = st.columns(2, gap="large")
@@ -3541,6 +3836,198 @@ with _tab_execute:
                     language=None,
                 )
                 st.caption("9 tools. Tool selection by LLM each iteration. Personalised when CV is loaded.")
+
+        with agent_tab_reflect:
+            st.markdown(
+                '<div style="font-size:11px;font-weight:800;letter-spacing:0.08em;'
+                'text-transform:uppercase;color:#B24020;margin-bottom:14px">'
+                '🔬 Engineering decisions — what we tried, what failed, what we learned'
+                '</div>',
+                unsafe_allow_html=True,
+            )
+
+            _REFLECT_ENTRIES = [
+                {
+                    "title": "Problem: Raw LLM scores showed 40–60% variance across identical runs",
+                    "status": "solved",
+                    "what_we_tried": (
+                        "Initially we passed raw LLM strategy scores directly to the UI. "
+                        "On re-runs of the exact same pivot, the winner changed in roughly 4 out of 10 cases — "
+                        "not because the situation changed, but because LLM sampling temperature introduced noise. "
+                        "This made the tool feel unreliable and undermined user trust in the recommendation."
+                    ),
+                    "what_failed": (
+                        "Lowering temperature to 0.0 reduced variance but didn't eliminate it. "
+                        "Averaging two runs helped but doubled API cost and latency without solving the root cause: "
+                        "different reviewer personas weighted the same strategy differently."
+                    ),
+                    "solution": (
+                        "Introduced the Python aggregation layer: compute a confidence-adjusted score "
+                        "for each strategy across all 5 reviewers using `weighted_mean − penalty(std, spread)`. "
+                        "The penalty increases when reviewers disagree strongly, so high-controversy strategies "
+                        "are explicitly down-ranked rather than randomly winning or losing. "
+                        "The winner is now deterministic given the same reviewer weights — "
+                        "LLM variance is absorbed by the penalty formula, not passed raw to the user."
+                    ),
+                    "lesson": "LLM outputs should never be used raw. Every number needs a Python post-processing step.",
+                },
+                {
+                    "title": "Problem: Zero-shot prompts returned inconsistent JSON schemas",
+                    "status": "solved",
+                    "what_we_tried": (
+                        "Early prompts asked the model to 'return a JSON object with strategy evaluations'. "
+                        "Output varied wildly — sometimes a list, sometimes a dict, sometimes with extra commentary "
+                        "wrapping the JSON. Parsing failures silently dropped evaluations, "
+                        "causing some strategies to receive 0 scores."
+                    ),
+                    "what_failed": (
+                        "Regex-based JSON extraction was brittle. Asking the model to 'only return JSON, nothing else' "
+                        "worked most of the time but failed on edge cases with long strategy names containing brackets."
+                    ),
+                    "solution": (
+                        "Three-layer reliability stack: "
+                        "(1) OpenAI's `response_format={\"type\": \"json_object\"}` enforces JSON mode at the API level. "
+                        "(2) Pydantic validates every field name, type, and value range before use. "
+                        "(3) Heuristic fallbacks replace any failed component so the UI always renders. "
+                        "Zero silent failures — if JSON parsing fails, the source field is set to "
+                        "'heuristic (error: …)' and the user sees a warning badge."
+                    ),
+                    "lesson": (
+                        "Zero-shot reliability requires API-level enforcement + schema validation + fallbacks — "
+                        "not just prompt engineering."
+                    ),
+                },
+                {
+                    "title": "Problem: gpt-4o-mini produced ambiguous adversarial debate verdicts",
+                    "status": "solved",
+                    "what_we_tried": (
+                        "The adversarial debate originally used gpt-4o-mini for all three roles: advocate, skeptic, and judge. "
+                        "Advocate and skeptic outputs were consistently strong — structured, opinionated, specific. "
+                        "But the judge's verdicts regularly restated both sides without resolving the tension. "
+                        "The go/no-go signal was set to 'Possible' in over 60% of runs, regardless of whether "
+                        "the evidence clearly favoured one side."
+                    ),
+                    "what_failed": (
+                        "Adding 'be decisive' to the judge prompt improved tone but not actual resolution quality. "
+                        "The model was hedging because it genuinely lacked the reasoning capacity "
+                        "to synthesise two opposing structured arguments into a confident verdict."
+                    ),
+                    "solution": (
+                        "Upgraded the judge role to gpt-4o while keeping advocate + skeptic on gpt-4o-mini. "
+                        "This is a deliberate asymmetric model assignment: generation tasks (advocate, skeptic) "
+                        "are well-constrained and mini handles them reliably; synthesis tasks (judge) require "
+                        "genuine chain-of-thought reasoning where gpt-4o's gap over mini is measurable. "
+                        "The 20× cost premium for the judge step is justified by output quality."
+                    ),
+                    "lesson": (
+                        "Model selection should be task-type-specific: generation = mini, synthesis = full model. "
+                        "Evaluate each step individually, not the pipeline as a whole."
+                    ),
+                },
+                {
+                    "title": "Problem: CV parsing failed silently for ~20% of uploaded files",
+                    "status": "solved",
+                    "what_we_tried": (
+                        "The initial CV parser used only pypdf. This worked for PDFs generated by standard word processors "
+                        "but failed on scanned CVs, password-protected PDFs, and CVs exported from Google Docs "
+                        "(which use a non-standard glyph encoding). pypdf returned empty strings with no error."
+                    ),
+                    "what_failed": (
+                        "Checking for empty output and returning an error message told the user to 'try a different format' "
+                        "but didn't help them. Many users only had the PDF version of their CV."
+                    ),
+                    "solution": (
+                        "Implemented a three-stage fallback chain: "
+                        "(1) pypdf — fast, handles most standard PDFs. "
+                        "(2) pdfminer — slower but handles complex glyph encodings and multi-column layouts. "
+                        "(3) Raw UTF-8 decode — last resort for plain-text disguised as PDF. "
+                        "Only if all three fail does the user see an error, with a clear copy-paste alternative. "
+                        "DOCX files use python-docx with paragraph-level extraction."
+                    ),
+                    "lesson": "File parsing should be treated as an unreliable external system — always build the fallback chain first.",
+                },
+                {
+                    "title": "Problem: The app felt like a 'Flickenteppich' — a collection of disconnected tools",
+                    "status": "solved",
+                    "what_we_tried": (
+                        "Early versions added features incrementally: skill gap → salary → debate → smart apply. "
+                        "Each tool had its own UI section with no explicit connection to the others. "
+                        "User testing revealed that people ran one tool, got an output, "
+                        "and didn't know what to do next. The app had no clear north star."
+                    ),
+                    "what_failed": (
+                        "Adding a sidebar menu helped navigation but didn't create a sense of journey. "
+                        "Users still experienced the app as 'a dashboard with many widgets', not "
+                        "'a product that takes me somewhere'."
+                    ),
+                    "solution": (
+                        "Redesigned the entire app around ONE explicit end goal: "
+                        "get the user from 'I want to change careers' to 'I am interview-ready' in one session. "
+                        "This produced five changes: "
+                        "(1) 5-phase tab structure (Assess → Plan → Validate → Execute → Interview) making the journey literal. "
+                        "(2) Pivot Readiness Score 0–100 (milestone-based) as the single north star metric. "
+                        "(3) Pivot Intelligence Brief — always-visible session summary with next recommended action. "
+                        "(4) Interview Coach as the terminal step — the app has a clear finish line. "
+                        "(5) Each tool now shows which milestone it unlocks (+X pts to Readiness)."
+                    ),
+                    "lesson": (
+                        "Product coherence is not a UI problem — it is a goal-definition problem. "
+                        "Once the end state is defined (interview-ready), every tool either moves the needle or is cut."
+                    ),
+                },
+                {
+                    "title": "Problem: Evaluating LLM output quality in zero-shot tasks",
+                    "status": "solved",
+                    "what_we_tried": (
+                        "Generated cover letters, learning plans, and interview answers looked plausible but "
+                        "had no measurable quality signal. We couldn't tell whether gpt-4o-mini's cover letter "
+                        "was good enough or needed regeneration. Users had no signal either — "
+                        "they just saw text and assumed it was fine."
+                    ),
+                    "what_failed": (
+                        "Human review of every output was the obvious solution but not scalable. "
+                        "Keyword matching (does it mention the job title?) caught obvious failures "
+                        "but missed subtle quality issues like generic phrasing or missing STAR structure."
+                    ),
+                    "solution": (
+                        "Three independent LLM evaluation layers, each targeting a specific artifact: "
+                        "(1) Application package evaluator — scores cover letter + InMail + CV rewrites on "
+                        "job_relevance × 0.35 + narrative_specificity × 0.25 + inmail_impact × 0.20 + cv_rewrite_quality × 0.20. "
+                        "(2) Learning plan evaluator — scores gap_coverage × 0.35 + resource_specificity × 0.25 + actionability × 0.25 + timeline_realism × 0.15. "
+                        "(3) Interview answer evaluator — scores relevance × 0.30 + specificity × 0.30 + STAR_structure × 0.25 + keywords × 0.15. "
+                        "Each evaluator uses a second gpt-4o-mini call with a strict rubric and has a heuristic fallback "
+                        "so quality scores are always shown even without an API key. "
+                        "regenerate_recommended=True automatically when overall_score < threshold."
+                    ),
+                    "lesson": (
+                        "Evaluating LLM output is a first-class engineering concern, not an afterthought. "
+                        "Every generated artifact needs a scoring step before it reaches the user."
+                    ),
+                },
+            ]
+
+            _status_colors = {"solved": ("#E7F6EC", "#117A37", "#A8DDB8", "✓ Solved")}
+
+            for _entry in _REFLECT_ENTRIES:
+                _sc, _tc, _bc, _sl = _status_colors.get(_entry["status"], ("#F3F6F9", "#5F6B7A", "#C0CCDA", _entry["status"]))
+                with st.expander(_entry["title"], expanded=False):
+                    st.markdown(
+                        f'<span style="font-size:10px;font-weight:800;padding:2px 10px;border-radius:20px;'
+                        f'background:{_sc};color:{_tc};border:1px solid {_bc}">{_sl}</span>',
+                        unsafe_allow_html=True,
+                    )
+                    st.markdown("**What we observed:**")
+                    st.markdown(_entry["what_we_tried"])
+                    st.markdown("**What didn't work:**")
+                    st.markdown(_entry["what_failed"])
+                    st.markdown("**Solution:**")
+                    st.markdown(
+                        f'<div style="background:#F0F7FF;border-left:3px solid #0A66C2;'
+                        f'border-radius:0 8px 8px 0;padding:12px 16px;font-size:13px;line-height:1.7;'
+                        f'color:rgba(0,0,0,0.8);margin-bottom:8px">{_entry["solution"]}</div>',
+                        unsafe_allow_html=True,
+                    )
+                    st.info(f"**Lesson:** {_entry['lesson']}")
 
         with agent_tab_run:
             # ── Action area: button + secondary link ──────────────
@@ -3786,3 +4273,285 @@ with _tab_execute:
                                 st.success(f"Verdict: {result_data.get('verdict', '?')} · Strategy: {result_data.get('recommended_strategy', '?')}")
 
                         st.markdown("<div style='margin-bottom:12px'></div>", unsafe_allow_html=True)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# TAB 5 — Interview · Prep + Coach
+# Complete the journey: Assess → Plan → Validate → Execute → Interview-Ready
+# ══════════════════════════════════════════════════════════════════════════════
+with _tab_interview:
+    st.markdown(
+        '<div class="li-phase"><div class="li-phase-line"></div>'
+        '<div class="li-phase-text">Interview Prep · Go from application to offer</div>'
+        '<div class="li-phase-line"></div></div>',
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        '<div class="li-tool-header">🎤 AI Interview Coach</div>'
+        '<div class="li-tool-cap">Role-specific questions · Answer scoring · Coached rewrites · Interview Readiness score</div>',
+        unsafe_allow_html=True,
+    )
+
+    # ── Context summary ───────────────────────────────────────────────────────
+    _itv_job_title = str(target)
+    _itv_company = ""
+    _itv_jd = ""
+    _itv_cv = st.session_state.cv_text or ""
+
+    # Pull context from Smart Apply if a job was selected
+    _itv_pkg: Optional[ApplicationPackage] = st.session_state.smart_apply_package
+    if _itv_pkg:
+        _itv_job_title = getattr(_itv_pkg, "job_title", str(target))
+        _itv_company   = getattr(_itv_pkg, "company", "")
+        # Full JD may be on the selected listing
+        _sa_idx = st.session_state.smart_apply_selected_idx
+        _sa_jobs_itv: Optional[List[JobListing]] = st.session_state.smart_apply_jobs
+        if _sa_jobs_itv and _sa_idx is not None and _sa_idx < len(_sa_jobs_itv):
+            _jl = _sa_jobs_itv[_sa_idx]
+            _itv_jd = getattr(_jl, "full_description", "") or getattr(_jl, "description_preview", "")
+
+    _ctx_parts = []
+    if _itv_company:     _ctx_parts.append(f"**Role:** {_itv_job_title} at {_itv_company}")
+    else:                _ctx_parts.append(f"**Target role:** {_itv_job_title}")
+    if _itv_jd:          _ctx_parts.append("Job description available ✓")
+    if _itv_cv.strip():  _ctx_parts.append("CV loaded ✓")
+
+    st.caption("  ·  ".join(_ctx_parts))
+
+    # ── Generate questions ─────────────────────────────────────────────────────
+    _oai_key_itv = None
+    try:
+        _oai_key_itv = st.secrets.get("OPENAI_API_KEY")
+    except Exception:
+        pass
+
+    _itv_col_btn, _itv_col_info = st.columns([2, 3])
+    with _itv_col_btn:
+        _itv_gen_btn = st.button(
+            "🎯 Generate Interview Questions",
+            use_container_width=True,
+            help="AI generates 6 role-specific questions based on the job description and your CV.",
+        )
+    with _itv_col_info:
+        st.markdown(
+            '<div style="font-size:12px;color:rgba(0,0,0,0.5);padding-top:8px">'
+            'Questions are tailored to the specific job. '
+            'Type your draft answer → get a score + coached rewrite.'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+
+    if _itv_gen_btn:
+        with st.spinner("Generating interview questions…"):
+            _qs = generate_interview_questions(
+                target_role=_itv_job_title,
+                job_description=_itv_jd,
+                cv_text=_itv_cv,
+                n=6,
+                api_key=_oai_key_itv,
+                prefer_online=bool(_oai_key_itv),
+            )
+        st.session_state.interview_questions = _qs
+        st.session_state.interview_answers = {}
+        st.session_state.interview_evals = {}
+        st.session_state.interview_prep_done = False
+        st.rerun()
+
+    if st.session_state.interview_questions:
+        if st.button("↺ Reset questions", key="itv_reset", type="secondary"):
+            st.session_state.interview_questions = None
+            st.session_state.interview_answers = {}
+            st.session_state.interview_evals = {}
+            st.session_state.interview_prep_done = False
+            st.rerun()
+
+    # ── Question cards ─────────────────────────────────────────────────────────
+    _itv_questions: Optional[List] = st.session_state.interview_questions
+    if _itv_questions:
+        st.divider()
+
+        # Overall Interview Readiness score (avg of evaluated answers)
+        _itv_evals: dict = st.session_state.interview_evals or {}
+        _itv_scores = [v["overall_score"] for v in _itv_evals.values() if isinstance(v, dict)]
+        _itv_overall = int(sum(_itv_scores) / len(_itv_scores)) if _itv_scores else None
+        _itv_n_done = len(_itv_scores)
+        _itv_n_total = len(_itv_questions)
+
+        if _itv_overall is not None:
+            _itv_oc = "#117A37" if _itv_overall >= 75 else ("#A05A00" if _itv_overall >= 55 else "#B71C1C")
+            _itv_label = "Strong" if _itv_overall >= 75 else ("Developing" if _itv_overall >= 55 else "Needs work")
+            st.markdown(
+                f'<div style="background:#F8FAFF;border:1px solid #C7D8F0;border-radius:10px;'
+                f'padding:12px 18px;margin-bottom:16px;display:flex;align-items:center;gap:16px">'
+                f'<div>'
+                f'<div style="font-size:10px;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;'
+                f'color:#0A66C2;margin-bottom:2px">Interview Readiness</div>'
+                f'<div style="font-size:28px;font-weight:900;color:{_itv_oc}">{_itv_overall}'
+                f'<span style="font-size:13px;font-weight:600;color:rgba(0,0,0,0.35)">/100</span></div>'
+                f'<div style="font-size:11px;color:rgba(0,0,0,0.5)">{_itv_n_done}/{_itv_n_total} questions answered · {_itv_label}</div>'
+                f'</div>'
+                f'<div style="flex:1">'
+                f'<div style="height:8px;background:rgba(0,0,0,0.07);border-radius:4px;overflow:hidden">'
+                f'<div style="width:{_itv_overall}%;height:8px;background:{_itv_oc};border-radius:4px;transition:width 0.8s"></div>'
+                f'</div>'
+                f'</div>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+
+        _diff_colors = {"Easy": "#057642", "Medium": "#A05A00", "Hard": "#B71C1C"}
+        _type_colors = {
+            "Behavioural": "#0A66C2", "Technical": "#7A3E9D",
+            "Competency": "#057642", "Motivation": "#B24020", "Self-awareness": "#5F6B7A",
+        }
+
+        for _qi, _q in enumerate(_itv_questions):
+            _q_text = _q.get("question", "")
+            _q_type = _q.get("type", "Behavioural")
+            _q_why  = _q.get("why_asked", "")
+            _q_diff = _q.get("difficulty", "Medium")
+            _dc = _diff_colors.get(_q_diff, "#A05A00")
+            _tc = _type_colors.get(_q_type, "#0A66C2")
+            _eval = _itv_evals.get(_qi)
+
+            st.markdown(
+                f'<div style="background:#fff;border:1px solid rgba(0,0,0,0.1);border-radius:10px;'
+                f'padding:16px 20px;margin-bottom:12px">'
+                f'<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">'
+                f'<span style="font-size:11px;font-weight:700;color:rgba(0,0,0,0.4)">Q{_qi+1}</span>'
+                f'<span style="font-size:11px;padding:2px 9px;border-radius:20px;font-weight:700;'
+                f'background:{_tc}15;color:{_tc};border:1px solid {_tc}40">{_q_type}</span>'
+                f'<span style="font-size:11px;padding:2px 9px;border-radius:20px;font-weight:700;'
+                f'background:{_dc}15;color:{_dc};border:1px solid {_dc}40">{_q_diff}</span>'
+                + ('<span style="font-size:10px;padding:2px 8px;border-radius:20px;'
+                   'background:#E7F6EC;color:#117A37;border:1px solid #A8DDB8">✓ Evaluated</span>' if _eval else "")
+                + f'</div>'
+                f'<div style="font-size:14px;font-weight:700;color:#1D2226;line-height:1.5;margin-bottom:6px">{_q_text}</div>'
+                f'<div style="font-size:11px;color:rgba(0,0,0,0.45);font-style:italic">What they\'re testing: {_q_why}</div>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+
+            # Answer input
+            _saved_answer = (st.session_state.interview_answers or {}).get(_qi, "")
+            _answer_input = st.text_area(
+                f"Your answer to Q{_qi+1}",
+                value=_saved_answer,
+                height=120,
+                placeholder="Type your draft answer here… (aim for 150-250 words using the STAR framework)",
+                key=f"itv_ans_{_qi}",
+                label_visibility="collapsed",
+            )
+
+            _eval_col, _ = st.columns([2, 3])
+            with _eval_col:
+                _eval_btn = st.button(
+                    f"⚡ Evaluate & Coach  Q{_qi+1}",
+                    key=f"itv_eval_{_qi}",
+                    use_container_width=True,
+                    disabled=not bool(_answer_input.strip()),
+                )
+            if _eval_btn and _answer_input.strip():
+                if st.session_state.interview_answers is None:
+                    st.session_state.interview_answers = {}
+                st.session_state.interview_answers[_qi] = _answer_input
+                with st.spinner("Scoring your answer and writing a coached version…"):
+                    _ev = evaluate_interview_answer(
+                        question=_q_text,
+                        answer=_answer_input,
+                        target_role=_itv_job_title,
+                        job_title=_itv_job_title,
+                        api_key=_oai_key_itv,
+                        prefer_online=bool(_oai_key_itv),
+                    )
+                if st.session_state.interview_evals is None:
+                    st.session_state.interview_evals = {}
+                st.session_state.interview_evals[_qi] = _ev
+                # Mark interview prep as done once at least one answer is evaluated
+                st.session_state.interview_prep_done = True
+                st.rerun()
+
+            # Show evaluation results
+            if _eval:
+                _es = _eval.get("overall_score", 0)
+                _ec = "#117A37" if _es >= 75 else ("#A05A00" if _es >= 55 else "#B71C1C")
+                _dims = _eval.get("dimension_scores", {})
+                _dim_names = {"relevance": "Relevance", "specificity": "Specificity",
+                              "star_structure": "STAR Structure", "keywords": "Keywords"}
+                _dim_pills = "".join(
+                    f'<span style="font-size:10px;padding:2px 8px;border-radius:20px;'
+                    f'background:rgba(0,0,0,0.04);border:1px solid rgba(0,0,0,0.12);'
+                    f'color:rgba(0,0,0,0.6);margin-right:4px">'
+                    f'{_dim_names.get(k, k)}: {v}</span>'
+                    for k, v in _dims.items()
+                )
+                st.markdown(
+                    f'<div style="background:#F8FAFF;border:1px solid #C7D8F0;border-radius:8px;'
+                    f'padding:12px 16px;margin-top:6px">'
+                    f'<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">'
+                    f'<span style="font-size:10px;font-weight:800;letter-spacing:0.06em;text-transform:uppercase;color:#0A66C2">Answer Score</span>'
+                    f'<span style="font-size:20px;font-weight:900;color:{_ec}">{_es}</span>'
+                    f'<span style="font-size:11px;color:rgba(0,0,0,0.4)">/100 · {_eval.get("one_line_verdict", "")}</span>'
+                    f'</div>'
+                    f'<div style="margin-bottom:8px">{_dim_pills}</div>',
+                    unsafe_allow_html=True,
+                )
+                # Strengths + improvements
+                if _eval.get("strengths") or _eval.get("improvements"):
+                    _s_col, _i_col = st.columns(2)
+                    with _s_col:
+                        st.markdown("**What works**")
+                        for _s in _eval.get("strengths", []):
+                            st.markdown(f"✓ {_s}")
+                    with _i_col:
+                        st.markdown("**Improve**")
+                        for _imp in _eval.get("improvements", []):
+                            st.markdown(f"→ {_imp}")
+                st.markdown("</div>", unsafe_allow_html=True)
+
+                # Coached answer
+                _coached = _eval.get("coached_answer", "")
+                if _coached:
+                    with st.expander("✨ Coached answer — study this structure", expanded=(_es < 70)):
+                        st.markdown(
+                            f'<div style="background:#F0F7FF;border-left:3px solid #0A66C2;'
+                            f'border-radius:0 8px 8px 0;padding:14px 16px;font-size:13px;line-height:1.7;'
+                            f'color:rgba(0,0,0,0.8)">{_coached}</div>',
+                            unsafe_allow_html=True,
+                        )
+                        st.caption(f"Source: {_eval.get('source', 'llm')}")
+
+            st.markdown("<div style='margin-bottom:4px'></div>", unsafe_allow_html=True)
+
+        # ── Summary when all questions answered ────────────────────────────────
+        if _itv_n_done == _itv_n_total and _itv_overall is not None:
+            _final_color = "#117A37" if _itv_overall >= 75 else ("#A05A00" if _itv_overall >= 55 else "#B71C1C")
+            _final_verdict = (
+                "You're interview-ready. Confidence is high — practice delivery and you're set."
+                if _itv_overall >= 75 else
+                "Good foundation. Review the coached answers for the questions you scored below 70."
+                if _itv_overall >= 55 else
+                "Keep practicing. Focus on adding STAR structure and specific metrics to every answer."
+            )
+            st.markdown(
+                f'<div style="background:{_final_color}18;border:2px solid {_final_color}55;'
+                f'border-radius:10px;padding:16px 20px;margin-top:8px;text-align:center">'
+                f'<div style="font-size:11px;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;'
+                f'color:{_final_color};margin-bottom:4px">🎤 Interview Readiness: {_itv_overall}/100</div>'
+                f'<div style="font-size:13px;color:rgba(0,0,0,0.75)">{_final_verdict}</div>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+
+    else:
+        # Empty state
+        st.markdown(
+            '<div style="text-align:center;padding:48px 24px;color:rgba(0,0,0,0.4)">'
+            '<div style="font-size:40px;margin-bottom:12px">🎤</div>'
+            '<div style="font-size:15px;font-weight:600;margin-bottom:6px">AI Interview Coach</div>'
+            '<div style="font-size:13px">Click "Generate Interview Questions" to get 6 tailored questions.<br>'
+            'Type your draft answers and get scored + coached rewrites.<br>'
+            'Complete all 6 to unlock your Interview Readiness score.</div>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
