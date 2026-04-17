@@ -3249,6 +3249,164 @@ with _tab_execute:
 
                     st.markdown("<div style='margin-bottom:8px'></div>", unsafe_allow_html=True)
 
+                    # ── Model A/B Comparison ─────────────────────────────────
+                    with st.expander(
+                        "🔬 Model A/B Comparison — gpt-4o vs gpt-4o-mini quality test",
+                        expanded=False,
+                    ):
+                        st.markdown(
+                            '<div style="font-size:12px;color:rgba(0,0,0,0.55);margin-bottom:10px;line-height:1.6">'
+                            'Generates the same cover letter with both models, evaluates both with the same rubric, '
+                            'and shows the quality difference. This is why we use gpt-4o for application generation '
+                            '— the evaluation makes the tradeoff measurable, not just theoretical.'
+                            '</div>',
+                            unsafe_allow_html=True,
+                        )
+                        _ab_key = "ab_result_" + str(i)
+                        _ab_result = st.session_state.get(_ab_key)
+
+                        if not _ab_result:
+                            if st.button(
+                                "Run A/B quality test",
+                                key=f"ab_btn_{i}",
+                                use_container_width=False,
+                                help="Generates cover letter with both models (~15 sec) then evaluates both",
+                            ):
+                                _ab_api_key = None
+                                try:
+                                    _ab_api_key = st.secrets.get("OPENAI_API_KEY") or None
+                                except Exception:
+                                    pass
+
+                                with st.spinner("Generating with gpt-4o…"):
+                                    try:
+                                        _pkg_4o = generate_application_package(
+                                            job_title=job.title,
+                                            company=job.company,
+                                            job_description=getattr(job, "full_description", "") or job.description_preview,
+                                            current_role=str(current),
+                                            target_role=str(target),
+                                            cv_profile=st.session_state.cv_profile,
+                                            top_transfer=_top_transfer_sa,
+                                            top_missing=_top_missing_sa,
+                                            model="gpt-4o",
+                                            prefer_online=_has_openai_secret(),
+                                            api_key=_ab_api_key,
+                                        )
+                                        _cl_4o = _pkg_4o.cover_letter
+                                    except Exception as _ex_4o:
+                                        _cl_4o = f"[Error: {_ex_4o}]"
+
+                                with st.spinner("Generating with gpt-4o-mini…"):
+                                    try:
+                                        _pkg_mini = generate_application_package(
+                                            job_title=job.title,
+                                            company=job.company,
+                                            job_description=getattr(job, "full_description", "") or job.description_preview,
+                                            current_role=str(current),
+                                            target_role=str(target),
+                                            cv_profile=st.session_state.cv_profile,
+                                            top_transfer=_top_transfer_sa,
+                                            top_missing=_top_missing_sa,
+                                            model="gpt-4o-mini",
+                                            prefer_online=_has_openai_secret(),
+                                            api_key=_ab_api_key,
+                                        )
+                                        _cl_mini = _pkg_mini.cover_letter
+                                    except Exception as _ex_mini:
+                                        _cl_mini = f"[Error: {_ex_mini}]"
+
+                                with st.spinner("Evaluating both outputs…"):
+                                    _eval_4o = evaluate_application_package(
+                                        cover_letter=_cl_4o,
+                                        linkedin_inmail="",
+                                        cv_rewrites=[],
+                                        job_title=job.title,
+                                        company=job.company,
+                                        job_description=getattr(job, "full_description", ""),
+                                        model="gpt-4o-mini",
+                                        api_key=_ab_api_key,
+                                        prefer_online=_has_openai_secret(),
+                                    )
+                                    _eval_mini = evaluate_application_package(
+                                        cover_letter=_cl_mini,
+                                        linkedin_inmail="",
+                                        cv_rewrites=[],
+                                        job_title=job.title,
+                                        company=job.company,
+                                        job_description=getattr(job, "full_description", ""),
+                                        model="gpt-4o-mini",
+                                        api_key=_ab_api_key,
+                                        prefer_online=_has_openai_secret(),
+                                    )
+                                st.session_state[_ab_key] = {
+                                    "4o":   {"text": _cl_4o,   "eval": _eval_4o},
+                                    "mini": {"text": _cl_mini, "eval": _eval_mini},
+                                }
+                                st.rerun()
+                        else:
+                            _r4o   = _ab_result["4o"]
+                            _rmini = _ab_result["mini"]
+                            _s4o   = _r4o["eval"].get("overall_score", 0)
+                            _smini = _rmini["eval"].get("overall_score", 0)
+                            _delta = _s4o - _smini
+                            _delta_color = "#117A37" if _delta > 0 else ("#B71C1C" if _delta < 0 else "#5F6B7A")
+
+                            # Verdict banner
+                            _winner = "gpt-4o" if _s4o >= _smini else "gpt-4o-mini"
+                            st.markdown(
+                                f'<div style="background:#F3F6F9;border-radius:8px;padding:12px 16px;'
+                                f'margin-bottom:12px;display:flex;align-items:center;gap:12px">'
+                                f'<div style="font-size:22px;font-weight:900;color:{_delta_color}">'
+                                f'{_delta:+d} pts</div>'
+                                f'<div>'
+                                f'<div style="font-size:13px;font-weight:700;color:#1D2226">'
+                                f'{_winner} wins this cover letter</div>'
+                                f'<div style="font-size:11px;color:rgba(0,0,0,0.5)">'
+                                f'Evaluated by the same gpt-4o-mini rubric · '
+                                f'{"Cost of gpt-4o justified by quality gap" if abs(_delta) >= 8 else "Quality gap within acceptable range — mini is cost-effective here"}'
+                                f'</div>'
+                                f'</div>'
+                                f'</div>',
+                                unsafe_allow_html=True,
+                            )
+
+                            # Side-by-side scores
+                            _ab_col1, _ab_col2 = st.columns(2, gap="medium")
+                            for _ab_col, _ab_model, _ab_score, _ab_ev, _ab_text in [
+                                (_ab_col1, "gpt-4o",      _s4o,   _r4o["eval"],   _r4o["text"]),
+                                (_ab_col2, "gpt-4o-mini", _smini, _rmini["eval"], _rmini["text"]),
+                            ]:
+                                with _ab_col:
+                                    _ab_sc = "#117A37" if _ab_score >= 75 else ("#A05A00" if _ab_score >= 55 else "#B71C1C")
+                                    _ab_dims = _ab_ev.get("dimension_scores", {})
+                                    _ab_dim_html = "".join(
+                                        f'<div style="display:flex;justify-content:space-between;'
+                                        f'font-size:11px;padding:2px 0;border-bottom:1px solid rgba(0,0,0,0.05)">'
+                                        f'<span style="color:rgba(0,0,0,0.55)">{k.replace("_"," ").title()}</span>'
+                                        f'<span style="font-weight:700;color:{("#117A37" if v>=75 else ("#A05A00" if v>=55 else "#B71C1C"))}">{v}</span>'
+                                        f'</div>'
+                                        for k, v in _ab_dims.items()
+                                    )
+                                    st.markdown(
+                                        f'<div style="background:#F8FAFF;border:1px solid #C7D8F0;border-radius:8px;padding:12px 14px">'
+                                        f'<div style="font-size:10px;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;color:#5F6B7A;margin-bottom:4px">{_ab_model}</div>'
+                                        f'<div style="font-size:26px;font-weight:900;color:{_ab_sc};margin-bottom:8px">{_ab_score}<span style="font-size:12px;color:rgba(0,0,0,0.3)">/100</span></div>'
+                                        f'{_ab_dim_html}'
+                                        f'</div>',
+                                        unsafe_allow_html=True,
+                                    )
+                                    with st.expander(f"Read {_ab_model} cover letter"):
+                                        st.markdown(
+                                            f'<div style="font-size:12px;line-height:1.7;color:rgba(0,0,0,0.75);'
+                                            f'white-space:pre-wrap">{_ab_text}</div>',
+                                            unsafe_allow_html=True,
+                                        )
+
+                            if st.button("Clear A/B results", key=f"ab_clear_{i}", type="secondary"):
+                                st.session_state[_ab_key] = None
+                                st.rerun()
+
         # ── Pivot Peers — social proof ──────────────────────────────
         st.divider()
         st.markdown(
