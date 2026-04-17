@@ -1469,6 +1469,42 @@ if quick_apply:
                             api_key=_qa_key or None,
                             prefer_online=bool(_qa_key),
                         )
+                    # If evaluator flags low quality, auto-regenerate once with gpt-4o
+                    _qa_ev_check = st.session_state.qa_eval or {}
+                    if _qa_ev_check.get("regenerate_recommended") and _qa_key:
+                        with st.spinner("Quality below threshold — regenerating with gpt-4o (improved prompt)…"):
+                            _qa_regen_pkg = generate_application_package(
+                                job_title=_qa_p2.get("job_title", str(target)),
+                                company=_qa_p2.get("company", ""),
+                                job_description=_qa_p2.get("cleaned_description", ""),
+                                current_role=str(current),
+                                target_role=st.session_state.qa_closest_occ,
+                                cv_profile=st.session_state.cv_profile,
+                                top_transfer=_qa_top_t2,
+                                top_missing=_qa_top_m2,
+                                model="gpt-4o",
+                                prefer_online=True,
+                                api_key=_qa_key,
+                            )
+                        st.session_state.qa_package = _qa_regen_pkg
+                        with st.spinner("Re-evaluating…"):
+                            st.session_state.qa_eval = evaluate_application_package(
+                                cover_letter=_qa_regen_pkg.cover_letter,
+                                linkedin_inmail=_qa_regen_pkg.linkedin_inmail,
+                                cv_rewrites=[
+                                    {"skill_highlighted": r.skill_highlighted, "rewritten": r.rewritten}
+                                    for r in _qa_regen_pkg.cv_bullet_rewrites
+                                ],
+                                job_title=_qa_p2.get("job_title", ""),
+                                company=_qa_p2.get("company", ""),
+                                job_description=_qa_p2.get("cleaned_description", ""),
+                                cv_text=st.session_state.cv_text or "",
+                                model="gpt-4o-mini",
+                                api_key=_qa_key,
+                                prefer_online=True,
+                            )
+                            # Clear regenerate flag to avoid loop
+                            st.session_state.qa_eval["regenerate_recommended"] = False
                     st.rerun()
             else:
                 _qa_pkg2: Optional[ApplicationPackage] = st.session_state.qa_package
@@ -1532,6 +1568,35 @@ if quick_apply:
                             with _qa_sc2:
                                 _render_bullet_list("Strengths", _qa_ev2.get("strengths", []))
                                 _render_bullet_list("Improvements", _qa_ev2.get("improvements", []))
+
+                        # Pipeline trace — makes the LLM orchestration visible
+                        st.markdown("---")
+                        _qa_src = getattr(_qa_pkg2, "source", "llm") if _qa_pkg2 else "llm"
+                        _qa_ev_src = _qa_ev2.get("source", "llm")
+                        _trace_steps = [
+                            ("①", "Job Parsing",    "gpt-4o-mini", "Structured extraction: title, company, requirements, description"),
+                            ("②", "O*NET Matching", "Python",       "difflib fuzzy match → top-5 occupation candidates"),
+                            ("③", "Gap Analysis",   "Python",       f"compute_gap_df() → {int((_qa_gap_df_local['gap']>0).sum()) if not _qa_gap_df_local.empty else '?'} skill gaps quantified"),
+                            ("④", "Generation",     "gpt-4o",       f"cover_letter + linkedin_inmail + cv_bullet_rewrites · source: {_qa_src}"),
+                            ("⑤", "Evaluation",     "gpt-4o-mini",  f"4-dimension rubric · score: {_qa_ev_score or '—'}/100 · source: {_qa_ev_src}"),
+                        ]
+                        _trace_html = (
+                            '<div style="background:#F3F6F9;border-radius:8px;padding:12px 16px;margin-top:8px">'
+                            '<div style="font-size:10px;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;'
+                            'color:#5F6B7A;margin-bottom:8px">Pipeline trace — every LLM call made for this application</div>'
+                        )
+                        for _tstep, _tname, _tmodel, _tdesc in _trace_steps:
+                            _tm_bg = "background:#E8F1FB;color:#0A66C2;border:1px solid #A0C3F0" if _tmodel in ("gpt-4o", "gpt-4o-mini") else "background:#F3F6F9;color:#5F6B7A;border:1px solid #C0CCDA"
+                            _trace_html += (
+                                f'<div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:6px">'
+                                f'<div style="font-size:13px;flex-shrink:0;width:18px;color:rgba(0,0,0,0.4)">{_tstep}</div>'
+                                f'<div style="font-size:12px;font-weight:700;color:#1D2226;flex-shrink:0;width:100px">{_tname}</div>'
+                                f'<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;{_tm_bg};flex-shrink:0">{_tmodel}</span>'
+                                f'<div style="font-size:11px;color:#5F6B7A;line-height:1.4">{_tdesc}</div>'
+                                f'</div>'
+                            )
+                        _trace_html += '</div>'
+                        st.markdown(_trace_html, unsafe_allow_html=True)
 
     # ── Phase 4: Interview prep ──────────────────────────────────────────────
     if st.session_state.qa_package:
