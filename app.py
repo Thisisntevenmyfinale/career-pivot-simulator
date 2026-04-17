@@ -819,6 +819,8 @@ DEFAULT_STATE = {
     # Quality Evaluations (second-pass LLM evaluation layer)
     "pkg_quality_eval": None,      # ApplicationPackage quality score
     "plan_quality_eval": None,     # Learning plan quality score
+    # Phase navigation
+    "current_phase": "assess",     # "assess" | "plan" | "validate" | "execute"
 }
 
 for key, value in DEFAULT_STATE.items():
@@ -1291,16 +1293,17 @@ with st.container(border=True):
     # always current, no API call needed.
     _done_list = []
     _next_list = []
-    if st.session_state.salary_result:      _done_list.append("salary trajectory")
-    else:                                   _next_list.append("Salary Estimator")
-    if st.session_state.learning_plan_md:   _done_list.append("learning roadmap")
-    else:                                   _next_list.append("AI Learning Plan")
-    if st.session_state.pivot_narrative:    _done_list.append("pivot narrative")
-    else:                                   _next_list.append("Pivot Narrative")
-    if st.session_state.job_analysis:       _done_list.append("job posting analysis")
-    if st.session_state.debate_result:      _done_list.append("adversarial debate")
+    if st.session_state.salary_result:       _done_list.append("salary trajectory")
+    else:                                    _next_list.append("Salary Estimator")
+    if st.session_state.learning_plan_md:    _done_list.append("learning roadmap")
+    else:                                    _next_list.append("AI Learning Plan")
+    if st.session_state.debate_result:       _done_list.append("adversarial debate")
+    else:                                    _next_list.append("Pivot Debate")
+    if st.session_state.review_board_strategies: _done_list.append("decision board")
+    if st.session_state.pivot_narrative:     _done_list.append("pivot narrative")
+    if st.session_state.job_analysis:        _done_list.append("job posting analysis")
     if st.session_state.smart_apply_package: _done_list.append("application package")
-    if st.session_state.agent_result:       _done_list.append("agent deep analysis")
+    if st.session_state.agent_result:        _done_list.append("agent deep analysis")
 
     _situation_text = (
         f"<b>{'Hard' if match_score_display < 45 else ('Promising' if match_score_display < 70 else 'Strong')} pivot</b> "
@@ -1338,2486 +1341,2448 @@ with st.container(border=True):
     )
 
 
-# ── Pivot Journey Board ──────────────────────────────────────────────────────
-# Progress funnel always visible — shows exactly where the user is in the
-# Assess → Plan → Prepare → Execute pipeline.
-_phase_assess_done  = True  # always done once roles are selected
-_phase_plan_done    = bool(st.session_state.salary_result or st.session_state.learning_plan_md)
-_phase_prepare_done = bool(
-    st.session_state.pivot_narrative
-    or st.session_state.job_analysis
-    or st.session_state.smart_apply_package
-)
-_phase_execute_done = bool(st.session_state.smart_apply_jobs)
 
-def _phase_node(label: str, sublabel: str, done: bool, active: bool = False) -> str:
-    if done:
-        bg, border, text, icon = "#E7F6EC", "#117A37", "#117A37", "✓"
-    elif active:
-        bg, border, text, icon = "#EEF3FB", "#0A66C2", "#0A66C2", "◉"
-    else:
-        bg, border, text, icon = "#F3F6F9", "rgba(0,0,0,0.15)", "rgba(0,0,0,0.35)", "○"
-    return (
-        f'<div style="display:flex;flex-direction:column;align-items:center;flex:1">'
-        f'  <div style="width:36px;height:36px;border-radius:50%;background:{bg};'
-        f'  border:2px solid {border};display:flex;align-items:center;justify-content:center;'
-        f'  font-size:14px;font-weight:800;color:{text}">{icon}</div>'
-        f'  <div style="font-size:12px;font-weight:700;color:{text};margin-top:5px">{label}</div>'
-        f'  <div style="font-size:10px;color:rgba(0,0,0,0.4);text-align:center;max-width:80px">{sublabel}</div>'
-        f'</div>'
-    )
+# ── Phase Tabs ─────────────────────────────────────────────────────────────
+# 4-phase navigation: Assess → Plan → Validate → Execute
+# Each phase shows only its own tools — no more infinite scroll.
+_tab_assess, _tab_plan, _tab_validate, _tab_execute = st.tabs([
+    "🔍 Assess · Skill landscape",
+    "📋 Plan · Salary + roadmap",
+    "⚔️ Validate · Debate + decision",
+    "🚀 Execute · Apply + materials",
+])
 
-def _phase_arrow(done: bool) -> str:
-    color = "#117A37" if done else "rgba(0,0,0,0.15)"
-    return f'<div style="flex:0 0 28px;height:2px;background:{color};margin-top:17px"></div>'
-
-_active_phase = (
-    "prepare" if _phase_plan_done else
-    "plan"    if _phase_assess_done else
-    "assess"
-)
-
-st.markdown(
-    f'<div style="background:#fff;border:1px solid rgba(0,0,0,0.08);border-radius:12px;'
-    f'padding:16px 20px;margin:0 0 4px 0">'
-    f'<div style="font-size:10px;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;'
-    f'color:rgba(0,0,0,0.35);margin-bottom:12px">Your pivot journey</div>'
-    f'<div style="display:flex;align-items:flex-start;gap:0">'
-    + _phase_node("Assess",  f"{match_score_display:.0f}/100", _phase_assess_done)
-    + _phase_arrow(_phase_assess_done)
-    + _phase_node("Plan",    "salary + roadmap", _phase_plan_done, _active_phase == "plan")
-    + _phase_arrow(_phase_plan_done)
-    + _phase_node("Prepare", "narrative + CV", _phase_prepare_done, _active_phase == "prepare")
-    + _phase_arrow(_phase_prepare_done)
-    + _phase_node("Execute", "apply + track", _phase_execute_done, _phase_prepare_done and not _phase_execute_done)
-    + f'</div></div>',
-    unsafe_allow_html=True,
-)
-
-
-# ============================================================
-# Smart Apply — AI Job Matching + Application Package Generator
-# ============================================================
-st.markdown(
-    '<div class="li-phase"><div class="li-phase-line"></div>'
-    '<div class="li-phase-text">Jobs · Recommended for you</div>'
-    '<div class="li-phase-line"></div></div>',
-    unsafe_allow_html=True,
-)
-with st.container(border=True):
+with _tab_assess:
     st.markdown(
-        '<div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">'
-        '<div style="background:#0A66C2;color:#fff;font-weight:900;font-size:13px;'
-        'width:24px;height:24px;border-radius:3px;display:flex;align-items:center;'
-        'justify-content:center">in</div>'
-        '<span style="font-size:17px;font-weight:800;color:rgba(0,0,0,0.9)">Smart Apply</span>'
-        '<span style="font-size:12px;color:#fff;background:#0A66C2;border-radius:12px;'
-        'padding:2px 8px;font-weight:700">NEW</span>'
-        '</div>',
+        '<div class="li-phase"><div class="li-phase-line"></div>'
+        '<div class="li-phase-text">Skill Analysis · Your pivot profile</div>'
+        '<div class="li-phase-line"></div></div>',
         unsafe_allow_html=True,
     )
-    _sa_personal = bool(st.session_state.cv_profile and st.session_state.cv_profile.get("extracted_role"))
-    st.caption(
-        "AI-curated job matches for your target role + one-click application package: tailored cover letter, "
-        "CV bullet rewrites, LinkedIn InMail to the hiring manager, and interview prep guide."
-        + (" Personalised to your CV." if _sa_personal else " Upload your CV for personalised output.")
-    )
-    if _sa_personal:
-        st.markdown(
-            '<span class="status-pill status-ok">✓ Personalised to your CV profile</span>',
-            unsafe_allow_html=True,
-        )
-        st.markdown("<div style='margin-bottom:4px'></div>", unsafe_allow_html=True)
+    # ============================================================
+    # Main layout — tabbed
+    # ============================================================
+    with st.container(border=True):
+        _tab_labels = ["Career Neighborhood", "Route & Simulation", "Skill Gaps"]
+        if _personal_mode:
+            _tab_labels.append("My Profile")
+        _tabs = st.tabs(_tab_labels)
+        main_tab_nbhd = _tabs[0]
+        main_tab_route = _tabs[1]
+        main_tab_explain = _tabs[2]
+        main_tab_profile = _tabs[3] if _personal_mode else None
 
-    _top_transfer_sa = (
-        gap_df.assign(overlap=lambda d: np.minimum(d["current_importance"], d["target_importance"]))
-        .sort_values("overlap", ascending=False)["skill"].head(5).tolist()
-    )
-    _top_missing_sa = (
-        gap_df[gap_df["gap"] > 0]
-        .sort_values(["gap", "target_importance"], ascending=False)["skill"].head(4).tolist()
-    )
+        # ── Tab 1: Career Neighborhood ─────────────────────────────
+        with main_tab_nbhd:
+            st.caption("Closest roles to your current occupation — useful stepping-stone candidates.")
 
-    sa_col1, sa_col2, sa_col3 = st.columns([5, 5, 2], gap="small")
-    with sa_col1:
-        if st.button("🤖 AI-curated jobs", use_container_width=True, key="sa_find_jobs"):
-            with st.spinner("AI is curating job matches for you…"):
-                _sa_key = ""
-                try:
-                    _sa_key = str(st.secrets.get("OPENAI_API_KEY", "")).strip()
-                except Exception:
-                    pass
-                st.session_state.smart_apply_jobs = generate_job_listings(
-                    target_role=str(target),
-                    current_role=str(current),
-                    match_score=match_score_display,
-                    top_transfer=_top_transfer_sa,
-                    top_missing=_top_missing_sa,
-                    cv_profile=st.session_state.cv_profile,
-                    n_jobs=4,
-                    model="gpt-4o-mini",
-                    prefer_online=_has_openai_secret(),
-                    api_key=_sa_key or None,
-                )
-                st.session_state.smart_apply_jobs_source = "ai"
-                st.session_state.smart_apply_selected_idx = None
-                st.session_state.smart_apply_package = None
-            st.rerun()
-    with sa_col2:
-        _serp_key = ""
-        try:
-            _serp_key = str(st.secrets.get("SERP_API_KEY", "")).strip()
-        except Exception:
-            pass
-        _real_jobs_btn_label = "🌐 Search live jobs" if _serp_key else "🌐 Live jobs (add SERP_API_KEY)"
-        if st.button(_real_jobs_btn_label, use_container_width=True, key="sa_real_jobs", disabled=not bool(_serp_key)):
-            with st.spinner("Searching live job boards (LinkedIn · Indeed · Glassdoor)…"):
-                _raw_jobs = search_real_jobs(
-                    target_role=str(target),
-                    location="United States",
-                    n_jobs=5,
-                    serp_api_key=_serp_key,
-                )
-                if _raw_jobs and not _raw_jobs[0].get("error"):
-                    st.session_state.smart_apply_jobs = [
-                        real_job_to_listing(r, idx=i, match_score=max(50, match_score_display - 5 + i * 3))
-                        for i, r in enumerate(_raw_jobs)
-                    ]
-                    st.session_state.smart_apply_jobs_source = "real"
-                else:
-                    err = _raw_jobs[0].get("error", "Unknown error") if _raw_jobs else "No results"
-                    st.warning(f"Live job search failed: {err}")
-                st.session_state.smart_apply_selected_idx = None
-                st.session_state.smart_apply_package = None
-            st.rerun()
-    with sa_col3:
-        if st.session_state.smart_apply_jobs:
-            if st.button("Clear", key="clear_smart_apply", type="secondary", use_container_width=True):
-                st.session_state.smart_apply_jobs = None
-                st.session_state.smart_apply_jobs_source = "ai"
-                st.session_state.smart_apply_selected_idx = None
-                st.session_state.smart_apply_package = None
+            show_df = neighbors_df.copy()
+            show_df["match_raw"] = show_df["match_raw"].round(2)
+            show_df["match_percentile"] = show_df["match_percentile"].round(2)
 
-    # ── Job Cards ──────────────────────────────────────────────
-    sa_jobs: Optional[List[JobListing]] = st.session_state.smart_apply_jobs
-    _sa_jobs_source = st.session_state.get("smart_apply_jobs_source", "ai")
-    if sa_jobs:
-        _src_badge = (
-            '<span style="background:#057642;color:#fff;font-size:10px;font-weight:800;'
-            'letter-spacing:0.04em;border-radius:10px;padding:2px 9px;margin-left:8px">'
-            '🟢 LIVE · Google Jobs</span>'
-        ) if _sa_jobs_source == "real" else (
-            '<span style="background:#7B5EA7;color:#fff;font-size:10px;font-weight:800;'
-            'letter-spacing:0.04em;border-radius:10px;padding:2px 9px;margin-left:8px">'
-            '🤖 AI-curated</span>'
-        )
-        st.markdown(
-            f'<div style="font-size:13px;font-weight:700;color:rgba(0,0,0,0.55);margin:16px 0 10px 0;display:flex;align-items:center">'
-            f'{len(sa_jobs)} jobs matched for you · {target}{_src_badge}</div>',
-            unsafe_allow_html=True,
-        )
-
-        _sa_api_key = ""
-        try:
-            _sa_api_key = str(st.secrets.get("OPENAI_API_KEY", "")).strip()
-        except Exception:
-            pass
-
-        for i, job in enumerate(sa_jobs):
-            _match_color = "#117A37" if job.match_score >= 72 else ("#A05A00" if job.match_score >= 52 else "#0A66C2")
-            _match_bar_w = job.match_score
-            _easy = '<span class="li-job-tag li-job-tag-easy">⚡ Easy Apply</span>' if job.is_easy_apply else ""
-            _net = (f'<span class="li-network-note">👥 {job.network_connections} connection{"s" if job.network_connections > 1 else ""} work here</span>'
-                    if job.network_connections > 0 else "")
-            _real_badge = (
-                f'<span style="background:#057642;color:#fff;font-size:9px;font-weight:800;'
-                f'border-radius:8px;padding:1px 7px;margin-left:6px">🟢 LIVE</span>'
-            ) if getattr(job, "is_real_job", False) else ""
-            _via_line = (
-                f'<div class="li-job-detail" style="color:#0A66C2;font-weight:600">'
-                f'via {getattr(job, "apply_source", "")}</div>'
-            ) if getattr(job, "is_real_job", False) and getattr(job, "apply_source", "") else ""
-
-            st.markdown(
-                f'<div class="li-job-card">'
-                f'  <div class="li-job-header">'
-                f'    <div class="li-job-logo">{job.company_emoji}</div>'
-                f'    <div class="li-job-meta">'
-                f'      <div class="li-job-title">{job.title}{_real_badge}</div>'
-                f'      <div class="li-job-company">{job.company}</div>'
-                f'      <div class="li-job-detail">{job.location} · {job.job_type} · {job.salary_range}</div>'
-                f'      {_via_line}'
-                f'      <div class="li-job-detail">{job.seniority}</div>'
-                f'    </div>'
-                f'  </div>'
-                f'  <div class="li-job-tags">'
-                + "".join([f'<span class="li-job-tag">{r}</span>' for r in job.key_requirements[:3]])
-                + _easy
-                + f'  </div>'
-                f'  <div class="li-match-bar-wrap">'
-                f'    <div class="li-match-bar-label">'
-                f'      <span>Profile match</span>'
-                f'      <span style="color:{_match_color};font-weight:800">{job.match_score}%</span>'
-                f'    </div>'
-                f'    <div class="li-match-bar-bg">'
-                f'      <div class="li-match-bar-fill" style="width:{_match_bar_w}%;background:{_match_color}"></div>'
-                f'    </div>'
-                f'  </div>'
-                f'  <div class="li-job-footer">'
-                f'    <span>Posted {job.posted_ago}</span>'
-                f'    <span>{job.applicant_count} applicants</span>'
-                + (_net if _net else "")
-                + f'  </div>'
-                f'</div>',
-                unsafe_allow_html=True,
-            )
-
-            # Apply button per job — real jobs get "Apply Now" external link + package generator
-            _is_real = getattr(job, "is_real_job", False)
-            _apply_link = getattr(job, "apply_link", "")
-            if _is_real and _apply_link:
-                apply_col_a, apply_col_b = st.columns([3, 4])
-            else:
-                apply_col_a, apply_col_b = st.columns([2, 3])
-            with apply_col_a:
-                if st.button(
-                    f"{'⚡ Easy Apply' if job.is_easy_apply else '📄 Generate Application Package'}",
-                    key=f"sa_apply_{i}",
-                    use_container_width=True,
-                ):
-                    with st.spinner(f"Generating your personalised package for {job.company}…"):
-                        st.session_state.smart_apply_selected_idx = i
-                        _pkg = generate_application_package(
-                            job=job,
-                            current_role=str(current),
-                            target_role=str(target),
-                            cv_profile=st.session_state.cv_profile,
-                            top_transfer=_top_transfer_sa,
-                            top_missing=_top_missing_sa,
-                            model="gpt-4o",
-                            prefer_online=_has_openai_secret(),
-                            api_key=_sa_api_key or None,
-                        )
-                        st.session_state.smart_apply_package = _pkg
-                        st.session_state.pkg_quality_eval = None  # reset
-                    with st.spinner("Evaluating application quality…"):
-                        _pkg_eval = evaluate_application_package(
-                            cover_letter=_pkg.cover_letter,
-                            linkedin_inmail=_pkg.linkedin_inmail,
-                            cv_rewrites=[
-                                {"skill_highlighted": r.skill_highlighted, "rewritten": r.rewritten}
-                                for r in _pkg.cv_bullet_rewrites
-                            ],
-                            job_title=job.title,
-                            company=job.company,
-                            job_description=getattr(job, "full_description", ""),
-                            cv_text=st.session_state.cv_text or "",
-                            model="gpt-4o-mini",
-                            prefer_online=_has_openai_secret(),
-                            api_key=_sa_api_key or None,
-                        )
-                        st.session_state.pkg_quality_eval = _pkg_eval
-                    st.rerun()
-            if _is_real and _apply_link:
-                with apply_col_b:
-                    st.link_button(
-                        "🔗 Apply Now",
-                        url=_apply_link,
-                        use_container_width=True,
-                    )
-
-            # Show package if this is the selected job
-            pkg: Optional[ApplicationPackage] = st.session_state.smart_apply_package
-            _pkg_eval = st.session_state.pkg_quality_eval
-            if pkg and st.session_state.smart_apply_selected_idx == i:
-                # ── Quality score header ─────────────────────────────────
-                _eval_html = ""
-                if _pkg_eval:
-                    _qs = _pkg_eval.get("overall_score", 0)
-                    _qc = "#117A37" if _qs >= 75 else ("#A05A00" if _qs >= 55 else "#B71C1C")
-                    _ql = "Strong" if _qs >= 75 else ("Acceptable" if _qs >= 55 else "Needs work")
-                    _dims = _pkg_eval.get("dimension_scores", {})
-                    _verdict = _pkg_eval.get("one_line_verdict", "")
-                    _regen_note = (
-                        '<span style="background:#FFF3CD;color:#856404;font-size:10px;font-weight:700;'
-                        'border-radius:8px;padding:2px 8px;margin-left:6px">⚠ Regenerate recommended</span>'
-                        if _pkg_eval.get("regenerate_recommended") else ""
-                    )
-                    _dim_pills = "".join([
-                        f'<span style="background:{("#E7F6EC" if v>=75 else ("#FFF8E7" if v>=55 else "#FEECEC"))};'
-                        f'color:{("#117A37" if v>=75 else ("#A05A00" if v>=55 else "#B71C1C"))};'
-                        f'font-size:10px;font-weight:700;border-radius:8px;padding:2px 7px">'
-                        f'{k.replace("_"," ").title()} {v}</span>'
-                        for k, v in _dims.items()
-                    ])
-                    _eval_html = (
-                        f'<div style="margin-top:10px;padding-top:10px;border-top:1px solid rgba(10,102,194,0.15)">'
-                        f'<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'
-                        f'<span style="font-size:10px;font-weight:800;letter-spacing:0.06em;text-transform:uppercase;color:rgba(0,0,0,0.4)">AI Quality Evaluation</span>'
-                        f'<span style="font-size:18px;font-weight:900;color:{_qc}">{_qs}</span>'
-                        f'<span style="font-size:11px;font-weight:700;color:{_qc}">/100 · {_ql}</span>'
-                        f'{_regen_note}'
-                        f'</div>'
-                        f'<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px">{_dim_pills}</div>'
-                        f'<div style="font-size:12px;color:rgba(0,0,0,0.6);font-style:italic">{_verdict}</div>'
-                        f'</div>'
-                    )
+            # Summary chips above table
+            if not show_df.empty:
+                top_match = show_df.iloc[0]
                 st.markdown(
-                    f'<div style="background:#EEF3FB;border-radius:10px;padding:16px 20px;margin:8px 0 16px 0;">'
-                    f'<div style="font-size:10px;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;'
-                    f'color:#0A66C2;margin-bottom:4px">Application Package · {pkg.job_title} @ {pkg.company}</div>'
-                    f'<div style="font-size:13px;font-weight:600;color:rgba(0,0,0,0.75);font-style:italic;line-height:1.5">'
-                    f'"{pkg.positioning_statement}"</div>'
-                    f'{_eval_html}</div>',
+                    f'<span class="status-pill status-ok">Top match: {str(top_match["occupation"])[:35]} ({float(top_match["match_percentile"]):.0f}th pct)</span>'
+                    f'<span class="status-pill status-warn">{len(show_df)} neighbors found</span>',
                     unsafe_allow_html=True,
                 )
-
-                pkg_tab1, pkg_tab2, pkg_tab3, pkg_tab4 = st.tabs(
-                    ["📄 Cover Letter", "✏️ CV Rewrites", "💬 LinkedIn InMail", "🎯 Interview Prep"]
-                )
-
-                with pkg_tab1:
-                    st.markdown(
-                        f'<div class="li-pkg-section"><div class="li-pkg-label">Cover Letter</div>'
-                        f'<div style="font-size:13px;line-height:1.75;white-space:pre-wrap;color:rgba(0,0,0,0.8)">'
-                        f'{pkg.cover_letter}</div></div>',
-                        unsafe_allow_html=True,
-                    )
-                    st.download_button(
-                        "Download cover letter",
-                        data=pkg.cover_letter,
-                        file_name=f"cover_letter_{job.company.replace(' ', '_')}.txt",
-                        mime="text/plain",
-                        key=f"dl_cover_{i}",
-                    )
-
-                with pkg_tab2:
-                    st.markdown(
-                        '<div class="li-pkg-section"><div class="li-pkg-label">CV Bullet Rewrites</div>'
-                        '<div style="font-size:12px;color:rgba(0,0,0,0.5);margin-bottom:12px">'
-                        'Before → After · Optimised for this specific role</div></div>',
-                        unsafe_allow_html=True,
-                    )
-                    for rewrite in pkg.cv_bullet_rewrites:
-                        st.markdown(
-                            f'<div style="margin-bottom:16px">'
-                            f'<div style="font-size:11px;font-weight:700;color:#0A66C2;text-transform:uppercase;'
-                            f'letter-spacing:0.05em;margin-bottom:6px">Skill targeted: {rewrite.skill_highlighted}</div>'
-                            f'<div class="li-cv-rewrite">'
-                            f'<div class="li-cv-before"><strong style="font-size:10px;text-transform:uppercase;color:rgba(0,0,0,0.45)">Before</strong><br>{rewrite.original}</div>'
-                            f'<div class="li-cv-after"><strong style="font-size:10px;text-transform:uppercase;color:#117A37">After</strong><br>{rewrite.rewritten}</div>'
-                            f'</div>'
-                            f'<div style="font-size:11px;color:rgba(0,0,0,0.5);margin-top:4px;font-style:italic">💡 {rewrite.why}</div>'
-                            f'</div>',
-                            unsafe_allow_html=True,
-                        )
-
-                with pkg_tab3:
-                    st.markdown(
-                        f'<div class="li-pkg-section"><div class="li-pkg-label">LinkedIn InMail to {job.hiring_manager_name}, {job.hiring_manager_title}</div>'
-                        f'<div style="font-size:13px;line-height:1.75;white-space:pre-wrap;color:rgba(0,0,0,0.8)">'
-                        f'{pkg.linkedin_inmail}</div></div>',
-                        unsafe_allow_html=True,
-                    )
-                    st.download_button(
-                        "Download InMail",
-                        data=pkg.linkedin_inmail,
-                        file_name=f"inmail_{job.hiring_manager_name.replace(' ', '_')}.txt",
-                        mime="text/plain",
-                        key=f"dl_inmail_{i}",
-                    )
-
-                with pkg_tab4:
-                    for qi, q in enumerate(pkg.interview_prep, 1):
-                        with st.expander(f"Q{qi}: {q.get('question', '')}", expanded=qi == 1):
-                            st.markdown(
-                                f'<div class="li-pkg-section">'
-                                f'<div class="li-pkg-label">Model Answer Strategy</div>'
-                                f'<div style="font-size:13px;line-height:1.65;color:rgba(0,0,0,0.8)">{q.get("model_answer","")}</div>'
-                                f'</div>'
-                                f'<div style="font-size:12px;color:rgba(0,0,0,0.5);margin-top:8px;font-style:italic">'
-                                f'Why asked: {q.get("why_asked","")}</div>',
-                                unsafe_allow_html=True,
-                            )
-
                 st.markdown("<div style='margin-bottom:8px'></div>", unsafe_allow_html=True)
 
-    # ── Pivot Peers — social proof ──────────────────────────────
-    st.divider()
-    st.markdown(
-        '<div style="font-size:16px;font-weight:800;color:rgba(0,0,0,0.88);margin-bottom:4px">'
-        '👥 People who made this pivot</div>'
-        '<div style="font-size:13px;color:rgba(0,0,0,0.55);margin-bottom:14px">'
-        'Anonymised success stories from professionals who transitioned from '
-        f'{current} → {target}</div>',
-        unsafe_allow_html=True,
-    )
-    pp_col1, pp_col2 = st.columns([2, 1], gap="small")
-    with pp_col1:
-        if st.button("Show pivot peers", use_container_width=True, key="sa_pivot_peers"):
-            with st.spinner("Finding peer success stories…"):
-                _pp_key = ""
-                try:
-                    _pp_key = str(st.secrets.get("OPENAI_API_KEY", "")).strip()
-                except Exception:
-                    pass
-                _route_steps = None
-                if st.session_state.route_result and st.session_state.route_result.get("reachable"):
-                    _route_steps = st.session_state.route_result.get("path", [])
-                st.session_state.pivot_peers = generate_pivot_peers(
-                    current_role=str(current),
-                    target_role=str(target),
-                    match_score=match_score_display,
-                    route_steps=_route_steps,
-                    n_peers=3,
-                    model="gpt-4o-mini",
-                    prefer_online=_has_openai_secret(),
-                    api_key=_pp_key or None,
-                )
-            st.rerun()
-    with pp_col2:
-        if st.session_state.pivot_peers:
-            if st.button("Clear", key="clear_peers", type="secondary", use_container_width=True):
-                st.session_state.pivot_peers = None
-
-    peers_list: Optional[List[PivotPeer]] = st.session_state.pivot_peers
-    if peers_list:
-        peers_html = '<div class="li-peers-wrap">'
-        for peer in peers_list:
-            degree_label = f"• {peer.connection_degree}nd connection" if peer.connection_degree == 2 else "• 1st connection"
-            peers_html += (
-                f'<div class="li-peer">'
-                f'  <div class="li-peer-avatar" style="background:{peer.avatar_color}">{peer.initials}</div>'
-                f'  <div class="li-peer-body">'
-                f'    <div style="display:flex;justify-content:space-between;align-items:flex-start">'
-                f'      <div>'
-                f'        <div class="li-peer-name">{peer.name}</div>'
-                f'        <div class="li-peer-path">{peer.previous_role} → {peer.current_role}</div>'
-                f'        <div class="li-peer-company">{peer.current_role} at {peer.company_now}</div>'
-                f'      </div>'
-                f'      <span class="li-peer-timing">{peer.months_to_pivot} months</span>'
-                f'    </div>'
-                f'    <div class="li-peer-milestone">🔑 {peer.key_milestone}</div>'
-                f'    <div class="li-peer-quote">"{peer.testimonial}"</div>'
-                f'    <div class="li-degree">{degree_label}</div>'
-                f'  </div>'
-                f'</div>'
+            _render_table_card(
+                show_df,
+                columns=["occupation", "match_percentile", "match_raw"],
+                headers=["Occupation", "Match (pct)", "Match (raw)"],
+                numeric_cols=["match_percentile", "match_raw"],
             )
-        peers_html += '</div>'
-        st.markdown(peers_html, unsafe_allow_html=True)
 
+            st.markdown("**Set a stepping-stone as target**")
+            if show_df.empty:
+                st.info("No recommendations available.")
+            else:
+                label_to_occ: Dict[str, str] = {}
+                options = []
+                for _, r in show_df.head(8).iterrows():
+                    occ = str(r["occupation"])
+                    label = f"{occ} — {float(r['match_percentile']):.0f} pct"
+                    options.append(label)
+                    label_to_occ[label] = occ
 
-st.markdown(
-    '<div class="li-phase"><div class="li-phase-line"></div>'
-    '<div class="li-phase-text">Skill Analysis · Your pivot profile</div>'
-    '<div class="li-phase-line"></div></div>',
-    unsafe_allow_html=True,
-)
-# ============================================================
-# Main layout — tabbed
-# ============================================================
-with st.container(border=True):
-    _tab_labels = ["Career Neighborhood", "Route & Simulation", "Skill Gaps"]
-    if _personal_mode:
-        _tab_labels.append("My Profile")
-    _tabs = st.tabs(_tab_labels)
-    main_tab_nbhd = _tabs[0]
-    main_tab_route = _tabs[1]
-    main_tab_explain = _tabs[2]
-    main_tab_profile = _tabs[3] if _personal_mode else None
+                pick = st.selectbox("Recommended targets", options=options, index=0, label_visibility="collapsed")
+                if st.button("Use as target →", use_container_width=True):
+                    st.session_state.target_override = label_to_occ[pick]
+                    st.session_state.has_run = True
+                    st.session_state.route_result = None
+                    st.session_state.review_board_strategies = None
+                    st.session_state.review_board_evaluations = None
+                    st.session_state.review_board_consensus = None
+                    st.session_state.review_board_judge_memo = None
+                    st.rerun()
 
-    # ── Tab 1: Career Neighborhood ─────────────────────────────
-    with main_tab_nbhd:
-        st.caption("Closest roles to your current occupation — useful stepping-stone candidates.")
+        # ── Tab 2: Route & Simulation ──────────────────────────────
+        with main_tab_route:
+            route_col, sim_col = st.columns([1, 1], gap="large")
 
-        show_df = neighbors_df.copy()
-        show_df["match_raw"] = show_df["match_raw"].round(2)
-        show_df["match_percentile"] = show_df["match_percentile"].round(2)
+            with route_col:
+                st.markdown("**Stepping-stone route**")
+                if guided:
+                    st.caption("Find intermediate roles that make the pivot more realistic.")
+                    col_a, col_b = st.columns([1, 1])
+                    with col_a:
+                        if st.button("Find route", use_container_width=True):
+                            with st.spinner("Finding a route..."):
+                                st.session_state.route_result = find_pivot_path(
+                                    mat,
+                                    start_occ=str(current),
+                                    target_occ=str(target),
+                                    k_neighbors=12,
+                                    max_steps=6,
+                                )
+                    with col_b:
+                        if st.button("Reset", use_container_width=True, key="reset_route_guided", type="secondary"):
+                            st.session_state.route_result = None
+                else:
+                    st.caption("Research mode: custom graph settings from the sidebar.")
+                    col_a, col_b = st.columns([1, 1])
+                    with col_a:
+                        if st.button("Find route", use_container_width=True):
+                            cfg = st.session_state.route_config
+                            with st.spinner("Finding a route..."):
+                                st.session_state.route_result = find_pivot_path(
+                                    mat,
+                                    start_occ=str(current),
+                                    target_occ=str(target),
+                                    k_neighbors=int(cfg["k_neighbors"]),
+                                    max_steps=int(cfg["max_steps"]),
+                                )
+                    with col_b:
+                        if st.button("Reset", use_container_width=True, key="reset_route_research", type="secondary"):
+                            st.session_state.route_result = None
 
-        # Summary chips above table
-        if not show_df.empty:
-            top_match = show_df.iloc[0]
+                route = st.session_state.route_result
+                if not route:
+                    st.info("Route not computed yet.")
+                elif not route.get("reachable"):
+                    st.warning("No route found with the current assumptions.")
+                else:
+                    path = route.get("path", [])
+                    if path:
+                        # Visual path display
+                        path_html = " <span style='color:#0A66C2;font-weight:800'>→</span> ".join(
+                            [f"<span style='font-weight:600'>{p}</span>" for p in path]
+                        )
+                        st.markdown(
+                            f'<div style="background:#EEF3FB;border-radius:8px;padding:12px 16px;font-size:13px;margin-top:8px">{path_html}</div>',
+                            unsafe_allow_html=True,
+                        )
+                        st.caption(f"{len(path)} steps · {len(path)-1} hops")
+                    else:
+                        st.success("Route computed.")
+
+            with sim_col:
+                st.markdown("**Skill investment simulator**")
+                st.caption("Counterfactual: how much does the match improve if you close selected gaps?")
+
+                sim_candidates_df = suggest_best_investment_skills(gap_df, top_k=8)
+
+                if sim_candidates_df.empty:
+                    st.info("No positive skill gaps available for simulation.")
+                else:
+                    skill_options = sim_candidates_df["skill"].astype(str).tolist()
+                    default_pick = skill_options[: min(3, len(skill_options))]
+
+                    selected_sim_skills = st.multiselect(
+                        "Skills to improve",
+                        options=skill_options,
+                        default=default_pick,
+                        label_visibility="collapsed",
+                    )
+
+                    uplift_ratio = st.slider(
+                        "Gap closure %",
+                        min_value=0.10,
+                        max_value=1.00,
+                        value=0.50,
+                        step=0.05,
+                        format="%.0f%%",
+                        help="How much of each skill gap you close",
+                    )
+
+                    q1, q2 = st.columns([2, 1])
+                    with q1:
+                        if st.button("Run simulation", use_container_width=True):
+                            st.session_state.sim_result = simulate_skill_investment(
+                                mat,
+                                current_role=str(current),
+                                target_role=str(target),
+                                selected_skills=selected_sim_skills,
+                                uplift_ratio=float(uplift_ratio),
+                            )
+                    with q2:
+                        if st.button("Clear", use_container_width=True, key="clear_sim", type="secondary"):
+                            st.session_state.sim_result = None
+
+                sim_result = st.session_state.sim_result
+                if sim_result:
+                    st.divider()
+                    before = float(sim_result.get("similarity_before", 0))
+                    after = float(sim_result.get("similarity_after", 0))
+                    delta = after - before
+                    s1, s2, s3 = st.columns(3)
+                    s1.metric("Before", f"{before:.1f}")
+                    s2.metric("After", f"{after:.1f}", delta=f"+{delta:.1f}" if delta > 0 else f"{delta:.1f}")
+                    s3.metric("Skills invested", len(sim_result.get("invested_skills", [])))
+
+        # ── Tab 3: Skill Gaps ──────────────────────────────────────
+        with main_tab_explain:
+            st.caption("High-signal view: what transfers versus what blocks this pivot.")
+
+            n_missing = int((gap_df["gap"] > 0).sum()) if not gap_df.empty else 0
+            n_transfer = len(gap_df) - n_missing if not gap_df.empty else 0
             st.markdown(
-                f'<span class="status-pill status-ok">Top match: {str(top_match["occupation"])[:35]} ({float(top_match["match_percentile"]):.0f}th pct)</span>'
-                f'<span class="status-pill status-warn">{len(show_df)} neighbors found</span>',
+                f'<span class="status-pill status-ok">{n_transfer} transferable skills</span>'
+                f'<span class="status-pill status-challenge">{n_missing} skill gaps</span>',
                 unsafe_allow_html=True,
             )
             st.markdown("<div style='margin-bottom:8px'></div>", unsafe_allow_html=True)
 
-        _render_table_card(
-            show_df,
-            columns=["occupation", "match_percentile", "match_raw"],
-            headers=["Occupation", "Match (pct)", "Match (raw)"],
-            numeric_cols=["match_percentile", "match_raw"],
-        )
+            c1, c2 = st.columns(2, gap="large")
 
-        st.markdown("**Set a stepping-stone as target**")
-        if show_df.empty:
-            st.info("No recommendations available.")
-        else:
-            label_to_occ: Dict[str, str] = {}
-            options = []
-            for _, r in show_df.head(8).iterrows():
-                occ = str(r["occupation"])
-                label = f"{occ} — {float(r['match_percentile']):.0f} pct"
-                options.append(label)
-                label_to_occ[label] = occ
+            with c1:
+                st.markdown("**Top transferable skills**")
+                top_transfer = gap_df.copy()
+                top_transfer["overlap"] = np.minimum(top_transfer["current_importance"], top_transfer["target_importance"])
+                top_transfer = top_transfer.sort_values("overlap", ascending=False).head(10)
 
-            pick = st.selectbox("Recommended targets", options=options, index=0, label_visibility="collapsed")
-            if st.button("Use as target →", use_container_width=True):
-                st.session_state.target_override = label_to_occ[pick]
-                st.session_state.has_run = True
-                st.session_state.route_result = None
-                st.session_state.review_board_strategies = None
-                st.session_state.review_board_evaluations = None
-                st.session_state.review_board_consensus = None
-                st.session_state.review_board_judge_memo = None
-                st.rerun()
-
-    # ── Tab 2: Route & Simulation ──────────────────────────────
-    with main_tab_route:
-        route_col, sim_col = st.columns([1, 1], gap="large")
-
-        with route_col:
-            st.markdown("**Stepping-stone route**")
-            if guided:
-                st.caption("Find intermediate roles that make the pivot more realistic.")
-                col_a, col_b = st.columns([1, 1])
-                with col_a:
-                    if st.button("Find route", use_container_width=True):
-                        with st.spinner("Finding a route..."):
-                            st.session_state.route_result = find_pivot_path(
-                                mat,
-                                start_occ=str(current),
-                                target_occ=str(target),
-                                k_neighbors=12,
-                                max_steps=6,
-                            )
-                with col_b:
-                    if st.button("Reset", use_container_width=True, key="reset_route_guided", type="secondary"):
-                        st.session_state.route_result = None
-            else:
-                st.caption("Research mode: custom graph settings from the sidebar.")
-                col_a, col_b = st.columns([1, 1])
-                with col_a:
-                    if st.button("Find route", use_container_width=True):
-                        cfg = st.session_state.route_config
-                        with st.spinner("Finding a route..."):
-                            st.session_state.route_result = find_pivot_path(
-                                mat,
-                                start_occ=str(current),
-                                target_occ=str(target),
-                                k_neighbors=int(cfg["k_neighbors"]),
-                                max_steps=int(cfg["max_steps"]),
-                            )
-                with col_b:
-                    if st.button("Reset", use_container_width=True, key="reset_route_research", type="secondary"):
-                        st.session_state.route_result = None
-
-            route = st.session_state.route_result
-            if not route:
-                st.info("Route not computed yet.")
-            elif not route.get("reachable"):
-                st.warning("No route found with the current assumptions.")
-            else:
-                path = route.get("path", [])
-                if path:
-                    # Visual path display
-                    path_html = " <span style='color:#0A66C2;font-weight:800'>→</span> ".join(
-                        [f"<span style='font-weight:600'>{p}</span>" for p in path]
-                    )
-                    st.markdown(
-                        f'<div style="background:#EEF3FB;border-radius:8px;padding:12px 16px;font-size:13px;margin-top:8px">{path_html}</div>',
-                        unsafe_allow_html=True,
-                    )
-                    st.caption(f"{len(path)} steps · {len(path)-1} hops")
-                else:
-                    st.success("Route computed.")
-
-        with sim_col:
-            st.markdown("**Skill investment simulator**")
-            st.caption("Counterfactual: how much does the match improve if you close selected gaps?")
-
-            sim_candidates_df = suggest_best_investment_skills(gap_df, top_k=8)
-
-            if sim_candidates_df.empty:
-                st.info("No positive skill gaps available for simulation.")
-            else:
-                skill_options = sim_candidates_df["skill"].astype(str).tolist()
-                default_pick = skill_options[: min(3, len(skill_options))]
-
-                selected_sim_skills = st.multiselect(
-                    "Skills to improve",
-                    options=skill_options,
-                    default=default_pick,
-                    label_visibility="collapsed",
-                )
-
-                uplift_ratio = st.slider(
-                    "Gap closure %",
-                    min_value=0.10,
-                    max_value=1.00,
-                    value=0.50,
-                    step=0.05,
-                    format="%.0f%%",
-                    help="How much of each skill gap you close",
-                )
-
-                q1, q2 = st.columns([2, 1])
-                with q1:
-                    if st.button("Run simulation", use_container_width=True):
-                        st.session_state.sim_result = simulate_skill_investment(
-                            mat,
-                            current_role=str(current),
-                            target_role=str(target),
-                            selected_skills=selected_sim_skills,
-                            uplift_ratio=float(uplift_ratio),
-                        )
-                with q2:
-                    if st.button("Clear", use_container_width=True, key="clear_sim", type="secondary"):
-                        st.session_state.sim_result = None
-
-            sim_result = st.session_state.sim_result
-            if sim_result:
-                st.divider()
-                before = float(sim_result.get("similarity_before", 0))
-                after = float(sim_result.get("similarity_after", 0))
-                delta = after - before
-                s1, s2, s3 = st.columns(3)
-                s1.metric("Before", f"{before:.1f}")
-                s2.metric("After", f"{after:.1f}", delta=f"+{delta:.1f}" if delta > 0 else f"{delta:.1f}")
-                s3.metric("Skills invested", len(sim_result.get("invested_skills", [])))
-
-    # ── Tab 3: Skill Gaps ──────────────────────────────────────
-    with main_tab_explain:
-        st.caption("High-signal view: what transfers versus what blocks this pivot.")
-
-        n_missing = int((gap_df["gap"] > 0).sum()) if not gap_df.empty else 0
-        n_transfer = len(gap_df) - n_missing if not gap_df.empty else 0
-        st.markdown(
-            f'<span class="status-pill status-ok">{n_transfer} transferable skills</span>'
-            f'<span class="status-pill status-challenge">{n_missing} skill gaps</span>',
-            unsafe_allow_html=True,
-        )
-        st.markdown("<div style='margin-bottom:8px'></div>", unsafe_allow_html=True)
-
-        c1, c2 = st.columns(2, gap="large")
-
-        with c1:
-            st.markdown("**Top transferable skills**")
-            top_transfer = gap_df.copy()
-            top_transfer["overlap"] = np.minimum(top_transfer["current_importance"], top_transfer["target_importance"])
-            top_transfer = top_transfer.sort_values("overlap", ascending=False).head(10)
-
-            _render_table_card(
-                top_transfer,
-                columns=["skill", "current_importance", "target_importance", "overlap"],
-                headers=["Skill", "Current", "Target", "Overlap"],
-                numeric_cols=["current_importance", "target_importance", "overlap"],
-            )
-
-        with c2:
-            st.markdown("**Top missing skills**")
-            top_missing = gap_df[gap_df["gap"] > 0].sort_values(["gap", "target_importance"], ascending=False).head(10)
-            if top_missing.empty:
-                st.success("No missing skills detected.")
-            else:
                 _render_table_card(
-                    top_missing,
-                    columns=["skill", "current_importance", "target_importance", "gap"],
-                    headers=["Skill", "Current", "Target", "Gap"],
-                    numeric_cols=["current_importance", "target_importance", "gap"],
+                    top_transfer,
+                    columns=["skill", "current_importance", "target_importance", "overlap"],
+                    headers=["Skill", "Current", "Target", "Overlap"],
+                    numeric_cols=["current_importance", "target_importance", "overlap"],
                 )
 
-        # ── Skill gap visual chart ────────────────────────────────
-        if not gap_df.empty:
-            _chart_df = gap_df.copy()
-            _chart_df["overlap"] = np.minimum(
-                _chart_df["current_importance"], _chart_df["target_importance"]
-            )
-            _top_skills = (
-                _chart_df.assign(
-                    abs_target=_chart_df["target_importance"]
-                ).sort_values("abs_target", ascending=False).head(14)
-            )
-            _fig_gap = go.Figure()
-            _fig_gap.add_trace(go.Bar(
-                name="You have",
-                x=_top_skills["skill"],
-                y=_top_skills["current_importance"],
-                marker_color="#0A66C2",
-                hovertemplate="%{x}<br>Your level: %{y:.1f}<extra></extra>",
-            ))
-            _fig_gap.add_trace(go.Bar(
-                name="Role requires",
-                x=_top_skills["skill"],
-                y=(_top_skills["target_importance"] - _top_skills["current_importance"]).clip(lower=0),
-                base=_top_skills["current_importance"],
-                marker_color="rgba(183,28,28,0.35)",
-                hovertemplate="%{x}<br>Gap: %{y:.1f}<extra></extra>",
-            ))
-            _fig_gap.update_layout(
-                barmode="stack",
-                height=240,
-                margin=dict(l=0, r=0, t=28, b=60),
-                paper_bgcolor="rgba(0,0,0,0)",
-                plot_bgcolor="rgba(0,0,0,0)",
-                title=dict(
-                    text="Skill profile: your level (blue) vs. gap to close (red) · Top 14 skills by target importance",
-                    font_size=11, font_color="rgba(0,0,0,0.45)", x=0,
-                ),
-                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1,
-                            font_size=11),
-                xaxis=dict(tickfont_size=10, tickangle=-30, showgrid=False),
-                yaxis=dict(showgrid=True, gridcolor="rgba(0,0,0,0.06)", zeroline=False,
-                           title=dict(text="O*NET level (0–7)", font_size=10)),
-            )
-            st.plotly_chart(_fig_gap, use_container_width=True, config={"displayModeBar": False})
-
-    # ── Tab 4: My Profile (only when CV loaded) ────────────────
-    if _personal_mode and main_tab_profile is not None and _cv_profile:
-        with main_tab_profile:
-            p = _cv_profile
-            st.caption("Your extracted skill profile, mapped to the O*NET skill space.")
-
-            # Header metrics
-            pm1, pm2, pm3, pm4 = st.columns(4)
-            pm1.metric("Role (from CV)", str(p.get("extracted_role", "—") or "—")[:25])
-            pm2.metric("Experience", f"{p.get('years_experience', 0):.0f} years")
-            pm3.metric("Education", str(p.get("education_level", "—") or "—")[:20])
-            pm4.metric("Skills mapped", f"{p.get('skills_mapped_count', 0)} / {len(mat.columns)}")
-
-            conf_val = float(p.get("confidence", 0))
-            conf_cls = "status-ok" if conf_val >= 0.7 else ("status-warn" if conf_val >= 0.4 else "status-challenge")
-            st.markdown(
-                f'<span class="status-pill {conf_cls}">Extraction confidence: {conf_val:.0%}</span>'
-                f'<span class="status-pill status-ok">Source: {p.get("source","?")}</span>',
-                unsafe_allow_html=True,
-            )
-            st.markdown("<div style='margin-bottom:12px'></div>", unsafe_allow_html=True)
-
-            # Top skills
-            top_skills = p.get("top_skills", [])
-            if top_skills:
-                st.markdown("**Your strongest skills (O*NET mapped)**")
-                vec = p.get("skill_vector")
-                if vec is not None:
-                    top_df = pd.DataFrame({
-                        "skill": top_skills,
-                        "your_level": [round(float(vec[s]), 2) if s in vec.index else 0.0 for s in top_skills],
-                        "target_level": [
-                            round(float(mat.loc[str(target), s]), 2)
-                            if str(target) in mat.index and s in mat.columns else 0.0
-                            for s in top_skills
-                        ],
-                    })
-                    top_df["gap"] = (top_df["target_level"] - top_df["your_level"]).clip(lower=0).round(2)
+            with c2:
+                st.markdown("**Top missing skills**")
+                top_missing = gap_df[gap_df["gap"] > 0].sort_values(["gap", "target_importance"], ascending=False).head(10)
+                if top_missing.empty:
+                    st.success("No missing skills detected.")
+                else:
                     _render_table_card(
-                        top_df,
-                        columns=["skill", "your_level", "target_level", "gap"],
-                        headers=["Skill", "Your Level", "Target Level", "Gap"],
-                        numeric_cols=["your_level", "target_level", "gap"],
+                        top_missing,
+                        columns=["skill", "current_importance", "target_importance", "gap"],
+                        headers=["Skill", "Current", "Target", "Gap"],
+                        numeric_cols=["current_importance", "target_importance", "gap"],
                     )
 
-            # Raw extracted skills
-            raw = p.get("extracted_skills_raw", [])
-            if raw:
-                with st.expander("Raw extracted skills from CV", expanded=False):
-                    raw_df = pd.DataFrame(raw)
-                    if not raw_df.empty and "skill" in raw_df.columns:
+            # ── Skill gap visual chart ────────────────────────────────
+            if not gap_df.empty:
+                _chart_df = gap_df.copy()
+                _chart_df["overlap"] = np.minimum(
+                    _chart_df["current_importance"], _chart_df["target_importance"]
+                )
+                _top_skills = (
+                    _chart_df.assign(
+                        abs_target=_chart_df["target_importance"]
+                    ).sort_values("abs_target", ascending=False).head(14)
+                )
+                _fig_gap = go.Figure()
+                _fig_gap.add_trace(go.Bar(
+                    name="You have",
+                    x=_top_skills["skill"],
+                    y=_top_skills["current_importance"],
+                    marker_color="#0A66C2",
+                    hovertemplate="%{x}<br>Your level: %{y:.1f}<extra></extra>",
+                ))
+                _fig_gap.add_trace(go.Bar(
+                    name="Role requires",
+                    x=_top_skills["skill"],
+                    y=(_top_skills["target_importance"] - _top_skills["current_importance"]).clip(lower=0),
+                    base=_top_skills["current_importance"],
+                    marker_color="rgba(183,28,28,0.35)",
+                    hovertemplate="%{x}<br>Gap: %{y:.1f}<extra></extra>",
+                ))
+                _fig_gap.update_layout(
+                    barmode="stack",
+                    height=240,
+                    margin=dict(l=0, r=0, t=28, b=60),
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    plot_bgcolor="rgba(0,0,0,0)",
+                    title=dict(
+                        text="Skill profile: your level (blue) vs. gap to close (red) · Top 14 skills by target importance",
+                        font_size=11, font_color="rgba(0,0,0,0.45)", x=0,
+                    ),
+                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1,
+                                font_size=11),
+                    xaxis=dict(tickfont_size=10, tickangle=-30, showgrid=False),
+                    yaxis=dict(showgrid=True, gridcolor="rgba(0,0,0,0.06)", zeroline=False,
+                               title=dict(text="O*NET level (0–7)", font_size=10)),
+                )
+                st.plotly_chart(_fig_gap, use_container_width=True, config={"displayModeBar": False})
+
+        # ── Tab 4: My Profile (only when CV loaded) ────────────────
+        if _personal_mode and main_tab_profile is not None and _cv_profile:
+            with main_tab_profile:
+                p = _cv_profile
+                st.caption("Your extracted skill profile, mapped to the O*NET skill space.")
+
+                # Header metrics
+                pm1, pm2, pm3, pm4 = st.columns(4)
+                pm1.metric("Role (from CV)", str(p.get("extracted_role", "—") or "—")[:25])
+                pm2.metric("Experience", f"{p.get('years_experience', 0):.0f} years")
+                pm3.metric("Education", str(p.get("education_level", "—") or "—")[:20])
+                pm4.metric("Skills mapped", f"{p.get('skills_mapped_count', 0)} / {len(mat.columns)}")
+
+                conf_val = float(p.get("confidence", 0))
+                conf_cls = "status-ok" if conf_val >= 0.7 else ("status-warn" if conf_val >= 0.4 else "status-challenge")
+                st.markdown(
+                    f'<span class="status-pill {conf_cls}">Extraction confidence: {conf_val:.0%}</span>'
+                    f'<span class="status-pill status-ok">Source: {p.get("source","?")}</span>',
+                    unsafe_allow_html=True,
+                )
+                st.markdown("<div style='margin-bottom:12px'></div>", unsafe_allow_html=True)
+
+                # Top skills
+                top_skills = p.get("top_skills", [])
+                if top_skills:
+                    st.markdown("**Your strongest skills (O*NET mapped)**")
+                    vec = p.get("skill_vector")
+                    if vec is not None:
+                        top_df = pd.DataFrame({
+                            "skill": top_skills,
+                            "your_level": [round(float(vec[s]), 2) if s in vec.index else 0.0 for s in top_skills],
+                            "target_level": [
+                                round(float(mat.loc[str(target), s]), 2)
+                                if str(target) in mat.index and s in mat.columns else 0.0
+                                for s in top_skills
+                            ],
+                        })
+                        top_df["gap"] = (top_df["target_level"] - top_df["your_level"]).clip(lower=0).round(2)
                         _render_table_card(
-                            raw_df,
-                            columns=[c for c in ["skill", "level", "evidence"] if c in raw_df.columns],
-                            headers=[c.title() for c in ["skill", "level", "evidence"] if c in raw_df.columns],
+                            top_df,
+                            columns=["skill", "your_level", "target_level", "gap"],
+                            headers=["Skill", "Your Level", "Target Level", "Gap"],
+                            numeric_cols=["your_level", "target_level", "gap"],
                         )
 
+                # Raw extracted skills
+                raw = p.get("extracted_skills_raw", [])
+                if raw:
+                    with st.expander("Raw extracted skills from CV", expanded=False):
+                        raw_df = pd.DataFrame(raw)
+                        if not raw_df.empty and "skill" in raw_df.columns:
+                            _render_table_card(
+                                raw_df,
+                                columns=[c for c in ["skill", "level", "evidence"] if c in raw_df.columns],
+                                headers=[c.title() for c in ["skill", "level", "evidence"] if c in raw_df.columns],
+                            )
 
 
 
-st.markdown(
-    '<div class="li-phase"><div class="li-phase-line"></div>'
-    '<div class="li-phase-text">Prepare · Close your skill gaps</div>'
-    '<div class="li-phase-line"></div></div>',
-    unsafe_allow_html=True,
-)
-# ============================================================
-# LLM Learning Plan
-# ============================================================
-with st.container(border=True):
+
+
+with _tab_plan:
     st.markdown(
-        '<div class="li-tool-header">'
-        '<div class="li-tool-icon" style="background:#EEF3FB">🧠</div>'
-        '<div><div class="li-tool-title">AI Learning Plan</div>'
-        '<div class="li-tool-cap">Personalised upskilling roadmap based on your skill gaps</div></div>'
-        '</div>',
+        '<div class="li-phase"><div class="li-phase-line"></div>'
+        '<div class="li-phase-text">Prepare · Close your skill gaps</div>'
+        '<div class="li-phase-line"></div></div>',
         unsafe_allow_html=True,
     )
+    # ============================================================
+    # LLM Learning Plan
+    # ============================================================
+    with st.container(border=True):
+        st.markdown(
+            '<div class="li-tool-header">'
+            '<div class="li-tool-icon" style="background:#EEF3FB">🧠</div>'
+            '<div><div class="li-tool-title">AI Learning Plan</div>'
+            '<div class="li-tool-cap">Personalised upskilling roadmap based on your skill gaps</div></div>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
 
-    lp1, lp2 = st.columns([2, 1], gap="small")
+        lp1, lp2 = st.columns([2, 1], gap="small")
 
-    with lp1:
-        if st.button("Generate learning plan", use_container_width=True):
-            _lp_key = ""
-            try:
-                _lp_key = str(st.secrets.get("OPENAI_API_KEY", "")).strip()
-            except Exception:
-                pass
-            with st.spinner("Generating roadmap…"):
-                md = generate_learning_plan_markdown(
-                    current_role=str(current),
-                    target_role=str(target),
-                    gap_df=gap_df,
-                    language="en",
-                    model="gpt-4o-mini",
-                    max_missing=6,
-                    prefer_online=True,
-                )
-                st.session_state.learning_plan_md = md
-                st.session_state.learning_plan_source = _learning_plan_source_label(md)
+        with lp1:
+            if st.button("Generate learning plan", use_container_width=True):
+                _lp_key = ""
+                try:
+                    _lp_key = str(st.secrets.get("OPENAI_API_KEY", "")).strip()
+                except Exception:
+                    pass
+                with st.spinner("Generating roadmap…"):
+                    md = generate_learning_plan_markdown(
+                        current_role=str(current),
+                        target_role=str(target),
+                        gap_df=gap_df,
+                        language="en",
+                        model="gpt-4o-mini",
+                        max_missing=6,
+                        prefer_online=True,
+                    )
+                    st.session_state.learning_plan_md = md
+                    st.session_state.learning_plan_source = _learning_plan_source_label(md)
+                    st.session_state.plan_quality_eval = None
+                with st.spinner("Evaluating plan quality…"):
+                    _gap_names = (
+                        gap_df[gap_df["gap"] > 0].sort_values("gap", ascending=False)["skill"]
+                        .head(8).tolist()
+                    )
+                    st.session_state.plan_quality_eval = evaluate_learning_plan(
+                        plan_markdown=md,
+                        skill_gaps=_gap_names,
+                        target_role=str(target),
+                        model="gpt-4o-mini",
+                        api_key=_lp_key or None,
+                        prefer_online=_has_openai_secret(),
+                    )
+
+        with lp2:
+            if st.button("Clear", use_container_width=True, key="clear_learning_plan", type="secondary"):
+                st.session_state.learning_plan_md = ""
+                st.session_state.learning_plan_source = "—"
                 st.session_state.plan_quality_eval = None
-            with st.spinner("Evaluating plan quality…"):
-                _gap_names = (
-                    gap_df[gap_df["gap"] > 0].sort_values("gap", ascending=False)["skill"]
-                    .head(8).tolist()
-                )
-                st.session_state.plan_quality_eval = evaluate_learning_plan(
-                    plan_markdown=md,
-                    skill_gaps=_gap_names,
-                    target_role=str(target),
-                    model="gpt-4o-mini",
-                    api_key=_lp_key or None,
-                    prefer_online=_has_openai_secret(),
-                )
 
-    with lp2:
-        if st.button("Clear", use_container_width=True, key="clear_learning_plan", type="secondary"):
-            st.session_state.learning_plan_md = ""
-            st.session_state.learning_plan_source = "—"
-            st.session_state.plan_quality_eval = None
+        plan_md = (st.session_state.learning_plan_md or "").strip()
+        if plan_md:
+            # ── Plan quality badge ────────────────────────────────
+            _plan_eval = st.session_state.plan_quality_eval
+            if _plan_eval:
+                _pqs = _plan_eval.get("overall_score", 0)
+                _pqc = "#117A37" if _pqs >= 75 else ("#A05A00" if _pqs >= 55 else "#B71C1C")
+                _pdims = _plan_eval.get("dimension_scores", {})
+                _pverdict = _plan_eval.get("one_line_verdict", "")
+                _pregen = (
+                    '<span style="background:#FFF3CD;color:#856404;font-size:10px;font-weight:700;'
+                    'border-radius:8px;padding:2px 8px;margin-left:6px">⚠ Regenerate recommended</span>'
+                    if _plan_eval.get("regenerate_recommended") else ""
+                )
+                _pdim_pills = "".join([
+                    f'<span style="background:{("#E7F6EC" if v>=75 else ("#FFF8E7" if v>=55 else "#FEECEC"))};'
+                    f'color:{("#117A37" if v>=75 else ("#A05A00" if v>=55 else "#B71C1C"))};'
+                    f'font-size:10px;font-weight:700;border-radius:8px;padding:2px 7px">'
+                    f'{k.replace("_"," ").title()} {v}</span>'
+                    for k, v in _pdims.items()
+                ])
+                st.markdown(
+                    f'<div style="background:#F8FAFF;border:1px solid #C7D8F0;border-radius:8px;'
+                    f'padding:10px 14px;margin:10px 0 2px 0;display:flex;align-items:center;gap:10px;flex-wrap:wrap">'
+                    f'<span style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:0.06em;color:rgba(0,0,0,0.4)">AI Quality Eval</span>'
+                    f'<span style="font-size:20px;font-weight:900;color:{_pqc}">{_pqs}</span>'
+                    f'<span style="font-size:11px;font-weight:700;color:{_pqc}">/100</span>'
+                    f'{_pregen}'
+                    f'<div style="width:100%;display:flex;flex-wrap:wrap;gap:5px;margin-top:4px">{_pdim_pills}</div>'
+                    f'<div style="width:100%;font-size:12px;color:rgba(0,0,0,0.55);font-style:italic;margin-top:2px">{_pverdict}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+            st.divider()
+            st.caption(f"Source: {st.session_state.learning_plan_source}")
+            st.markdown(plan_md)
 
-    plan_md = (st.session_state.learning_plan_md or "").strip()
-    if plan_md:
-        # ── Plan quality badge ────────────────────────────────
-        _plan_eval = st.session_state.plan_quality_eval
-        if _plan_eval:
-            _pqs = _plan_eval.get("overall_score", 0)
-            _pqc = "#117A37" if _pqs >= 75 else ("#A05A00" if _pqs >= 55 else "#B71C1C")
-            _pdims = _plan_eval.get("dimension_scores", {})
-            _pverdict = _plan_eval.get("one_line_verdict", "")
-            _pregen = (
-                '<span style="background:#FFF3CD;color:#856404;font-size:10px;font-weight:700;'
-                'border-radius:8px;padding:2px 8px;margin-left:6px">⚠ Regenerate recommended</span>'
-                if _plan_eval.get("regenerate_recommended") else ""
+    # ============================================================
+    # Salary Impact Estimator
+    # ============================================================
+    with st.container(border=True):
+        _si_personal = bool(_cv_profile and _cv_profile.get("years_experience", 0) > 0)
+        st.markdown(
+            '<div class="li-tool-header">'
+            '<div class="li-tool-icon" style="background:#FFF8E7">💰</div>'
+            '<div><div class="li-tool-title">Salary Impact Estimator</div>'
+            '<div class="li-tool-cap">Compensation trajectory — entry level vs. senior, with break-even timeline</div></div>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+        st.caption(
+            "LLM-estimated compensation trajectory for this pivot — current salary vs. "
+            "target entry vs. target senior level, with break-even timeline."
+            + (" Personalised to your CV." if _si_personal else "")
+        )
+        st.markdown(
+            '<span style="font-size:10px;color:rgba(0,0,0,0.4);font-style:italic">'
+            'Figures are AI-estimated based on US labour market data — use as directional guidance only.</span>',
+            unsafe_allow_html=True,
+        )
+
+        si_col1, si_col2 = st.columns([2, 1], gap="small")
+        with si_col1:
+            if st.button("Estimate salary impact", use_container_width=True, key="run_salary"):
+                with st.spinner("Modelling compensation trajectory…"):
+                    _si_key = ""
+                    try:
+                        _si_key = str(st.secrets.get("OPENAI_API_KEY", "")).strip()
+                    except Exception:
+                        pass
+                    _yrs = float(_cv_profile.get("years_experience", 0)) if _cv_profile else 0.0
+                    st.session_state.salary_result = estimate_salary_impact(
+                        current_role=str(current),
+                        target_role=str(target),
+                        match_score=match_score_display,
+                        years_experience=_yrs,
+                        model="gpt-4o-mini",
+                        prefer_online=_has_openai_secret(),
+                        api_key=_si_key or None,
+                    )
+                st.rerun()
+        with si_col2:
+            if st.session_state.salary_result:
+                if st.button("Clear", key="clear_salary", type="secondary", use_container_width=True):
+                    st.session_state.salary_result = None
+
+        _sr = st.session_state.salary_result
+        if _sr:
+            st.divider()
+            _s1, _s2, _s3, _s4 = st.columns(4, gap="large")
+            _s1.metric(
+                "Current (median)",
+                f"${_sr['current_median']:,.0f}",
+                help=f"Range: ${_sr['current_range'][0]:,.0f} – ${_sr['current_range'][1]:,.0f}",
             )
-            _pdim_pills = "".join([
-                f'<span style="background:{("#E7F6EC" if v>=75 else ("#FFF8E7" if v>=55 else "#FEECEC"))};'
-                f'color:{("#117A37" if v>=75 else ("#A05A00" if v>=55 else "#B71C1C"))};'
-                f'font-size:10px;font-weight:700;border-radius:8px;padding:2px 7px">'
-                f'{k.replace("_"," ").title()} {v}</span>'
-                for k, v in _pdims.items()
-            ])
+            _entry_delta = _sr["entry_delta_pct"]
+            _s2.metric(
+                "Target entry (median)",
+                f"${_sr['target_entry_median']:,.0f}",
+                delta=f"{_entry_delta:+.1f}%",
+                delta_color="inverse" if _entry_delta < 0 else "normal",
+            )
+            _ceiling_delta = _sr["ceiling_delta_pct"]
+            _s3.metric(
+                "Target senior (median)",
+                f"${_sr['target_senior_median']:,.0f}",
+                delta=f"{_ceiling_delta:+.1f}%",
+                delta_color="normal",
+            )
+            _s4.metric(
+                "Break-even",
+                f"{_sr['months_to_breakeven']} months",
+                help="Months from entering target role until salary exceeds current",
+            )
+
+            # ── Salary trajectory chart ──────────────────────────────
+            _traj = _sr.get("trajectory", [])
+            if _traj:
+                _months = [p["month"] for p in _traj]
+                _salaries = [p["salary"] for p in _traj]
+                _phases = [p.get("phase", "") for p in _traj]
+                _current_line = [_sr["current_median"]] * len(_months)
+
+                _fig_sal = go.Figure()
+                # Current role flat line
+                _fig_sal.add_trace(go.Scatter(
+                    x=_months, y=_current_line,
+                    mode="lines",
+                    name="Current role (stay)",
+                    line=dict(color="rgba(0,0,0,0.25)", width=1.5, dash="dot"),
+                    hovertemplate="Month %{x}: $%{y:,.0f} (stay)<extra></extra>",
+                ))
+                # Target trajectory
+                _point_colors = ["#0A66C2" if s == "Growth" else "#A05A00" for s in _phases]
+                _fig_sal.add_trace(go.Scatter(
+                    x=_months, y=_salaries,
+                    mode="lines+markers",
+                    name="Pivot trajectory",
+                    line=dict(color="#0A66C2", width=2.5),
+                    marker=dict(size=8, color=_point_colors, line=dict(color="#fff", width=1.5)),
+                    hovertemplate="Month %{x}: $%{y:,.0f}<extra></extra>",
+                    fill="tonexty",
+                    fillcolor="rgba(10,102,194,0.06)",
+                ))
+                # Break-even line
+                if _sr["months_to_breakeven"] <= 36:
+                    _fig_sal.add_vline(
+                        x=_sr["months_to_breakeven"],
+                        line_color="#117A37", line_width=1.5, line_dash="dash",
+                        annotation_text=f"  Break-even: month {_sr['months_to_breakeven']}",
+                        annotation_font_size=10, annotation_font_color="#117A37",
+                    )
+
+                _fig_sal.update_layout(
+                    height=240,
+                    margin=dict(l=0, r=0, t=28, b=0),
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    plot_bgcolor="rgba(0,0,0,0)",
+                    title=dict(
+                        text="Estimated 36-month salary trajectory · AI simulation based on US market data",
+                        font_size=11, font_color="rgba(0,0,0,0.45)", x=0,
+                    ),
+                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1,
+                                font_size=11),
+                    xaxis=dict(
+                        title=dict(text="Months after pivot start", font_size=10),
+                        showgrid=False, zeroline=False,
+                        tickvals=[0, 6, 12, 18, 24, 36],
+                        ticktext=["Now", "6m", "12m", "18m", "24m", "36m"],
+                    ),
+                    yaxis=dict(
+                        title=dict(text="Annual salary (USD)", font_size=10),
+                        showgrid=True, gridcolor="rgba(0,0,0,0.06)", zeroline=False,
+                        tickformat="$,.0f",
+                    ),
+                )
+                st.plotly_chart(_fig_sal, use_container_width=True, config={"displayModeBar": False})
+
+            # Insights
+            for insight in _sr.get("insights", []):
+                st.markdown(
+                    f'<div style="display:flex;gap:8px;margin-bottom:6px;font-size:13px;'
+                    f'color:rgba(0,0,0,0.7);line-height:1.5">'
+                    f'<span style="color:#0A66C2;flex-shrink:0">›</span>{insight}</div>',
+                    unsafe_allow_html=True,
+                )
+
+
+
+with _tab_validate:
+
+    st.markdown(
+        '<div class="li-phase"><div class="li-phase-line"></div>'
+        '<div class="li-phase-text">Validate · Pressure-test your decision</div>'
+        '<div class="li-phase-line"></div></div>',
+        unsafe_allow_html=True,
+    )
+    # ============================================================
+    # Adversarial Pivot Debate
+    # ============================================================
+    with st.container(border=True):
+        st.markdown(
+            '<div class="li-tool-header">'
+            '<div class="li-tool-icon" style="background:#FEF0F0">⚔️</div>'
+            '<div><div class="li-tool-title">Adversarial Pivot Debate</div>'
+            '<div class="li-tool-cap">Advocate vs. Skeptic vs. Judge · probability-style verdict</div></div>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+        st.caption(
+            "Three-agent debate: an Advocate argues FOR the pivot, a Skeptic argues AGAINST, "
+            "a Judge weighs both and delivers a probability-style verdict."
+        )
+
+        db_col1, db_col2 = st.columns([2, 1], gap="small")
+        with db_col1:
+            if st.button("Run adversarial debate", use_container_width=True):
+                with st.spinner("Advocate and Skeptic building arguments... Judge deliberating..."):
+                    _db_key = ""
+                    try:
+                        _db_key = str(st.secrets.get("OPENAI_API_KEY", "")).strip()
+                    except Exception:
+                        pass
+
+                    _gap_summary_db = (
+                        gap_df[gap_df["gap"] > 0].sort_values("gap", ascending=False)["skill"].head(4).tolist()
+                    )
+                    _gap_str_db = f"{len(_gap_summary_db)} skill gaps. Top: {', '.join(_gap_summary_db[:3])}"
+
+                    # Gather context from previous analyses if available
+                    _market_sig = None
+                    if st.session_state.agent_steps:
+                        for step in st.session_state.agent_steps:
+                            if step.kind == "tool_result" and step.tool_name == "get_market_signal":
+                                _market_sig = step.tool_result
+                                break
+
+                    debate_result = run_pivot_debate(
+                        current_role=str(current),
+                        target_role=str(target),
+                        match_score=match_score_display,
+                        gap_summary=_gap_str_db,
+                        market_signal=_market_sig,
+                        agent_summary=st.session_state.agent_result.executive_summary if st.session_state.agent_result else None,
+                        consensus_winner=st.session_state.review_board_consensus.winner_strategy if st.session_state.review_board_consensus else None,
+                        cv_profile=st.session_state.cv_profile,
+                        model_debate="gpt-4o-mini",
+                        model_judge="gpt-4o",
+                        prefer_online=_has_openai_secret(),
+                        api_key=_db_key or None,
+                    )
+                    st.session_state.debate_result = debate_result
+                st.rerun()
+        with db_col2:
+            if st.session_state.debate_result:
+                if st.button("Clear", key="clear_debate", type="secondary", use_container_width=True):
+                    st.session_state.debate_result = None
+
+        dr = st.session_state.debate_result
+        if dr:
+            advocate: DebateRound = dr["advocate"]
+            skeptic: DebateRound = dr["skeptic"]
+            verdict: DebateVerdict = dr["verdict"]
+
+            st.divider()
+
+            # Verdict hero
+            viability = verdict.pivot_viability_pct
+            v_color = "#117A37" if viability >= 70 else ("#A05A00" if viability >= 45 else "#B71C1C")
+            v_bg = "#EEF3FB" if viability >= 70 else ("#FFF4E5" if viability >= 45 else "#FDECEA")
             st.markdown(
-                f'<div style="background:#F8FAFF;border:1px solid #C7D8F0;border-radius:8px;'
-                f'padding:10px 14px;margin:10px 0 2px 0;display:flex;align-items:center;gap:10px;flex-wrap:wrap">'
-                f'<span style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:0.06em;color:rgba(0,0,0,0.4)">AI Quality Eval</span>'
-                f'<span style="font-size:20px;font-weight:900;color:{_pqc}">{_pqs}</span>'
-                f'<span style="font-size:11px;font-weight:700;color:{_pqc}">/100</span>'
-                f'{_pregen}'
-                f'<div style="width:100%;display:flex;flex-wrap:wrap;gap:5px;margin-top:4px">{_pdim_pills}</div>'
-                f'<div style="width:100%;font-size:12px;color:rgba(0,0,0,0.55);font-style:italic;margin-top:2px">{_pverdict}</div>'
+                f'<div style="background:{v_bg};border-radius:12px;padding:20px 24px;margin-bottom:16px">'
+                f'<div style="font-size:11px;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;color:rgba(0,0,0,0.45);margin-bottom:6px">Judge Verdict</div>'
+                f'<div style="display:flex;align-items:baseline;gap:16px;margin-bottom:8px">'
+                f'<div style="font-size:40px;font-weight:900;color:{v_color}">{viability}%</div>'
+                f'<div style="font-size:18px;font-weight:700;color:rgba(0,0,0,0.8)">{verdict.verdict_label}</div>'
+                f'</div>'
+                f'<div style="font-size:13px;color:rgba(0,0,0,0.65);line-height:1.6">{verdict.judge_reasoning}</div>'
+                f'<div style="margin-top:10px;font-size:13px"><strong>Decisive factor:</strong> {verdict.decisive_factor}</div>'
                 f'</div>',
                 unsafe_allow_html=True,
             )
-        st.divider()
-        st.caption(f"Source: {st.session_state.learning_plan_source}")
-        st.markdown(plan_md)
 
-# ============================================================
-# Salary Impact Estimator
-# ============================================================
-with st.container(border=True):
-    _si_personal = bool(_cv_profile and _cv_profile.get("years_experience", 0) > 0)
-    st.markdown(
-        '<div class="li-tool-header">'
-        '<div class="li-tool-icon" style="background:#FFF8E7">💰</div>'
-        '<div><div class="li-tool-title">Salary Impact Estimator</div>'
-        '<div class="li-tool-cap">Compensation trajectory — entry level vs. senior, with break-even timeline</div></div>'
-        '</div>',
-        unsafe_allow_html=True,
-    )
-    st.caption(
-        "LLM-estimated compensation trajectory for this pivot — current salary vs. "
-        "target entry vs. target senior level, with break-even timeline."
-        + (" Personalised to your CV." if _si_personal else "")
-    )
-    st.markdown(
-        '<span style="font-size:10px;color:rgba(0,0,0,0.4);font-style:italic">'
-        'Figures are AI-estimated based on US labour market data — use as directional guidance only.</span>',
-        unsafe_allow_html=True,
-    )
+            # Two-column debate
+            adv_col, skp_col = st.columns(2, gap="large")
 
-    si_col1, si_col2 = st.columns([2, 1], gap="small")
-    with si_col1:
-        if st.button("Estimate salary impact", use_container_width=True, key="run_salary"):
-            with st.spinner("Modelling compensation trajectory…"):
-                _si_key = ""
-                try:
-                    _si_key = str(st.secrets.get("OPENAI_API_KEY", "")).strip()
-                except Exception:
-                    pass
-                _yrs = float(_cv_profile.get("years_experience", 0)) if _cv_profile else 0.0
-                st.session_state.salary_result = estimate_salary_impact(
-                    current_role=str(current),
-                    target_role=str(target),
-                    match_score=match_score_display,
-                    years_experience=_yrs,
-                    model="gpt-4o-mini",
-                    prefer_online=_has_openai_secret(),
-                    api_key=_si_key or None,
+            with adv_col:
+                st.markdown(
+                    '<div style="border-left:4px solid #117A37;padding-left:12px;margin-bottom:12px">'
+                    '<div style="font-size:11px;font-weight:800;letter-spacing:0.06em;text-transform:uppercase;color:#117A37">Advocate — For the pivot</div>'
+                    '</div>',
+                    unsafe_allow_html=True,
                 )
-            st.rerun()
-    with si_col2:
-        if st.session_state.salary_result:
-            if st.button("Clear", key="clear_salary", type="secondary", use_container_width=True):
-                st.session_state.salary_result = None
-
-    _sr = st.session_state.salary_result
-    if _sr:
-        st.divider()
-        _s1, _s2, _s3, _s4 = st.columns(4, gap="large")
-        _s1.metric(
-            "Current (median)",
-            f"${_sr['current_median']:,.0f}",
-            help=f"Range: ${_sr['current_range'][0]:,.0f} – ${_sr['current_range'][1]:,.0f}",
-        )
-        _entry_delta = _sr["entry_delta_pct"]
-        _s2.metric(
-            "Target entry (median)",
-            f"${_sr['target_entry_median']:,.0f}",
-            delta=f"{_entry_delta:+.1f}%",
-            delta_color="inverse" if _entry_delta < 0 else "normal",
-        )
-        _ceiling_delta = _sr["ceiling_delta_pct"]
-        _s3.metric(
-            "Target senior (median)",
-            f"${_sr['target_senior_median']:,.0f}",
-            delta=f"{_ceiling_delta:+.1f}%",
-            delta_color="normal",
-        )
-        _s4.metric(
-            "Break-even",
-            f"{_sr['months_to_breakeven']} months",
-            help="Months from entering target role until salary exceeds current",
-        )
-
-        # ── Salary trajectory chart ──────────────────────────────
-        _traj = _sr.get("trajectory", [])
-        if _traj:
-            _months = [p["month"] for p in _traj]
-            _salaries = [p["salary"] for p in _traj]
-            _phases = [p.get("phase", "") for p in _traj]
-            _current_line = [_sr["current_median"]] * len(_months)
-
-            _fig_sal = go.Figure()
-            # Current role flat line
-            _fig_sal.add_trace(go.Scatter(
-                x=_months, y=_current_line,
-                mode="lines",
-                name="Current role (stay)",
-                line=dict(color="rgba(0,0,0,0.25)", width=1.5, dash="dot"),
-                hovertemplate="Month %{x}: $%{y:,.0f} (stay)<extra></extra>",
-            ))
-            # Target trajectory
-            _point_colors = ["#0A66C2" if s == "Growth" else "#A05A00" for s in _phases]
-            _fig_sal.add_trace(go.Scatter(
-                x=_months, y=_salaries,
-                mode="lines+markers",
-                name="Pivot trajectory",
-                line=dict(color="#0A66C2", width=2.5),
-                marker=dict(size=8, color=_point_colors, line=dict(color="#fff", width=1.5)),
-                hovertemplate="Month %{x}: $%{y:,.0f}<extra></extra>",
-                fill="tonexty",
-                fillcolor="rgba(10,102,194,0.06)",
-            ))
-            # Break-even line
-            if _sr["months_to_breakeven"] <= 36:
-                _fig_sal.add_vline(
-                    x=_sr["months_to_breakeven"],
-                    line_color="#117A37", line_width=1.5, line_dash="dash",
-                    annotation_text=f"  Break-even: month {_sr['months_to_breakeven']}",
-                    annotation_font_size=10, annotation_font_color="#117A37",
+                st.markdown(f"*{advocate.main_argument}*")
+                st.markdown("**Evidence:**")
+                for ev in advocate.strongest_evidence[:3]:
+                    st.markdown(f"+ {ev}")
+                if advocate.closing_statement:
+                    st.caption(f"→ {advocate.closing_statement}")
+                st.markdown(
+                    f'<div style="background:#F0FFF4;border-radius:8px;padding:10px 14px;margin-top:10px;font-size:13px">'
+                    f'<strong>Judge accepted:</strong> {verdict.strongest_pro_argument}</div>',
+                    unsafe_allow_html=True,
                 )
 
-            _fig_sal.update_layout(
-                height=240,
-                margin=dict(l=0, r=0, t=28, b=0),
-                paper_bgcolor="rgba(0,0,0,0)",
-                plot_bgcolor="rgba(0,0,0,0)",
-                title=dict(
-                    text="Estimated 36-month salary trajectory · AI simulation based on US market data",
-                    font_size=11, font_color="rgba(0,0,0,0.45)", x=0,
-                ),
-                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1,
-                            font_size=11),
-                xaxis=dict(
-                    title=dict(text="Months after pivot start", font_size=10),
-                    showgrid=False, zeroline=False,
-                    tickvals=[0, 6, 12, 18, 24, 36],
-                    ticktext=["Now", "6m", "12m", "18m", "24m", "36m"],
-                ),
-                yaxis=dict(
-                    title=dict(text="Annual salary (USD)", font_size=10),
-                    showgrid=True, gridcolor="rgba(0,0,0,0.06)", zeroline=False,
-                    tickformat="$,.0f",
-                ),
-            )
-            st.plotly_chart(_fig_sal, use_container_width=True, config={"displayModeBar": False})
+            with skp_col:
+                st.markdown(
+                    '<div style="border-left:4px solid #B71C1C;padding-left:12px;margin-bottom:12px">'
+                    '<div style="font-size:11px;font-weight:800;letter-spacing:0.06em;text-transform:uppercase;color:#B71C1C">Skeptic — Against the pivot</div>'
+                    '</div>',
+                    unsafe_allow_html=True,
+                )
+                st.markdown(f"*{skeptic.main_argument}*")
+                st.markdown("**Evidence:**")
+                for ev in skeptic.strongest_evidence[:3]:
+                    st.markdown(f"− {ev}")
+                if skeptic.closing_statement:
+                    st.caption(f"→ {skeptic.closing_statement}")
+                st.markdown(
+                    f'<div style="background:#FFF5F5;border-radius:8px;padding:10px 14px;margin-top:10px;font-size:13px">'
+                    f'<strong>Judge accepted:</strong> {verdict.strongest_con_argument}</div>',
+                    unsafe_allow_html=True,
+                )
 
-        # Insights
-        for insight in _sr.get("insights", []):
-            st.markdown(
-                f'<div style="display:flex;gap:8px;margin-bottom:6px;font-size:13px;'
-                f'color:rgba(0,0,0,0.7);line-height:1.5">'
-                f'<span style="color:#0A66C2;flex-shrink:0">›</span>{insight}</div>',
-                unsafe_allow_html=True,
-            )
+            # Conditions
+            st.divider()
+            cond_a, cond_b = st.columns(2, gap="large")
+            with cond_a:
+                if verdict.conditions_for_success:
+                    st.markdown("**This pivot succeeds if:**")
+                    for c in verdict.conditions_for_success:
+                        st.markdown(f"✓ {c}")
+            with cond_b:
+                if verdict.conditions_for_failure:
+                    st.markdown("**This pivot fails if:**")
+                    for c in verdict.conditions_for_failure:
+                        st.markdown(f"✗ {c}")
+
+            if verdict.recommended_next_action:
+                st.markdown(
+                    f'<div style="background:#EEF3FB;border-radius:8px;padding:14px 18px;margin-top:10px">'
+                    f'<span style="font-size:11px;font-weight:800;letter-spacing:0.05em;text-transform:uppercase;color:#0A66C2">Next action</span>'
+                    f'<div style="font-size:14px;font-weight:600;margin-top:4px">{verdict.recommended_next_action}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+            st.caption(f"Source: {verdict.source}")
 
 
-# ============================================================
-# Pivot Narrative Generator
-# ============================================================
-with st.container(border=True):
-    _pn_personal = bool(st.session_state.cv_profile and st.session_state.cv_profile.get("extracted_role"))
-    st.markdown(
-        '<div class="li-tool-header">'
-        '<div class="li-tool-icon" style="background:#F3EEF9">✍️</div>'
-        '<div><div class="li-tool-title">Pivot Narrative Generator</div>'
-        '<div class="li-tool-cap">Cover letter · elevator pitch · LinkedIn About · interview talking points</div></div>'
-        '</div>',
-        unsafe_allow_html=True,
-    )
-    st.caption(
-        ("Personalised to your CV — cover letter, elevator pitch, LinkedIn About, and interview talking points." if _pn_personal
-         else "Generate application materials for this pivot. Upload your CV in the sidebar to personalise the output.")
-    )
-    if _pn_personal:
+    # ============================================================
+    # Decision Board (Hero Feature)
+    # ============================================================
+    with st.container(border=True):
         st.markdown(
-            '<span class="status-pill status-ok">✓ Personal mode — output tailored to your CV</span>',
+            '<div class="li-tool-header">'
+            '<div class="li-tool-icon" style="background:#EEF3FB">🏛️</div>'
+            '<div><div class="li-tool-title">Decision Board</div>'
+            '<div class="li-tool-cap">Competing strategies · expert personas · consensus · what could flip the recommendation</div></div>'
+            '</div>',
             unsafe_allow_html=True,
         )
-        st.markdown("<div style='margin-bottom:6px'></div>", unsafe_allow_html=True)
-
-    pn1, pn2 = st.columns([2, 1], gap="small")
-    with pn1:
-        if st.button("Generate pivot narrative", use_container_width=True):
-            with st.spinner("Generating your personalised pivot materials..."):
-                _top_transfer_pn = (
-                    gap_df.assign(overlap=lambda d: np.minimum(d["current_importance"], d["target_importance"]))
-                    .sort_values("overlap", ascending=False)["skill"].head(5).tolist()
-                )
-                _top_missing_pn = (
-                    gap_df[gap_df["gap"] > 0]
-                    .sort_values(["gap", "target_importance"], ascending=False)["skill"].head(4).tolist()
-                )
-                _agent_summary = None
-                if st.session_state.agent_result:
-                    _agent_summary = st.session_state.agent_result.executive_summary
-                _api_key_pn = ""
-                try:
-                    _api_key_pn = str(st.secrets.get("OPENAI_API_KEY", "")).strip()
-                except Exception:
-                    pass
-                narrative = generate_pivot_narrative(
-                    current_role=str(current),
-                    target_role=str(target),
-                    recommended_strategy=(
-                        st.session_state.agent_result.recommended_strategy
-                        if st.session_state.agent_result else
-                        (st.session_state.review_board_consensus.winner_strategy
-                         if st.session_state.review_board_consensus else "HYBRID")
-                    ),
-                    top_transfer=_top_transfer_pn,
-                    top_missing=_top_missing_pn,
-                    match_score=match_score_display,
-                    verdict=(
-                        st.session_state.agent_result.verdict
-                        if st.session_state.agent_result else "Feasible with Conditions"
-                    ),
-                    cv_profile=st.session_state.cv_profile,
-                    agent_executive_summary=_agent_summary,
-                    model="gpt-4o-mini",
-                    prefer_online=_has_openai_secret(),
-                    api_key=_api_key_pn or None,
-                )
-                st.session_state.pivot_narrative = narrative
-    with pn2:
-        if st.session_state.pivot_narrative:
-            if st.button("Clear", key="clear_narrative", type="secondary", use_container_width=True):
-                st.session_state.pivot_narrative = None
-
-    pn = st.session_state.pivot_narrative
-    if pn:
-        st.divider()
-        src_label = "Personalised (CV + analysis)" if pn.get("personalized") else "Role-based (O*NET)"
-        st.caption(f"Source: {pn.get('source','?')} · {src_label}")
-
-        pn_tab1, pn_tab2, pn_tab3, pn_tab4 = st.tabs(
-            ["Cover Letter", "Elevator Pitch", "LinkedIn About", "Talking Points"]
+        st.caption(
+            "Generate competing pivot strategies, pressure-test with expert personas, aggregate disagreement, and identify what could flip the recommendation."
         )
 
-        with pn_tab1:
-            cl_text = pn.get("cover_letter", "")
-            if cl_text:
-                st.markdown(
-                    f'<div style="background:#fff;border:1px solid rgba(0,0,0,0.08);border-radius:10px;padding:24px 28px;font-size:14px;line-height:1.75;white-space:pre-wrap">{cl_text}</div>',
-                    unsafe_allow_html=True,
-                )
-                st.download_button(
-                    "Download cover letter",
-                    data=cl_text,
-                    file_name=f"cover_letter_{str(target).replace(' ', '_').lower()}.txt",
-                    mime="text/plain",
-                )
+        def _step_pill(label: str, done: bool) -> str:
+            cls = "status-ok" if done else "status-warn"
+            icon = "✓" if done else "○"
+            return f'<span class="status-pill {cls}">{icon} {label}</span>'
 
-        with pn_tab2:
-            pitch = pn.get("elevator_pitch", "")
-            if pitch:
-                st.markdown(
-                    f'<div class="agent-verdict-hero"><div class="agent-verdict-title">Elevator Pitch</div>'
-                    f'<div class="agent-verdict-summary">{pitch}</div></div>',
-                    unsafe_allow_html=True,
-                )
-
-        with pn_tab3:
-            about = pn.get("linkedin_about", "")
-            if about:
-                st.markdown(
-                    f'<div style="background:#fff;border:1px solid rgba(0,0,0,0.08);border-radius:10px;padding:20px 24px;font-size:14px;line-height:1.75;white-space:pre-wrap">{about}</div>',
-                    unsafe_allow_html=True,
-                )
-                st.download_button(
-                    "Copy LinkedIn About",
-                    data=about,
-                    file_name="linkedin_about.txt",
-                    mime="text/plain",
-                    key="dl_linkedin",
-                )
-
-        with pn_tab4:
-            points = pn.get("talking_points", [])
-            for i, pt in enumerate(points, 1):
-                st.markdown(
-                    f'<div style="padding:12px 16px;border-left:3px solid #0A66C2;background:#F8FAFF;border-radius:0 8px 8px 0;margin-bottom:10px;font-size:14px">'
-                    f'<span style="font-weight:700;color:#0A66C2;margin-right:8px">{i}.</span>{pt}</div>',
-                    unsafe_allow_html=True,
-                )
-
-
-# ============================================================
-# Job Posting Analyzer
-# ============================================================
-with st.container(border=True):
-    _jp_personal = bool(st.session_state.cv_profile and st.session_state.cv_profile.get("extracted_role"))
-    st.markdown(
-        '<div class="li-tool-header">'
-        '<div class="li-tool-icon" style="background:#EEF3FB">🎯</div>'
-        '<div><div class="li-tool-title">Job Posting Analyzer</div>'
-        '<div class="li-tool-cap">Instant match score · advantage/gap breakdown · application readiness verdict</div></div>'
-        '</div>',
-        unsafe_allow_html=True,
-    )
-    st.caption(
-        "Paste a real job posting — get an instant match score, advantage/gap breakdown, and application readiness verdict."
-        + (" Personalised to your CV." if _jp_personal else " Upload your CV for personalised results.")
-    )
-
-    job_text_input = st.text_area(
-        "Job posting",
-        value=st.session_state.job_posting_text,
-        height=180,
-        placeholder="Paste the full job description here...\n\nWorks best with the full posting including requirements, responsibilities, and qualifications.",
-        label_visibility="collapsed",
-    )
-
-    ja_col1, ja_col2 = st.columns([2, 1], gap="small")
-    with ja_col1:
-        if st.button("Analyse this job posting", use_container_width=True):
-            if job_text_input.strip():
-                with st.spinner("Extracting requirements and computing match..."):
-                    st.session_state.job_posting_text = job_text_input
-                    _ja_key = ""
-                    try:
-                        _ja_key = str(st.secrets.get("OPENAI_API_KEY", "")).strip()
-                    except Exception:
-                        pass
-                    ja_result = analyze_job_posting(
-                        job_text=job_text_input,
-                        skill_columns=list(mat.columns),
-                        matrix=mat,
-                        current_role=str(current),
-                        target_role=str(target),
-                        cv_profile=st.session_state.cv_profile,
-                        model="gpt-4o-mini",
-                        prefer_online=_has_openai_secret(),
-                        api_key=_ja_key or None,
-                    )
-                    st.session_state.job_analysis = ja_result
-                st.rerun()
-            else:
-                st.warning("Paste a job posting first.")
-    with ja_col2:
-        if st.session_state.job_analysis:
-            if st.button("Clear", key="clear_job", type="secondary", use_container_width=True):
-                st.session_state.job_analysis = None
-                st.session_state.job_posting_text = ""
-
-    ja = st.session_state.job_analysis
-    if ja and not ja.get("error"):
-        st.divider()
-
-        # Header row
-        readiness = ja.get("application_readiness", "?")
-        r_cls = {"Strong": "status-ok", "Moderate": "status-warn", "Stretch": "status-challenge"}.get(readiness, "status-warn")
+        # Progress tracker at top
         st.markdown(
-            f'<div style="font-size:20px;font-weight:800;margin-bottom:4px">{ja.get("role_title","?")} '
-            f'<span style="font-size:14px;font-weight:400;color:rgba(0,0,0,0.5)">at {ja.get("company","?")}</span></div>',
-            unsafe_allow_html=True,
-        )
-        st.markdown(
-            f'<span class="status-pill {r_cls}">Application readiness: {readiness}</span>'
-            f'<span class="status-pill status-ok">Match: {ja.get("match_score",0):.0f}/100</span>'
-            + (f'<span class="status-pill status-warn">vs. {ja.get("user_label","profile")}</span>' if _jp_personal else ""),
+            _step_pill("Strategies", bool(st.session_state.review_board_strategies))
+            + _step_pill("Evaluations", bool(st.session_state.review_board_evaluations))
+            + _step_pill("Consensus", bool(st.session_state.review_board_consensus))
+            + _step_pill("Judge memo", bool(st.session_state.review_board_judge_memo)),
             unsafe_allow_html=True,
         )
         st.markdown("<div style='margin-bottom:10px'></div>", unsafe_allow_html=True)
-        st.caption(ja.get("readiness_rationale", ""))
 
-        # Columns: matches vs gaps
-        jc1, jc2 = st.columns(2, gap="large")
-        with jc1:
-            st.markdown("**Your advantages for this role**")
-            matches = ja.get("top_matches", [])
-            if matches:
-                match_df = pd.DataFrame(matches)
-                _render_table_card(
-                    match_df,
-                    columns=["skill", "your_level", "job_requires"],
-                    headers=["Skill", "Your Level", "Job Needs"],
-                    numeric_cols=["your_level", "job_requires"],
-                )
-            else:
-                st.info("No strong skill matches detected.")
+        b1, b2, b3 = st.columns(3, gap="small")
 
-        with jc2:
-            st.markdown("**Gaps to address before applying**")
-            gaps = ja.get("top_gaps", [])
-            if gaps:
-                gap_df_ja = pd.DataFrame(gaps)
-                _render_table_card(
-                    gap_df_ja,
-                    columns=["skill", "your_level", "job_requires", "gap"],
-                    headers=["Skill", "You", "Needed", "Gap"],
-                    numeric_cols=["your_level", "job_requires", "gap"],
-                )
-            else:
-                st.success("No significant gaps detected.")
-
-        # Key responsibilities + required skills
-        resp_col, skill_col = st.columns(2, gap="large")
-        with resp_col:
-            resps = ja.get("key_responsibilities", [])
-            if resps:
-                st.markdown("**Key responsibilities**")
-                for r in resps[:4]:
-                    st.markdown(f"- {r}")
-        with skill_col:
-            req_skills = ja.get("required_skills_raw", [])
-            if req_skills:
-                st.markdown("**Required skills (from posting)**")
-                pills = " ".join([f'<span class="status-pill status-warn">{s}</span>' for s in req_skills[:8]])
-                st.markdown(pills, unsafe_allow_html=True)
-
-
-st.markdown(
-    '<div class="li-phase"><div class="li-phase-line"></div>'
-    '<div class="li-phase-text">Validate · Pressure-test your decision</div>'
-    '<div class="li-phase-line"></div></div>',
-    unsafe_allow_html=True,
-)
-# ============================================================
-# Adversarial Pivot Debate
-# ============================================================
-with st.container(border=True):
-    st.markdown(
-        '<div class="li-tool-header">'
-        '<div class="li-tool-icon" style="background:#FEF0F0">⚔️</div>'
-        '<div><div class="li-tool-title">Adversarial Pivot Debate</div>'
-        '<div class="li-tool-cap">Advocate vs. Skeptic vs. Judge · probability-style verdict</div></div>'
-        '</div>',
-        unsafe_allow_html=True,
-    )
-    st.caption(
-        "Three-agent debate: an Advocate argues FOR the pivot, a Skeptic argues AGAINST, "
-        "a Judge weighs both and delivers a probability-style verdict."
-    )
-
-    db_col1, db_col2 = st.columns([2, 1], gap="small")
-    with db_col1:
-        if st.button("Run adversarial debate", use_container_width=True):
-            with st.spinner("Advocate and Skeptic building arguments... Judge deliberating..."):
-                _db_key = ""
-                try:
-                    _db_key = str(st.secrets.get("OPENAI_API_KEY", "")).strip()
-                except Exception:
-                    pass
-
-                _gap_summary_db = (
-                    gap_df[gap_df["gap"] > 0].sort_values("gap", ascending=False)["skill"].head(4).tolist()
-                )
-                _gap_str_db = f"{len(_gap_summary_db)} skill gaps. Top: {', '.join(_gap_summary_db[:3])}"
-
-                # Gather context from previous analyses if available
-                _market_sig = None
-                if st.session_state.agent_steps:
-                    for step in st.session_state.agent_steps:
-                        if step.kind == "tool_result" and step.tool_name == "get_market_signal":
-                            _market_sig = step.tool_result
-                            break
-
-                debate_result = run_pivot_debate(
-                    current_role=str(current),
-                    target_role=str(target),
-                    match_score=match_score_display,
-                    gap_summary=_gap_str_db,
-                    market_signal=_market_sig,
-                    agent_summary=st.session_state.agent_result.executive_summary if st.session_state.agent_result else None,
-                    consensus_winner=st.session_state.review_board_consensus.winner_strategy if st.session_state.review_board_consensus else None,
-                    cv_profile=st.session_state.cv_profile,
-                    model_debate="gpt-4o-mini",
-                    model_judge="gpt-4o",
-                    prefer_online=_has_openai_secret(),
-                    api_key=_db_key or None,
-                )
-                st.session_state.debate_result = debate_result
-            st.rerun()
-    with db_col2:
-        if st.session_state.debate_result:
-            if st.button("Clear", key="clear_debate", type="secondary", use_container_width=True):
-                st.session_state.debate_result = None
-
-    dr = st.session_state.debate_result
-    if dr:
-        advocate: DebateRound = dr["advocate"]
-        skeptic: DebateRound = dr["skeptic"]
-        verdict: DebateVerdict = dr["verdict"]
-
-        st.divider()
-
-        # Verdict hero
-        viability = verdict.pivot_viability_pct
-        v_color = "#117A37" if viability >= 70 else ("#A05A00" if viability >= 45 else "#B71C1C")
-        v_bg = "#EEF3FB" if viability >= 70 else ("#FFF4E5" if viability >= 45 else "#FDECEA")
-        st.markdown(
-            f'<div style="background:{v_bg};border-radius:12px;padding:20px 24px;margin-bottom:16px">'
-            f'<div style="font-size:11px;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;color:rgba(0,0,0,0.45);margin-bottom:6px">Judge Verdict</div>'
-            f'<div style="display:flex;align-items:baseline;gap:16px;margin-bottom:8px">'
-            f'<div style="font-size:40px;font-weight:900;color:{v_color}">{viability}%</div>'
-            f'<div style="font-size:18px;font-weight:700;color:rgba(0,0,0,0.8)">{verdict.verdict_label}</div>'
-            f'</div>'
-            f'<div style="font-size:13px;color:rgba(0,0,0,0.65);line-height:1.6">{verdict.judge_reasoning}</div>'
-            f'<div style="margin-top:10px;font-size:13px"><strong>Decisive factor:</strong> {verdict.decisive_factor}</div>'
-            f'</div>',
-            unsafe_allow_html=True,
-        )
-
-        # Two-column debate
-        adv_col, skp_col = st.columns(2, gap="large")
-
-        with adv_col:
-            st.markdown(
-                '<div style="border-left:4px solid #117A37;padding-left:12px;margin-bottom:12px">'
-                '<div style="font-size:11px;font-weight:800;letter-spacing:0.06em;text-transform:uppercase;color:#117A37">Advocate — For the pivot</div>'
-                '</div>',
-                unsafe_allow_html=True,
-            )
-            st.markdown(f"*{advocate.main_argument}*")
-            st.markdown("**Evidence:**")
-            for ev in advocate.strongest_evidence[:3]:
-                st.markdown(f"+ {ev}")
-            if advocate.closing_statement:
-                st.caption(f"→ {advocate.closing_statement}")
-            st.markdown(
-                f'<div style="background:#F0FFF4;border-radius:8px;padding:10px 14px;margin-top:10px;font-size:13px">'
-                f'<strong>Judge accepted:</strong> {verdict.strongest_pro_argument}</div>',
-                unsafe_allow_html=True,
-            )
-
-        with skp_col:
-            st.markdown(
-                '<div style="border-left:4px solid #B71C1C;padding-left:12px;margin-bottom:12px">'
-                '<div style="font-size:11px;font-weight:800;letter-spacing:0.06em;text-transform:uppercase;color:#B71C1C">Skeptic — Against the pivot</div>'
-                '</div>',
-                unsafe_allow_html=True,
-            )
-            st.markdown(f"*{skeptic.main_argument}*")
-            st.markdown("**Evidence:**")
-            for ev in skeptic.strongest_evidence[:3]:
-                st.markdown(f"− {ev}")
-            if skeptic.closing_statement:
-                st.caption(f"→ {skeptic.closing_statement}")
-            st.markdown(
-                f'<div style="background:#FFF5F5;border-radius:8px;padding:10px 14px;margin-top:10px;font-size:13px">'
-                f'<strong>Judge accepted:</strong> {verdict.strongest_con_argument}</div>',
-                unsafe_allow_html=True,
-            )
-
-        # Conditions
-        st.divider()
-        cond_a, cond_b = st.columns(2, gap="large")
-        with cond_a:
-            if verdict.conditions_for_success:
-                st.markdown("**This pivot succeeds if:**")
-                for c in verdict.conditions_for_success:
-                    st.markdown(f"✓ {c}")
-        with cond_b:
-            if verdict.conditions_for_failure:
-                st.markdown("**This pivot fails if:**")
-                for c in verdict.conditions_for_failure:
-                    st.markdown(f"✗ {c}")
-
-        if verdict.recommended_next_action:
-            st.markdown(
-                f'<div style="background:#EEF3FB;border-radius:8px;padding:14px 18px;margin-top:10px">'
-                f'<span style="font-size:11px;font-weight:800;letter-spacing:0.05em;text-transform:uppercase;color:#0A66C2">Next action</span>'
-                f'<div style="font-size:14px;font-weight:600;margin-top:4px">{verdict.recommended_next_action}</div>'
-                f'</div>',
-                unsafe_allow_html=True,
-            )
-        st.caption(f"Source: {verdict.source}")
-
-
-# ============================================================
-# Decision Board (Hero Feature)
-# ============================================================
-with st.container(border=True):
-    st.markdown(
-        '<div class="li-tool-header">'
-        '<div class="li-tool-icon" style="background:#EEF3FB">🏛️</div>'
-        '<div><div class="li-tool-title">Decision Board</div>'
-        '<div class="li-tool-cap">Competing strategies · expert personas · consensus · what could flip the recommendation</div></div>'
-        '</div>',
-        unsafe_allow_html=True,
-    )
-    st.caption(
-        "Generate competing pivot strategies, pressure-test with expert personas, aggregate disagreement, and identify what could flip the recommendation."
-    )
-
-    def _step_pill(label: str, done: bool) -> str:
-        cls = "status-ok" if done else "status-warn"
-        icon = "✓" if done else "○"
-        return f'<span class="status-pill {cls}">{icon} {label}</span>'
-
-    # Progress tracker at top
-    st.markdown(
-        _step_pill("Strategies", bool(st.session_state.review_board_strategies))
-        + _step_pill("Evaluations", bool(st.session_state.review_board_evaluations))
-        + _step_pill("Consensus", bool(st.session_state.review_board_consensus))
-        + _step_pill("Judge memo", bool(st.session_state.review_board_judge_memo)),
-        unsafe_allow_html=True,
-    )
-    st.markdown("<div style='margin-bottom:10px'></div>", unsafe_allow_html=True)
-
-    b1, b2, b3 = st.columns(3, gap="small")
-
-    with b1:
-        if st.button("① Generate strategies", use_container_width=True):
-            with st.spinner("Generating differentiated strategy archetypes..."):
-                strategies_bundle = generate_all_strategies(
-                    current_role=str(current),
-                    target_role=str(target),
-                    gap_df=gap_df,
-                    model="gpt-4o-mini",
-                    prefer_online=True,
-                )
-                st.session_state.review_board_strategies = strategies_bundle.get("strategies")
-                st.session_state.review_board_trace["strategies_bundle"] = strategies_bundle.get("trace", {})
-                st.session_state.review_board_evaluations = None
-                st.session_state.review_board_consensus = None
-                st.session_state.review_board_judge_memo = None
-                st.session_state.review_board_trace.pop("counterfactual_consensus", None)
-                st.rerun()
-
-    with b2:
-        if st.button("② Expert evaluations", use_container_width=True):
-            if not st.session_state.review_board_strategies:
-                st.error("Generate strategies first.")
-            else:
-                with st.spinner("Evaluating strategies across reviewer personas..."):
-                    evals_bundle = evaluate_strategies_by_reviewers(
-                        strategies=st.session_state.review_board_strategies,
+        with b1:
+            if st.button("① Generate strategies", use_container_width=True):
+                with st.spinner("Generating differentiated strategy archetypes..."):
+                    strategies_bundle = generate_all_strategies(
                         current_role=str(current),
                         target_role=str(target),
+                        gap_df=gap_df,
                         model="gpt-4o-mini",
                         prefer_online=True,
                     )
-                    st.session_state.review_board_evaluations = evals_bundle.get("evaluations")
-                    st.session_state.review_board_trace["evaluations_bundle"] = evals_bundle.get("trace", {})
+                    st.session_state.review_board_strategies = strategies_bundle.get("strategies")
+                    st.session_state.review_board_trace["strategies_bundle"] = strategies_bundle.get("trace", {})
+                    st.session_state.review_board_evaluations = None
                     st.session_state.review_board_consensus = None
                     st.session_state.review_board_judge_memo = None
                     st.session_state.review_board_trace.pop("counterfactual_consensus", None)
                     st.rerun()
 
-    with b3:
-        if st.button("③ Compute consensus", use_container_width=True):
-            if not st.session_state.review_board_evaluations:
-                st.error("Get expert evals first.")
-            else:
-                with st.spinner("Computing confidence-adjusted consensus..."):
-                    st.session_state.review_board_consensus = compute_consensus(
-                        st.session_state.review_board_evaluations
-                    )
-                    st.session_state.review_board_judge_memo = None
-                    st.rerun()
-
-    st.markdown("<div style='margin-bottom:4px'></div>", unsafe_allow_html=True)
-    strategies = st.session_state.review_board_strategies
-    evaluations = st.session_state.review_board_evaluations
-    consensus = st.session_state.review_board_consensus
-    judge_memo = st.session_state.review_board_judge_memo
-
-    # --------------------------------------------------------
-    # Strategies
-    # --------------------------------------------------------
-    if strategies:
-        st.divider()
-        st.markdown("**① Competing pivot strategies**")
-        st.caption("Five differentiated archetypes generated by the strategy engine.")
-
-        strategies_trace = st.session_state.review_board_trace.get("strategies_bundle", {})
-        diversity_warnings = strategies_trace.get("diversity_warnings", [])
-        if diversity_warnings:
-            with st.expander("Strategy diversity diagnostics", expanded=False):
-                for msg in diversity_warnings:
-                    st.warning(str(msg))
-
-        strategy_tabs = st.tabs([f"{s.archetype.code}" for s in strategies])
-
-        for tab, strat in zip(strategy_tabs, strategies):
-            with tab:
-                top_left, top_right = st.columns([2.0, 1.0])
-
-                with top_left:
-                    st.markdown(f"### {strat.archetype.name}")
-                    st.markdown(str(strat.summary))
-
-                with top_right:
-                    st.metric("Risk", str(strat.archetype.risk_level).title())
-                    st.metric("Estimated days", int(strat.archetype.estimated_days))
-
-                m1, m2, m3, m4, m5 = st.columns(5)
-                m1.metric("Speed", f"{float(getattr(strat, 'speed_bias', 5.0)):.1f}/10")
-                m2.metric("Risk control", f"{float(getattr(strat, 'risk_bias', 5.0)):.1f}/10")
-                m3.metric("Evidence", f"{float(getattr(strat, 'evidence_burden', 5.0)):.1f}/10")
-                m4.metric("Market signal", f"{float(getattr(strat, 'market_signal_strength', 5.0)):.1f}/10")
-                m5.metric("Gap focus", f"{float(getattr(strat, 'skill_gap_focus', 5.0)):.1f}/10")
-
-                t1, t2 = st.columns(2)
-                with t1:
-                    st.markdown(f"**Best for:** {str(getattr(strat, 'best_for_profile', '') or '—')}")
-                    st.markdown(f"**Evidence strategy:** {str(getattr(strat, 'evidence_strategy', '') or '—')}")
-                with t2:
-                    st.markdown(f"**Key trade-off:** {str(getattr(strat, 'key_tradeoff', '') or '—')}")
-                    st.markdown(f"**Confidence rationale:** {str(getattr(strat, 'confidence_rationale', '') or '—')}")
-
-                with st.expander("Strategy details", expanded=False):
-                    phases_rows = []
-                    for phase in strat.phases:
-                        phases_rows.append(
-                            {
-                                "phase": phase.phase,
-                                "objective": phase.objective,
-                            }
+        with b2:
+            if st.button("② Expert evaluations", use_container_width=True):
+                if not st.session_state.review_board_strategies:
+                    st.error("Generate strategies first.")
+                else:
+                    with st.spinner("Evaluating strategies across reviewer personas..."):
+                        evals_bundle = evaluate_strategies_by_reviewers(
+                            strategies=st.session_state.review_board_strategies,
+                            current_role=str(current),
+                            target_role=str(target),
+                            model="gpt-4o-mini",
+                            prefer_online=True,
                         )
+                        st.session_state.review_board_evaluations = evals_bundle.get("evaluations")
+                        st.session_state.review_board_trace["evaluations_bundle"] = evals_bundle.get("trace", {})
+                        st.session_state.review_board_consensus = None
+                        st.session_state.review_board_judge_memo = None
+                        st.session_state.review_board_trace.pop("counterfactual_consensus", None)
+                        st.rerun()
 
-                    phases_df = pd.DataFrame(phases_rows)
-                    if not phases_df.empty:
-                        _render_table_card(
-                            phases_df,
-                            columns=["phase", "objective"],
-                            headers=["Phase", "Objective"],
-                            numeric_cols=[],
+        with b3:
+            if st.button("③ Compute consensus", use_container_width=True):
+                if not st.session_state.review_board_evaluations:
+                    st.error("Get expert evals first.")
+                else:
+                    with st.spinner("Computing confidence-adjusted consensus..."):
+                        st.session_state.review_board_consensus = compute_consensus(
+                            st.session_state.review_board_evaluations
                         )
+                        st.session_state.review_board_judge_memo = None
+                        st.rerun()
 
-                    a1, a2 = st.columns(2)
-                    with a1:
-                        _render_bullet_list("Key missing skills addressed", getattr(strat, "key_missing_skills", []))
-                        _render_bullet_list("Success criteria", getattr(strat, "success_criteria", []))
-                    with a2:
-                        _render_bullet_list("Transferable anchors", getattr(strat, "transferable_anchors", []))
-                        _render_bullet_list("Potential risks", getattr(strat, "potential_risks", []))
+        st.markdown("<div style='margin-bottom:4px'></div>", unsafe_allow_html=True)
+        strategies = st.session_state.review_board_strategies
+        evaluations = st.session_state.review_board_evaluations
+        consensus = st.session_state.review_board_consensus
+        judge_memo = st.session_state.review_board_judge_memo
 
-    # --------------------------------------------------------
-    # Reviewer coverage
-    # --------------------------------------------------------
-    if evaluations:
-        st.divider()
-        st.markdown("**② Reviewer coverage and disagreement**")
-        st.caption("Five expert personas evaluate each strategy independently.")
+        # --------------------------------------------------------
+        # Strategies
+        # --------------------------------------------------------
+        if strategies:
+            st.divider()
+            st.markdown("**① Competing pivot strategies**")
+            st.caption("Five differentiated archetypes generated by the strategy engine.")
 
-        # Summary chips
-        n_eval = len(evaluations)
-        personas = [ev.reviewer_persona for ev in evaluations]
-        strongest_counts: Dict[str, int] = {}
-        for ev in evaluations:
-            s = ev.strongest_strategy
-            strongest_counts[s] = strongest_counts.get(s, 0) + 1
-        top_pick = max(strongest_counts, key=strongest_counts.get) if strongest_counts else "?"
-        st.markdown(
-            f'<span class="status-pill status-ok">{n_eval} reviewers</span>'
-            f'<span class="status-pill status-warn">Most favored: {top_pick}</span>',
-            unsafe_allow_html=True,
-        )
-        st.markdown("<div style='margin-bottom:8px'></div>", unsafe_allow_html=True)
+            strategies_trace = st.session_state.review_board_trace.get("strategies_bundle", {})
+            diversity_warnings = strategies_trace.get("diversity_warnings", [])
+            if diversity_warnings:
+                with st.expander("Strategy diversity diagnostics", expanded=False):
+                    for msg in diversity_warnings:
+                        st.warning(str(msg))
 
-        review_rows = []
-        detail_rows = []
+            strategy_tabs = st.tabs([f"{s.archetype.code}" for s in strategies])
 
-        for ev in evaluations:
-            review_rows.append(
-                {
-                    "reviewer_persona": ev.reviewer_persona,
-                    "strongest_strategy": ev.strongest_strategy,
-                    "weakest_strategy": ev.weakest_strategy,
-                    "reviewer_weight": float(getattr(ev, "reviewer_weight", 1.0)),
-                }
+            for tab, strat in zip(strategy_tabs, strategies):
+                with tab:
+                    top_left, top_right = st.columns([2.0, 1.0])
+
+                    with top_left:
+                        st.markdown(f"### {strat.archetype.name}")
+                        st.markdown(str(strat.summary))
+
+                    with top_right:
+                        st.metric("Risk", str(strat.archetype.risk_level).title())
+                        st.metric("Estimated days", int(strat.archetype.estimated_days))
+
+                    m1, m2, m3, m4, m5 = st.columns(5)
+                    m1.metric("Speed", f"{float(getattr(strat, 'speed_bias', 5.0)):.1f}/10")
+                    m2.metric("Risk control", f"{float(getattr(strat, 'risk_bias', 5.0)):.1f}/10")
+                    m3.metric("Evidence", f"{float(getattr(strat, 'evidence_burden', 5.0)):.1f}/10")
+                    m4.metric("Market signal", f"{float(getattr(strat, 'market_signal_strength', 5.0)):.1f}/10")
+                    m5.metric("Gap focus", f"{float(getattr(strat, 'skill_gap_focus', 5.0)):.1f}/10")
+
+                    t1, t2 = st.columns(2)
+                    with t1:
+                        st.markdown(f"**Best for:** {str(getattr(strat, 'best_for_profile', '') or '—')}")
+                        st.markdown(f"**Evidence strategy:** {str(getattr(strat, 'evidence_strategy', '') or '—')}")
+                    with t2:
+                        st.markdown(f"**Key trade-off:** {str(getattr(strat, 'key_tradeoff', '') or '—')}")
+                        st.markdown(f"**Confidence rationale:** {str(getattr(strat, 'confidence_rationale', '') or '—')}")
+
+                    with st.expander("Strategy details", expanded=False):
+                        phases_rows = []
+                        for phase in strat.phases:
+                            phases_rows.append(
+                                {
+                                    "phase": phase.phase,
+                                    "objective": phase.objective,
+                                }
+                            )
+
+                        phases_df = pd.DataFrame(phases_rows)
+                        if not phases_df.empty:
+                            _render_table_card(
+                                phases_df,
+                                columns=["phase", "objective"],
+                                headers=["Phase", "Objective"],
+                                numeric_cols=[],
+                            )
+
+                        a1, a2 = st.columns(2)
+                        with a1:
+                            _render_bullet_list("Key missing skills addressed", getattr(strat, "key_missing_skills", []))
+                            _render_bullet_list("Success criteria", getattr(strat, "success_criteria", []))
+                        with a2:
+                            _render_bullet_list("Transferable anchors", getattr(strat, "transferable_anchors", []))
+                            _render_bullet_list("Potential risks", getattr(strat, "potential_risks", []))
+
+        # --------------------------------------------------------
+        # Reviewer coverage
+        # --------------------------------------------------------
+        if evaluations:
+            st.divider()
+            st.markdown("**② Reviewer coverage and disagreement**")
+            st.caption("Five expert personas evaluate each strategy independently.")
+
+            # Summary chips
+            n_eval = len(evaluations)
+            personas = [ev.reviewer_persona for ev in evaluations]
+            strongest_counts: Dict[str, int] = {}
+            for ev in evaluations:
+                s = ev.strongest_strategy
+                strongest_counts[s] = strongest_counts.get(s, 0) + 1
+            top_pick = max(strongest_counts, key=strongest_counts.get) if strongest_counts else "?"
+            st.markdown(
+                f'<span class="status-pill status-ok">{n_eval} reviewers</span>'
+                f'<span class="status-pill status-warn">Most favored: {top_pick}</span>',
+                unsafe_allow_html=True,
             )
+            st.markdown("<div style='margin-bottom:8px'></div>", unsafe_allow_html=True)
 
-            for s in ev.strategy_scores:
-                detail_rows.append(
+            review_rows = []
+            detail_rows = []
+
+            for ev in evaluations:
+                review_rows.append(
                     {
                         "reviewer_persona": ev.reviewer_persona,
-                        "strategy_code": s.strategy_code,
-                        "overall_score": float(s.overall_score),
-                        "alignment_with_role": float(s.alignment_with_role),
-                        "market_feasibility": float(s.market_feasibility),
-                        "time_efficiency": float(s.time_efficiency),
-                        "risk_assessment": float(s.risk_assessment),
-                        "narrative_strength": float(s.narrative_strength),
+                        "strongest_strategy": ev.strongest_strategy,
+                        "weakest_strategy": ev.weakest_strategy,
+                        "reviewer_weight": float(getattr(ev, "reviewer_weight", 1.0)),
                     }
                 )
 
-        review_df = pd.DataFrame(review_rows)
-        if not review_df.empty:
-            _render_table_card(
-                review_df,
-                columns=["reviewer_persona", "strongest_strategy", "weakest_strategy", "reviewer_weight"],
-                headers=["Reviewer", "Strongest", "Weakest", "Weight"],
-                numeric_cols=["reviewer_weight"],
-            )
+                for s in ev.strategy_scores:
+                    detail_rows.append(
+                        {
+                            "reviewer_persona": ev.reviewer_persona,
+                            "strategy_code": s.strategy_code,
+                            "overall_score": float(s.overall_score),
+                            "alignment_with_role": float(s.alignment_with_role),
+                            "market_feasibility": float(s.market_feasibility),
+                            "time_efficiency": float(s.time_efficiency),
+                            "risk_assessment": float(s.risk_assessment),
+                            "narrative_strength": float(s.narrative_strength),
+                        }
+                    )
 
-        detail_df = pd.DataFrame(detail_rows)
-        if not detail_df.empty:
-            with st.expander("Reviewer score matrix", expanded=False):
+            review_df = pd.DataFrame(review_rows)
+            if not review_df.empty:
                 _render_table_card(
-                    detail_df,
-                    columns=[
-                        "reviewer_persona",
-                        "strategy_code",
-                        "overall_score",
-                        "alignment_with_role",
-                        "market_feasibility",
-                        "time_efficiency",
-                        "risk_assessment",
-                        "narrative_strength",
-                    ],
-                    headers=[
-                        "Reviewer",
-                        "Strategy",
-                        "Overall",
-                        "Role Fit",
-                        "Market",
-                        "Time",
-                        "Risk",
-                        "Narrative",
-                    ],
-                    numeric_cols=[
-                        "overall_score",
-                        "alignment_with_role",
-                        "market_feasibility",
-                        "time_efficiency",
-                        "risk_assessment",
-                        "narrative_strength",
-                    ],
+                    review_df,
+                    columns=["reviewer_persona", "strongest_strategy", "weakest_strategy", "reviewer_weight"],
+                    headers=["Reviewer", "Strongest", "Weakest", "Weight"],
+                    numeric_cols=["reviewer_weight"],
                 )
 
-        reviewer_tabs = st.tabs([ev.reviewer_persona for ev in evaluations])
-        for tab, ev in zip(reviewer_tabs, evaluations):
-            with tab:
-                st.caption(ev.overall_recommendation)
-                for i, s in enumerate(ev.strategy_scores):
-                    if i > 0:
-                        st.divider()
-                    score_label = f"**{s.strategy_code}**"
-                    score_val = f"{float(s.overall_score):.0f} / 100"
-                    st.markdown(
-                        f'{score_label} <span style="color:rgba(0,0,0,0.45);font-size:13px;margin-left:8px">{score_val}</span>',
-                        unsafe_allow_html=True,
-                    )
-                    st.caption(str(s.justification))
-                    r1, r2 = st.columns(2)
-                    with r1:
-                        if getattr(s, "best_strength", ""):
-                            st.markdown(f"↑ {s.best_strength}")
-                        if getattr(s, "success_condition", ""):
-                            st.caption(f"Success condition: {s.success_condition}")
-                    with r2:
-                        if getattr(s, "killer_objection", ""):
-                            st.markdown(f"↓ {s.killer_objection}")
-                        if getattr(s, "biggest_risk", ""):
-                            st.caption(f"Biggest risk: {s.biggest_risk}")
-
-    # --------------------------------------------------------
-    # Consensus
-    # --------------------------------------------------------
-    if consensus:
-        st.divider()
-        st.markdown("**③ Consensus result**")
-        st.caption("Confidence-adjusted aggregation across all reviewers with disagreement penalty.")
-
-        c1, c2, c3, c4, c5, c6, c7 = st.columns(7)
-        c1.metric("Winner", consensus.winner_strategy)
-        c2.metric("Runner-up", consensus.runner_up_strategy)
-        c3.metric("Winner score", f"{consensus.winner_score:.0f}")
-        c4.metric("Consensus", f"{consensus.consensus_strength:.0f}")
-        c5.metric("Robustness", f"{float(getattr(consensus, 'robustness_score', 0.0)):.0f}")
-        c6.metric("Controversy", f"{float(getattr(consensus, 'controversy_score', 0.0)):.0f}")
-        c7.metric("Fragile", "Yes" if bool(getattr(consensus, "fragile_winner", False)) else "No")
-
-        ranking_df = pd.DataFrame(consensus.strategy_rankings, columns=["strategy_code", "confidence_adjusted_score"])
-        _render_table_card(
-            ranking_df,
-            columns=["strategy_code", "confidence_adjusted_score"],
-            headers=["Strategy", "Confidence-Adjusted Score"],
-            numeric_cols=["confidence_adjusted_score"],
-        )
-
-        st.markdown("**Why this recommendation wins**")
-        st.info(str(getattr(consensus, "winner_reason", "") or "No winner rationale available."))
-
-        x1, x2 = st.columns(2)
-        with x1:
-            st.markdown("**Why the runner-up does not win yet**")
-            st.markdown(str(getattr(consensus, "runner_up_reason", "") or "—"))
-        with x2:
-            st.markdown("**Main vulnerability of the winner**")
-            st.markdown(str(getattr(consensus, "winner_vulnerability", "") or "—"))
-
-        decision_levers = getattr(consensus, "decision_levers", []) or []
-        if decision_levers:
-            _render_bullet_list("Decision levers", decision_levers)
-
-        switch_conditions = getattr(consensus, "switch_conditions", []) or []
-        if switch_conditions:
-            _render_bullet_list("What could flip the recommendation", switch_conditions)
-
-        diagnostics = getattr(consensus, "strategy_diagnostics", []) or []
-        if diagnostics:
-            with st.expander("Consensus diagnostics", expanded=False):
-                diagnostic_df = pd.DataFrame(diagnostics)
-                if not diagnostic_df.empty:
+            detail_df = pd.DataFrame(detail_rows)
+            if not detail_df.empty:
+                with st.expander("Reviewer score matrix", expanded=False):
                     _render_table_card(
-                        diagnostic_df,
+                        detail_df,
                         columns=[
-                            "strategy",
-                            "confidence_adjusted_score",
-                            "raw_mean_score",
-                            "disagreement_penalty",
-                            "std_dev",
-                            "robustness_score",
+                            "reviewer_persona",
+                            "strategy_code",
+                            "overall_score",
+                            "alignment_with_role",
+                            "market_feasibility",
+                            "time_efficiency",
+                            "risk_assessment",
+                            "narrative_strength",
                         ],
                         headers=[
+                            "Reviewer",
                             "Strategy",
-                            "Adj. Score",
-                            "Raw Mean",
-                            "Penalty",
-                            "Std Dev",
-                            "Robustness",
+                            "Overall",
+                            "Role Fit",
+                            "Market",
+                            "Time",
+                            "Risk",
+                            "Narrative",
                         ],
                         numeric_cols=[
-                            "confidence_adjusted_score",
-                            "raw_mean_score",
-                            "disagreement_penalty",
-                            "std_dev",
-                            "robustness_score",
+                            "overall_score",
+                            "alignment_with_role",
+                            "market_feasibility",
+                            "time_efficiency",
+                            "risk_assessment",
+                            "narrative_strength",
                         ],
                     )
 
-        if consensus.major_disagreements:
-            with st.expander("Major disagreements", expanded=False):
-                disagreement_df = pd.DataFrame(consensus.major_disagreements)
-                if not disagreement_df.empty:
-                    _render_table_card(
-                        disagreement_df,
-                        columns=["strategy", "strongest_advocate", "strongest_critic", "spread", "std_dev"],
-                        headers=["Strategy", "Advocate", "Critic", "Spread", "Std Dev"],
-                        numeric_cols=["spread", "std_dev"],
-                    )
-
-        alignment_summary = getattr(consensus, "reviewer_alignment_summary", []) or []
-        if alignment_summary:
-            with st.expander("Reviewer alignment summary", expanded=False):
-                align_df = pd.DataFrame(alignment_summary)
-                if not align_df.empty:
-                    _render_table_card(
-                        align_df,
-                        columns=["reviewer_persona", "preferred_strategy", "least_preferred_strategy", "reviewer_weight"],
-                        headers=["Reviewer", "Preferred", "Least Preferred", "Weight"],
-                        numeric_cols=["reviewer_weight"],
-                    )
-
-        if st.button("④ Generate judge memo", use_container_width=True):
-            with st.spinner("Generating final judge recommendation..."):
-                missing = gap_df[gap_df["gap"] > 0].sort_values(["gap", "target_importance"], ascending=False)["skill"].head(4).tolist()
-                transfer = gap_df.copy()
-                transfer["overlap"] = np.minimum(transfer["current_importance"], transfer["target_importance"])
-                top_transfer = transfer.sort_values("overlap", ascending=False)["skill"].head(3).tolist()
-
-                gap_summary = (
-                    f"Top missing skills: {', '.join(missing) if missing else 'none'}. "
-                    f"Top transferable anchors: {', '.join(top_transfer) if top_transfer else 'none'}."
-                )
-
-                judge_bundle = generate_judge_memo(
-                    current_role=str(current),
-                    target_role=str(target),
-                    consensus_result=consensus,
-                    evaluations=evaluations or [],
-                    gap_summary=gap_summary,
-                    model="gpt-4o-mini",
-                    prefer_online=True,
-                )
-                st.session_state.review_board_judge_memo = judge_bundle.get("memo")
-                st.session_state.review_board_trace["judge_bundle"] = judge_bundle.get("trace", {})
-
-    # --------------------------------------------------------
-    # Judge
-    # --------------------------------------------------------
-    judge_memo = st.session_state.review_board_judge_memo
-    if judge_memo:
-        st.divider()        
-        st.markdown("**④ Final judge recommendation**")
-
-        jv_cls = "status-ok" if judge_memo.verdict == "Highly Feasible" else ("status-challenge" if judge_memo.verdict == "Challenging" else "status-warn")
-        st.markdown(
-            f'<span class="status-pill {jv_cls}">{judge_memo.verdict}</span>'
-            f'<span class="status-pill status-ok">{judge_memo.recommended_strategy}</span>'
-            f'<span class="status-pill status-ok">{judge_memo.success_timeline}</span>',
-            unsafe_allow_html=True,
-        )
-        st.markdown("<div style='margin-bottom:8px'></div>", unsafe_allow_html=True)
-
-        st.markdown("**Executive summary**")
-        st.markdown(str(judge_memo.executive_summary))
-
-        col_sf, col_cr = st.columns(2)
-        with col_sf:
-            _render_bullet_list("Key success factors", getattr(judge_memo, "key_success_factors", []))
-        with col_cr:
-            _render_bullet_list("Critical risks", getattr(judge_memo, "critical_risks", []))
-
-        st.markdown("**First 30-day actions**")
-        for action in getattr(judge_memo, "first_30_day_actions", [])[:5]:
-            st.markdown(f"- {action}")
-
-        st.markdown("**Interview narrative**")
-        st.info(str(judge_memo.interview_narrative))
-
-        networking_targets = getattr(consensus, "networking_targets", []) or []
-        if networking_targets:
-            st.markdown("**Suggested networking targets**")
-            nt_tabs = st.tabs([f"Target {i+1}" for i in range(min(4, len(networking_targets)))])
-            for tab, row in zip(nt_tabs, networking_targets[:4]):
+            reviewer_tabs = st.tabs([ev.reviewer_persona for ev in evaluations])
+            for tab, ev in zip(reviewer_tabs, evaluations):
                 with tab:
-                    st.markdown(f"**Target:** {row.get('target', '—')}")
-                    st.markdown(f"**Why:** {row.get('why', '—')}")
-                    st.markdown(f"**Question to ask:** {row.get('ask', '—')}")
-
-    # --------------------------------------------------------
-    # Counterfactual
-    # --------------------------------------------------------
-    if evaluations and consensus:
-        st.divider()
-        with st.expander("Counterfactual: re-rank after skill investment", expanded=False):
-            sim_cands = suggest_best_investment_skills(gap_df, top_k=8)
-            if sim_cands.empty:
-                st.info("No candidate skills available.")
-            else:
-                skill_options = sim_cands["skill"].astype(str).tolist()
-                selected_skills = st.multiselect(
-                    "Which skills would you improve?",
-                    options=skill_options,
-                    default=skill_options[: min(2, len(skill_options))],
-                    key="counterfactual_skills",
-                )
-                uplift_ratio = st.slider(
-                    "How close to target level?",
-                    min_value=0.10,
-                    max_value=1.00,
-                    value=0.50,
-                    step=0.05,
-                    key="counterfactual_uplift",
-                )
-
-                if st.button("Re-evaluate strategies", use_container_width=True, key="rerank_board"):
-                    with st.spinner("Re-ranking strategies under counterfactual skill investment..."):
-                        new_consensus = rerank_after_skill_investment(
-                            evaluations=evaluations,
-                            invested_skills=selected_skills,
-                            uplift_ratio=float(uplift_ratio),
+                    st.caption(ev.overall_recommendation)
+                    for i, s in enumerate(ev.strategy_scores):
+                        if i > 0:
+                            st.divider()
+                        score_label = f"**{s.strategy_code}**"
+                        score_val = f"{float(s.overall_score):.0f} / 100"
+                        st.markdown(
+                            f'{score_label} <span style="color:rgba(0,0,0,0.45);font-size:13px;margin-left:8px">{score_val}</span>',
+                            unsafe_allow_html=True,
                         )
-                        st.session_state.review_board_trace["counterfactual_consensus"] = new_consensus
+                        st.caption(str(s.justification))
+                        r1, r2 = st.columns(2)
+                        with r1:
+                            if getattr(s, "best_strength", ""):
+                                st.markdown(f"↑ {s.best_strength}")
+                            if getattr(s, "success_condition", ""):
+                                st.caption(f"Success condition: {s.success_condition}")
+                        with r2:
+                            if getattr(s, "killer_objection", ""):
+                                st.markdown(f"↓ {s.killer_objection}")
+                            if getattr(s, "biggest_risk", ""):
+                                st.caption(f"Biggest risk: {s.biggest_risk}")
 
-                new_consensus = st.session_state.review_board_trace.get("counterfactual_consensus")
-                if new_consensus:
-                    cf1, cf2, cf3 = st.columns(3)
-                    cf1.metric("Counterfactual winner", new_consensus.winner_strategy)
-                    cf2.metric("New winner score", f"{new_consensus.winner_score:.1f}/100")
-                    cf3.metric("New robustness", f"{float(getattr(new_consensus, 'robustness_score', 0.0)):.0f}/100")
+        # --------------------------------------------------------
+        # Consensus
+        # --------------------------------------------------------
+        if consensus:
+            st.divider()
+            st.markdown("**③ Consensus result**")
+            st.caption("Confidence-adjusted aggregation across all reviewers with disagreement penalty.")
 
-                    ranking_cf_df = pd.DataFrame(
-                        new_consensus.strategy_rankings,
-                        columns=["strategy_code", "avg_score"],
-                    )
-                    _render_table_card(
-                        ranking_cf_df,
-                        columns=["strategy_code", "avg_score"],
-                        headers=["Strategy", "Counterfactual Score"],
-                        numeric_cols=["avg_score"],
-                    )
+            c1, c2, c3, c4, c5, c6, c7 = st.columns(7)
+            c1.metric("Winner", consensus.winner_strategy)
+            c2.metric("Runner-up", consensus.runner_up_strategy)
+            c3.metric("Winner score", f"{consensus.winner_score:.0f}")
+            c4.metric("Consensus", f"{consensus.consensus_strength:.0f}")
+            c5.metric("Robustness", f"{float(getattr(consensus, 'robustness_score', 0.0)):.0f}")
+            c6.metric("Controversy", f"{float(getattr(consensus, 'controversy_score', 0.0)):.0f}")
+            c7.metric("Fragile", "Yes" if bool(getattr(consensus, "fragile_winner", False)) else "No")
 
-                    if new_consensus.winner_strategy != consensus.winner_strategy:
-                        st.success(
-                            f"Recommendation flipped: {consensus.winner_strategy} → {new_consensus.winner_strategy}"
-                        )
-                    else:
-                        st.info(f"{new_consensus.winner_strategy} remains the best strategy after skill investment.")
-
-    # ── Aggregation Documentation (always visible when consensus exists) ──────
-    if consensus:
-        st.divider()
-        with st.expander("⚙️ How the aggregation works — formula & conflict handling", expanded=False):
-            st.markdown(
-                "This section documents the Python aggregation layer that processes raw LLM scores "
-                "into the final recommendation. LLM outputs are **never used raw** — they are "
-                "always passed through this deterministic pipeline."
+            ranking_df = pd.DataFrame(consensus.strategy_rankings, columns=["strategy_code", "confidence_adjusted_score"])
+            _render_table_card(
+                ranking_df,
+                columns=["strategy_code", "confidence_adjusted_score"],
+                headers=["Strategy", "Confidence-Adjusted Score"],
+                numeric_cols=["confidence_adjusted_score"],
             )
 
-            col_formula, col_why = st.columns([3, 2], gap="large")
+            st.markdown("**Why this recommendation wins**")
+            st.info(str(getattr(consensus, "winner_reason", "") or "No winner rationale available."))
 
-            with col_formula:
-                st.markdown("**The confidence-adjusted score formula**")
-                st.code(
-                    "# For each strategy:\n"
-                    "weighted_mean = Σ(score_i × weight_i) / Σ(weight_i)\n"
-                    "std           = standard deviation across reviewers\n"
-                    "spread        = max_score - min_score\n\n"
-                    "penalty       = min(16.0,  std × 0.9  +  spread × 0.12)\n"
-                    "adj_score     = max(0.0,  weighted_mean - penalty)\n\n"
-                    "# Robustness (stability under worst-case disagreement):\n"
-                    "robustness    = weighted_mean - std × 1.8\n\n"
-                    "# Fragile winner flag:\n"
-                    "fragile       = (winner - runner_up < 4.0) OR (winner_std > 4.0)",
-                    language="python",
-                )
+            x1, x2 = st.columns(2)
+            with x1:
+                st.markdown("**Why the runner-up does not win yet**")
+                st.markdown(str(getattr(consensus, "runner_up_reason", "") or "—"))
+            with x2:
+                st.markdown("**Main vulnerability of the winner**")
+                st.markdown(str(getattr(consensus, "winner_vulnerability", "") or "—"))
 
-            with col_why:
-                st.markdown("**Why this formula?**")
-                st.markdown(
-                    "- **Weighted mean** rewards reviewers with higher expertise weight — not all reviewers count equally\n"
-                    "- **Penalty for std** captures *spread of opinion* — if reviewers disagree, the score should be discounted\n"
-                    "- **Penalty for spread** catches bimodal disagreement (one champion, one critic) even when std is moderate\n"
-                    "- **Cap at 16** prevents extreme outliers from zeroing out an otherwise strong strategy\n"
-                    "- **Robustness** is a conservative lower bound — useful when the winner margin is narrow"
-                )
+            decision_levers = getattr(consensus, "decision_levers", []) or []
+            if decision_levers:
+                _render_bullet_list("Decision levers", decision_levers)
 
-            # Live numbers from current run
-            if hasattr(consensus, "strategy_diagnostics") and consensus.strategy_diagnostics:
-                st.markdown("**Live numbers from this run**")
-                diag_data = []
-                for d in consensus.strategy_diagnostics:
-                    penalty = d.get("disagreement_penalty", 0)
-                    raw = d.get("raw_mean_score", 0)
-                    adj = d.get("confidence_adjusted_score", 0)
-                    std = d.get("std_dev", 0)
-                    rob = d.get("robustness_score", 0)
-                    is_winner = d["strategy"] == consensus.winner_strategy
-                    diag_data.append({
-                        "strategy": ("★ " if is_winner else "  ") + d["strategy"],
-                        "raw_mean": round(raw, 1),
-                        "std": round(std, 2),
-                        "penalty": round(penalty, 2),
-                        "adj_score": round(adj, 1),
-                        "robustness": round(rob, 1),
-                    })
-                diag_df = pd.DataFrame(diag_data)
-                _render_table_card(
-                    diag_df,
-                    columns=["strategy", "raw_mean", "std", "penalty", "adj_score", "robustness"],
-                    headers=["Strategy", "Raw Mean", "Std Dev", "Penalty", "Adj. Score", "Robustness"],
-                    numeric_cols=["raw_mean", "std", "penalty", "adj_score", "robustness"],
-                )
-                st.caption(
-                    f"★ Winner: {consensus.winner_strategy} · "
-                    f"Fragile: {'Yes — margin < 4 pts or high variance' if consensus.fragile_winner else 'No'} · "
-                    f"Controversy: {consensus.controversy_score:.0f}/100"
-                )
+            switch_conditions = getattr(consensus, "switch_conditions", []) or []
+            if switch_conditions:
+                _render_bullet_list("What could flip the recommendation", switch_conditions)
 
-            st.markdown("**Conflict detection & investigation**")
-            st.markdown(
-                "A strategy is flagged for conflict investigation when `std ≥ 2.5` **or** `spread ≥ 10`. "
-                "The agent's `investigate_disagreement` tool then surfaces *which* reviewers disagree, "
-                "*on which dimension* (role fit, market, risk, narrative), and *what evidence would close the gap*. "
-                "This makes conflict-handling a transparent, traceable operation — not a silent score reduction."
-            )
+            diagnostics = getattr(consensus, "strategy_diagnostics", []) or []
+            if diagnostics:
+                with st.expander("Consensus diagnostics", expanded=False):
+                    diagnostic_df = pd.DataFrame(diagnostics)
+                    if not diagnostic_df.empty:
+                        _render_table_card(
+                            diagnostic_df,
+                            columns=[
+                                "strategy",
+                                "confidence_adjusted_score",
+                                "raw_mean_score",
+                                "disagreement_penalty",
+                                "std_dev",
+                                "robustness_score",
+                            ],
+                            headers=[
+                                "Strategy",
+                                "Adj. Score",
+                                "Raw Mean",
+                                "Penalty",
+                                "Std Dev",
+                                "Robustness",
+                            ],
+                            numeric_cols=[
+                                "confidence_adjusted_score",
+                                "raw_mean_score",
+                                "disagreement_penalty",
+                                "std_dev",
+                                "robustness_score",
+                            ],
+                        )
+
             if consensus.major_disagreements:
-                for d in consensus.major_disagreements[:3]:
-                    sev_cls = "status-challenge" if float(d.get("std_dev", 0)) >= 3.5 else "status-warn"
-                    st.markdown(
-                        f'<span class="status-pill {sev_cls}">{d["strategy"]}</span>'
-                        f'<span style="font-size:13px;color:rgba(0,0,0,0.65)"> '
-                        f'Spread {d["spread"]:.0f} pts · {d["strongest_advocate"]} (advocate) vs {d["strongest_critic"]} (critic)</span>',
-                        unsafe_allow_html=True,
+                with st.expander("Major disagreements", expanded=False):
+                    disagreement_df = pd.DataFrame(consensus.major_disagreements)
+                    if not disagreement_df.empty:
+                        _render_table_card(
+                            disagreement_df,
+                            columns=["strategy", "strongest_advocate", "strongest_critic", "spread", "std_dev"],
+                            headers=["Strategy", "Advocate", "Critic", "Spread", "Std Dev"],
+                            numeric_cols=["spread", "std_dev"],
+                        )
+
+            alignment_summary = getattr(consensus, "reviewer_alignment_summary", []) or []
+            if alignment_summary:
+                with st.expander("Reviewer alignment summary", expanded=False):
+                    align_df = pd.DataFrame(alignment_summary)
+                    if not align_df.empty:
+                        _render_table_card(
+                            align_df,
+                            columns=["reviewer_persona", "preferred_strategy", "least_preferred_strategy", "reviewer_weight"],
+                            headers=["Reviewer", "Preferred", "Least Preferred", "Weight"],
+                            numeric_cols=["reviewer_weight"],
+                        )
+
+            if st.button("④ Generate judge memo", use_container_width=True):
+                with st.spinner("Generating final judge recommendation..."):
+                    missing = gap_df[gap_df["gap"] > 0].sort_values(["gap", "target_importance"], ascending=False)["skill"].head(4).tolist()
+                    transfer = gap_df.copy()
+                    transfer["overlap"] = np.minimum(transfer["current_importance"], transfer["target_importance"])
+                    top_transfer = transfer.sort_values("overlap", ascending=False)["skill"].head(3).tolist()
+
+                    gap_summary = (
+                        f"Top missing skills: {', '.join(missing) if missing else 'none'}. "
+                        f"Top transferable anchors: {', '.join(top_transfer) if top_transfer else 'none'}."
                     )
-            else:
-                st.success("No major disagreements detected — reviewers are broadly aligned.")
+
+                    judge_bundle = generate_judge_memo(
+                        current_role=str(current),
+                        target_role=str(target),
+                        consensus_result=consensus,
+                        evaluations=evaluations or [],
+                        gap_summary=gap_summary,
+                        model="gpt-4o-mini",
+                        prefer_online=True,
+                    )
+                    st.session_state.review_board_judge_memo = judge_bundle.get("memo")
+                    st.session_state.review_board_trace["judge_bundle"] = judge_bundle.get("trace", {})
+
+        # --------------------------------------------------------
+        # Judge
+        # --------------------------------------------------------
+        judge_memo = st.session_state.review_board_judge_memo
+        if judge_memo:
+            st.divider()        
+            st.markdown("**④ Final judge recommendation**")
+
+            jv_cls = "status-ok" if judge_memo.verdict == "Highly Feasible" else ("status-challenge" if judge_memo.verdict == "Challenging" else "status-warn")
+            st.markdown(
+                f'<span class="status-pill {jv_cls}">{judge_memo.verdict}</span>'
+                f'<span class="status-pill status-ok">{judge_memo.recommended_strategy}</span>'
+                f'<span class="status-pill status-ok">{judge_memo.success_timeline}</span>',
+                unsafe_allow_html=True,
+            )
+            st.markdown("<div style='margin-bottom:8px'></div>", unsafe_allow_html=True)
+
+            st.markdown("**Executive summary**")
+            st.markdown(str(judge_memo.executive_summary))
+
+            col_sf, col_cr = st.columns(2)
+            with col_sf:
+                _render_bullet_list("Key success factors", getattr(judge_memo, "key_success_factors", []))
+            with col_cr:
+                _render_bullet_list("Critical risks", getattr(judge_memo, "critical_risks", []))
+
+            st.markdown("**First 30-day actions**")
+            for action in getattr(judge_memo, "first_30_day_actions", [])[:5]:
+                st.markdown(f"- {action}")
+
+            st.markdown("**Interview narrative**")
+            st.info(str(judge_memo.interview_narrative))
+
+            networking_targets = getattr(consensus, "networking_targets", []) or []
+            if networking_targets:
+                st.markdown("**Suggested networking targets**")
+                nt_tabs = st.tabs([f"Target {i+1}" for i in range(min(4, len(networking_targets)))])
+                for tab, row in zip(nt_tabs, networking_targets[:4]):
+                    with tab:
+                        st.markdown(f"**Target:** {row.get('target', '—')}")
+                        st.markdown(f"**Why:** {row.get('why', '—')}")
+                        st.markdown(f"**Question to ask:** {row.get('ask', '—')}")
+
+        # --------------------------------------------------------
+        # Counterfactual
+        # --------------------------------------------------------
+        if evaluations and consensus:
+            st.divider()
+            with st.expander("Counterfactual: re-rank after skill investment", expanded=False):
+                sim_cands = suggest_best_investment_skills(gap_df, top_k=8)
+                if sim_cands.empty:
+                    st.info("No candidate skills available.")
+                else:
+                    skill_options = sim_cands["skill"].astype(str).tolist()
+                    selected_skills = st.multiselect(
+                        "Which skills would you improve?",
+                        options=skill_options,
+                        default=skill_options[: min(2, len(skill_options))],
+                        key="counterfactual_skills",
+                    )
+                    uplift_ratio = st.slider(
+                        "How close to target level?",
+                        min_value=0.10,
+                        max_value=1.00,
+                        value=0.50,
+                        step=0.05,
+                        key="counterfactual_uplift",
+                    )
+
+                    if st.button("Re-evaluate strategies", use_container_width=True, key="rerank_board"):
+                        with st.spinner("Re-ranking strategies under counterfactual skill investment..."):
+                            new_consensus = rerank_after_skill_investment(
+                                evaluations=evaluations,
+                                invested_skills=selected_skills,
+                                uplift_ratio=float(uplift_ratio),
+                            )
+                            st.session_state.review_board_trace["counterfactual_consensus"] = new_consensus
+
+                    new_consensus = st.session_state.review_board_trace.get("counterfactual_consensus")
+                    if new_consensus:
+                        cf1, cf2, cf3 = st.columns(3)
+                        cf1.metric("Counterfactual winner", new_consensus.winner_strategy)
+                        cf2.metric("New winner score", f"{new_consensus.winner_score:.1f}/100")
+                        cf3.metric("New robustness", f"{float(getattr(new_consensus, 'robustness_score', 0.0)):.0f}/100")
+
+                        ranking_cf_df = pd.DataFrame(
+                            new_consensus.strategy_rankings,
+                            columns=["strategy_code", "avg_score"],
+                        )
+                        _render_table_card(
+                            ranking_cf_df,
+                            columns=["strategy_code", "avg_score"],
+                            headers=["Strategy", "Counterfactual Score"],
+                            numeric_cols=["avg_score"],
+                        )
+
+                        if new_consensus.winner_strategy != consensus.winner_strategy:
+                            st.success(
+                                f"Recommendation flipped: {consensus.winner_strategy} → {new_consensus.winner_strategy}"
+                            )
+                        else:
+                            st.info(f"{new_consensus.winner_strategy} remains the best strategy after skill investment.")
+
+        # ── Aggregation Documentation (always visible when consensus exists) ──────
+        if consensus:
+            st.divider()
+            with st.expander("⚙️ How the aggregation works — formula & conflict handling", expanded=False):
+                st.markdown(
+                    "This section documents the Python aggregation layer that processes raw LLM scores "
+                    "into the final recommendation. LLM outputs are **never used raw** — they are "
+                    "always passed through this deterministic pipeline."
+                )
+
+                col_formula, col_why = st.columns([3, 2], gap="large")
+
+                with col_formula:
+                    st.markdown("**The confidence-adjusted score formula**")
+                    st.code(
+                        "# For each strategy:\n"
+                        "weighted_mean = Σ(score_i × weight_i) / Σ(weight_i)\n"
+                        "std           = standard deviation across reviewers\n"
+                        "spread        = max_score - min_score\n\n"
+                        "penalty       = min(16.0,  std × 0.9  +  spread × 0.12)\n"
+                        "adj_score     = max(0.0,  weighted_mean - penalty)\n\n"
+                        "# Robustness (stability under worst-case disagreement):\n"
+                        "robustness    = weighted_mean - std × 1.8\n\n"
+                        "# Fragile winner flag:\n"
+                        "fragile       = (winner - runner_up < 4.0) OR (winner_std > 4.0)",
+                        language="python",
+                    )
+
+                with col_why:
+                    st.markdown("**Why this formula?**")
+                    st.markdown(
+                        "- **Weighted mean** rewards reviewers with higher expertise weight — not all reviewers count equally\n"
+                        "- **Penalty for std** captures *spread of opinion* — if reviewers disagree, the score should be discounted\n"
+                        "- **Penalty for spread** catches bimodal disagreement (one champion, one critic) even when std is moderate\n"
+                        "- **Cap at 16** prevents extreme outliers from zeroing out an otherwise strong strategy\n"
+                        "- **Robustness** is a conservative lower bound — useful when the winner margin is narrow"
+                    )
+
+                # Live numbers from current run
+                if hasattr(consensus, "strategy_diagnostics") and consensus.strategy_diagnostics:
+                    st.markdown("**Live numbers from this run**")
+                    diag_data = []
+                    for d in consensus.strategy_diagnostics:
+                        penalty = d.get("disagreement_penalty", 0)
+                        raw = d.get("raw_mean_score", 0)
+                        adj = d.get("confidence_adjusted_score", 0)
+                        std = d.get("std_dev", 0)
+                        rob = d.get("robustness_score", 0)
+                        is_winner = d["strategy"] == consensus.winner_strategy
+                        diag_data.append({
+                            "strategy": ("★ " if is_winner else "  ") + d["strategy"],
+                            "raw_mean": round(raw, 1),
+                            "std": round(std, 2),
+                            "penalty": round(penalty, 2),
+                            "adj_score": round(adj, 1),
+                            "robustness": round(rob, 1),
+                        })
+                    diag_df = pd.DataFrame(diag_data)
+                    _render_table_card(
+                        diag_df,
+                        columns=["strategy", "raw_mean", "std", "penalty", "adj_score", "robustness"],
+                        headers=["Strategy", "Raw Mean", "Std Dev", "Penalty", "Adj. Score", "Robustness"],
+                        numeric_cols=["raw_mean", "std", "penalty", "adj_score", "robustness"],
+                    )
+                    st.caption(
+                        f"★ Winner: {consensus.winner_strategy} · "
+                        f"Fragile: {'Yes — margin < 4 pts or high variance' if consensus.fragile_winner else 'No'} · "
+                        f"Controversy: {consensus.controversy_score:.0f}/100"
+                    )
+
+                st.markdown("**Conflict detection & investigation**")
+                st.markdown(
+                    "A strategy is flagged for conflict investigation when `std ≥ 2.5` **or** `spread ≥ 10`. "
+                    "The agent's `investigate_disagreement` tool then surfaces *which* reviewers disagree, "
+                    "*on which dimension* (role fit, market, risk, narrative), and *what evidence would close the gap*. "
+                    "This makes conflict-handling a transparent, traceable operation — not a silent score reduction."
+                )
+                if consensus.major_disagreements:
+                    for d in consensus.major_disagreements[:3]:
+                        sev_cls = "status-challenge" if float(d.get("std_dev", 0)) >= 3.5 else "status-warn"
+                        st.markdown(
+                            f'<span class="status-pill {sev_cls}">{d["strategy"]}</span>'
+                            f'<span style="font-size:13px;color:rgba(0,0,0,0.65)"> '
+                            f'Spread {d["spread"]:.0f} pts · {d["strongest_advocate"]} (advocate) vs {d["strongest_critic"]} (critic)</span>',
+                            unsafe_allow_html=True,
+                        )
+                else:
+                    st.success("No major disagreements detected — reviewers are broadly aligned.")
 
 
-# ============================================================
-# Research extras
-# ============================================================
-if not guided:
-    with st.expander("Research notes", expanded=False):
-        st.markdown(
-            """
-**Confidence** is a heuristic coverage score, not a probability.  
-It combines overlap, dataset density, and embedding support.
-            """
-        )
+    # ============================================================
+    # Research extras
+    # ============================================================
+    if not guided:
+        with st.expander("Research notes", expanded=False):
+            st.markdown(
+                """
+    **Confidence** is a heuristic coverage score, not a probability.  
+    It combines overlap, dataset density, and embedding support.
+                """
+            )
 
-    with st.expander("Export CSV", expanded=False):
-        export_df = gap_df.copy()
-        export_df.insert(0, "current_occupation", str(current))
-        export_df.insert(1, "target_occupation", str(target))
-        export_df.insert(2, "match_score_display", round(match_score_display, 2))
-        export_df.insert(3, "score_mode", "percentile" if show_percentile else "raw")
-        export_df.insert(4, "use_idf", bool(use_idf))
-        export_df.insert(5, "confidence_score", round(float(conf["confidence_score"]), 2))
+        with st.expander("Export CSV", expanded=False):
+            export_df = gap_df.copy()
+            export_df.insert(0, "current_occupation", str(current))
+            export_df.insert(1, "target_occupation", str(target))
+            export_df.insert(2, "match_score_display", round(match_score_display, 2))
+            export_df.insert(3, "score_mode", "percentile" if show_percentile else "raw")
+            export_df.insert(4, "use_idf", bool(use_idf))
+            export_df.insert(5, "confidence_score", round(float(conf["confidence_score"]), 2))
 
-        csv_bytes = export_df.to_csv(index=False).encode("utf-8")
-        st.download_button(
-            label="Download pivot CSV",
-            data=csv_bytes,
-            file_name=f"pivot_{str(current)}_to_{str(target)}.csv".replace(" ", "_").lower(),
-            mime="text/csv",
-            use_container_width=True,
-        )
+            csv_bytes = export_df.to_csv(index=False).encode("utf-8")
+            st.download_button(
+                label="Download pivot CSV",
+                data=csv_bytes,
+                file_name=f"pivot_{str(current)}_to_{str(target)}.csv".replace(" ", "_").lower(),
+                mime="text/csv",
+                use_container_width=True,
+            )
 
 
-# ============================================================
-# Download Full Report
-# ============================================================
-with st.container(border=True):
+
+with _tab_execute:
+    # ============================================================
+    # Smart Apply — AI Job Matching + Application Package Generator
+    # ============================================================
+    # PHASE_TAG: execute
     st.markdown(
-        '<div class="li-tool-header">'
-        '<div class="li-tool-icon" style="background:#F3F6F9">📥</div>'
-        '<div><div class="li-tool-title">Download Pivot Report</div>'
-        '<div class="li-tool-cap">Full markdown report — all completed analyses in one file</div></div>'
-        '</div>',
+        '<div class="li-phase"><div class="li-phase-line"></div>'
+        '<div class="li-phase-text">Jobs · Find & Apply</div>'
+        '<div class="li-phase-line"></div></div>',
         unsafe_allow_html=True,
     )
-    _rpt_sections = []
-    _rpt_sections.append(f"# Career Pivot Report\n\n**{current} → {target}**\n")
-    _rpt_sections.append(f"## Overview\n- Match Score: {match_score_display:.0f}/100\n- Confidence: {conf['confidence_score']:.0f}/100\n- Skill Gaps: {_n_gaps}\n- Pivot Readiness: {_readiness}/100 ({_r_label})\n")
-
-    if st.session_state.salary_result:
-        _sr2 = st.session_state.salary_result
-        _rpt_sections.append(
-            f"## Salary Impact\n"
-            f"- Current median: ${_sr2['current_median']:,.0f}\n"
-            f"- Target entry: ${_sr2['target_entry_median']:,.0f} ({_sr2['entry_delta_pct']:+.1f}%)\n"
-            f"- Target senior: ${_sr2['target_senior_median']:,.0f} ({_sr2['ceiling_delta_pct']:+.1f}%)\n"
-            f"- Break-even: {_sr2['months_to_breakeven']} months\n\n"
-            + "\n".join(f"- {i}" for i in _sr2.get("insights", []))
-        )
-
-    if not gap_df.empty:
-        _top_t = (gap_df.assign(ov=lambda d: np.minimum(d["current_importance"], d["target_importance"]))
-                  .sort_values("ov", ascending=False).head(5)["skill"].tolist())
-        _top_m = (gap_df[gap_df["gap"] > 0].sort_values(["gap","target_importance"],ascending=False)
-                  .head(5)["skill"].tolist())
-        _rpt_sections.append(f"## Skill Profile\n**Transferable:** {', '.join(_top_t)}\n**To develop:** {', '.join(_top_m)}\n")
-
-    if st.session_state.learning_plan_md:
-        _rpt_sections.append(f"## AI Learning Plan\n{st.session_state.learning_plan_md}\n")
-
-    if st.session_state.pivot_narrative:
-        _pn2 = st.session_state.pivot_narrative
-        _rpt_sections.append(f"## Cover Letter\n{_pn2.get('cover_letter','')}\n")
-        _rpt_sections.append(f"## Elevator Pitch\n{_pn2.get('elevator_pitch','')}\n")
-
-    if st.session_state.debate_result:
-        _v2 = st.session_state.debate_result.get("verdict")
-        if _v2:
-            _rpt_sections.append(
-                f"## Adversarial Debate Verdict\n"
-                f"- Viability: {_v2.pivot_viability_pct}% — {_v2.verdict_label}\n"
-                f"- Decisive factor: {_v2.decisive_factor}\n"
-                f"- Recommended action: {_v2.recommended_next_action}\n"
-            )
-
-    if st.session_state.agent_result:
-        _ag2 = st.session_state.agent_result
-        _rpt_sections.append(f"## AI Agent Summary\n{_ag2.executive_summary}\n")
-
-    _full_report = "\n\n---\n\n".join(_rpt_sections)
-    _full_report += f"\n\n---\n*Generated by Career Pivot Simulator · {current} → {target}*\n"
-
-    dl_col, info_col = st.columns([1, 3])
-    with dl_col:
-        st.download_button(
-            label="📥 Download Pivot Report",
-            data=_full_report,
-            file_name=f"pivot_report_{current[:15].replace(' ','_')}_{target[:15].replace(' ','_')}.md",
-            mime="text/markdown",
-            use_container_width=True,
-        )
-    with info_col:
-        _report_sections_done = sum([
-            bool(st.session_state.salary_result),
-            bool(st.session_state.learning_plan_md),
-            bool(st.session_state.pivot_narrative),
-            bool(st.session_state.debate_result),
-            bool(st.session_state.agent_result),
-        ])
+    with st.container(border=True):
         st.markdown(
-            f'<div style="font-size:12px;color:rgba(0,0,0,0.55);padding-top:6px">'
-            f'Report includes {_report_sections_done + 2}/7 sections completed. '
-            f'Run more analyses above to enrich the report.</div>',
+            '<div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">'
+            '<div style="background:#0A66C2;color:#fff;font-weight:900;font-size:13px;'
+            'width:24px;height:24px;border-radius:3px;display:flex;align-items:center;'
+            'justify-content:center">in</div>'
+            '<span style="font-size:17px;font-weight:800;color:rgba(0,0,0,0.9)">Smart Apply</span>'
+            '<span style="font-size:12px;color:#fff;background:#0A66C2;border-radius:12px;'
+            'padding:2px 8px;font-weight:700">NEW</span>'
+            '</div>',
             unsafe_allow_html=True,
         )
-
-
-st.markdown(
-    '<div class="li-phase"><div class="li-phase-line"></div>'
-    '<div class="li-phase-text">AI Advisor · Autonomous deep analysis</div>'
-    '<div class="li-phase-line"></div></div>',
-    unsafe_allow_html=True,
-)
-# ============================================================
-# Career Intelligence Agent (A3)
-# ============================================================
-with st.container(border=True):
-    st.markdown(
-        '<div class="li-tool-header">'
-        '<div class="li-tool-icon" style="background:#EEF3FB">🤖</div>'
-        '<div><div class="li-tool-title">Career Intelligence Agent</div>'
-        '<div class="li-tool-cap">Autonomous AI that decides which tools to call, in what order, and when it has enough evidence</div></div>'
-        '</div>',
-        unsafe_allow_html=True,
-    )
-
-    # Tabs for context vs action
-    agent_tab_run, agent_tab_arch, agent_tab_compare = st.tabs(
-        ["Run Agent", "How it works", "Pipeline comparison"]
-    )
-
-    with agent_tab_arch:
-        for role, info in MODEL_RATIONALE.items():
-            col_label, col_model = st.columns([3, 1])
-            col_label.markdown(f"**{role.replace('_', ' ').title()}**")
-            col_model.code(info["model"])
-            st.markdown(f"{info['why']}")
-            st.caption(f"Alternative considered: {info['alternative_considered']}")
-            if "cost_note" in info:
-                st.caption(info["cost_note"])
-            st.divider()
-
-    with agent_tab_compare:
-        c_a, c_b = st.columns(2, gap="large")
-        with c_a:
-            st.markdown("**A2 — Fixed 5-stage pipeline**")
-            st.code(
-                "Stage 1: Strategy Generation\n"
-                "    ↓ (always)\n"
-                "Stage 2: Persona Evaluation × 5\n"
-                "    ↓ (always)\n"
-                "Stage 3: Structured Parsing\n"
-                "    ↓ (always)\n"
-                "Stage 4: Aggregation + Penalty\n"
-                "    ↓ (always)\n"
-                "Stage 5: Final Synthesis",
-                language=None,
-            )
-            st.caption("Every run executes all stages. Disagreements are penalised silently.")
-        with c_b:
-            st.markdown("**A3 — Agentic loop**")
-            st.code(
-                "Agent sees: current_role → target_role [+ personal CV]\n"
-                "    ↓\n"
-                "→ get_occupation_similarity\n"
-                "→ analyze_skill_gap         (personal if CV loaded)\n"
-                "→ get_market_signal         (NEW: job demand + hot skills)\n"
-                "→ find_stepping_stone_route (if low sim)\n"
-                "→ retrieve_role_evidence    (optional)\n"
-                "→ run_strategy_evaluation\n"
-                "→ investigate_disagreement  (if conflict)\n"
-                "→ simulate_skill_investment (if gaps high)\n"
-                "→ finalize_recommendation",
-                language=None,
-            )
-            st.caption("9 tools. Tool selection by LLM each iteration. Personalised when CV is loaded.")
-
-    with agent_tab_run:
-        # ── Action area: button + secondary link ──────────────
-        run_agent_btn = st.button(
-            "🚀 Run Career Intelligence Agent",
-            disabled=st.session_state.agent_running,
+        _sa_personal = bool(st.session_state.cv_profile and st.session_state.cv_profile.get("extracted_role"))
+        st.caption(
+            "AI-curated job matches for your target role + one-click application package: tailored cover letter, "
+            "CV bullet rewrites, LinkedIn InMail to the hiring manager, and interview prep guide."
+            + (" Personalised to your CV." if _sa_personal else " Upload your CV for personalised output.")
         )
-        if st.session_state.agent_result or st.session_state.agent_steps:
-            if st.button("Clear results", key="clear_agent", type="secondary"):
-                st.session_state.agent_result = None
-                st.session_state.agent_steps = []
+        if _sa_personal:
+            st.markdown(
+                '<span class="status-pill status-ok">✓ Personalised to your CV profile</span>',
+                unsafe_allow_html=True,
+            )
+            st.markdown("<div style='margin-bottom:4px'></div>", unsafe_allow_html=True)
+
+        _top_transfer_sa = (
+            gap_df.assign(overlap=lambda d: np.minimum(d["current_importance"], d["target_importance"]))
+            .sort_values("overlap", ascending=False)["skill"].head(5).tolist()
+        )
+        _top_missing_sa = (
+            gap_df[gap_df["gap"] > 0]
+            .sort_values(["gap", "target_importance"], ascending=False)["skill"].head(4).tolist()
+        )
+
+        sa_col1, sa_col2, sa_col3 = st.columns([5, 5, 2], gap="small")
+        with sa_col1:
+            if st.button("🤖 AI-curated jobs", use_container_width=True, key="sa_find_jobs"):
+                with st.spinner("AI is curating job matches for you…"):
+                    _sa_key = ""
+                    try:
+                        _sa_key = str(st.secrets.get("OPENAI_API_KEY", "")).strip()
+                    except Exception:
+                        pass
+                    st.session_state.smart_apply_jobs = generate_job_listings(
+                        target_role=str(target),
+                        current_role=str(current),
+                        match_score=match_score_display,
+                        top_transfer=_top_transfer_sa,
+                        top_missing=_top_missing_sa,
+                        cv_profile=st.session_state.cv_profile,
+                        n_jobs=4,
+                        model="gpt-4o-mini",
+                        prefer_online=_has_openai_secret(),
+                        api_key=_sa_key or None,
+                    )
+                    st.session_state.smart_apply_jobs_source = "ai"
+                    st.session_state.smart_apply_selected_idx = None
+                    st.session_state.smart_apply_package = None
                 st.rerun()
+        with sa_col2:
+            _serp_key = ""
+            try:
+                _serp_key = str(st.secrets.get("SERP_API_KEY", "")).strip()
+            except Exception:
+                pass
+            _real_jobs_btn_label = "🌐 Search live jobs" if _serp_key else "🌐 Live jobs (add SERP_API_KEY)"
+            if st.button(_real_jobs_btn_label, use_container_width=True, key="sa_real_jobs", disabled=not bool(_serp_key)):
+                with st.spinner("Searching live job boards (LinkedIn · Indeed · Glassdoor)…"):
+                    _raw_jobs = search_real_jobs(
+                        target_role=str(target),
+                        location="United States",
+                        n_jobs=5,
+                        serp_api_key=_serp_key,
+                    )
+                    if _raw_jobs and not _raw_jobs[0].get("error"):
+                        st.session_state.smart_apply_jobs = [
+                            real_job_to_listing(r, idx=i, match_score=max(50, match_score_display - 5 + i * 3))
+                            for i, r in enumerate(_raw_jobs)
+                        ]
+                        st.session_state.smart_apply_jobs_source = "real"
+                    else:
+                        err = _raw_jobs[0].get("error", "Unknown error") if _raw_jobs else "No results"
+                        st.warning(f"Live job search failed: {err}")
+                    st.session_state.smart_apply_selected_idx = None
+                    st.session_state.smart_apply_package = None
+                st.rerun()
+        with sa_col3:
+            if st.session_state.smart_apply_jobs:
+                if st.button("Clear", key="clear_smart_apply", type="secondary", use_container_width=True):
+                    st.session_state.smart_apply_jobs = None
+                    st.session_state.smart_apply_jobs_source = "ai"
+                    st.session_state.smart_apply_selected_idx = None
+                    st.session_state.smart_apply_package = None
 
-        # Run the agent
-        if run_agent_btn and current != target:
-            st.session_state.agent_running = True
-            st.session_state.agent_result = None
-            st.session_state.agent_steps = []
+        # ── Job Cards ──────────────────────────────────────────────
+        sa_jobs: Optional[List[JobListing]] = st.session_state.smart_apply_jobs
+        _sa_jobs_source = st.session_state.get("smart_apply_jobs_source", "ai")
+        if sa_jobs:
+            _src_badge = (
+                '<span style="background:#057642;color:#fff;font-size:10px;font-weight:800;'
+                'letter-spacing:0.04em;border-radius:10px;padding:2px 9px;margin-left:8px">'
+                '🟢 LIVE · Google Jobs</span>'
+            ) if _sa_jobs_source == "real" else (
+                '<span style="background:#7B5EA7;color:#fff;font-size:10px;font-weight:800;'
+                'letter-spacing:0.04em;border-radius:10px;padding:2px 9px;margin-left:8px">'
+                '🤖 AI-curated</span>'
+            )
+            st.markdown(
+                f'<div style="font-size:13px;font-weight:700;color:rgba(0,0,0,0.55);margin:16px 0 10px 0;display:flex;align-items:center">'
+                f'{len(sa_jobs)} jobs matched for you · {target}{_src_badge}</div>',
+                unsafe_allow_html=True,
+            )
 
-            progress_bar = st.progress(0, text="Agent starting...")
-            collected_steps: List[AgentStep] = []
-            agent_result_holder: List[AgentResult] = []
+            _sa_api_key = ""
+            try:
+                _sa_api_key = str(st.secrets.get("OPENAI_API_KEY", "")).strip()
+            except Exception:
+                pass
 
-            # Build CV context string for the agent
-            _agent_cv_context: Optional[str] = None
-            if st.session_state.cv_profile:
-                p = st.session_state.cv_profile
-                top = ", ".join(p.get("top_skills", [])[:8])
-                _agent_cv_context = (
-                    f"Role: {p.get('extracted_role', 'Unknown')}. "
-                    f"Experience: {p.get('years_experience', 0):.0f} years. "
-                    f"Education: {p.get('education_level', 'Unknown')}. "
-                    f"Top skills from CV: {top}. "
-                    f"Skills mapped to O*NET: {p.get('skills_mapped_count', 0)}."
+            for i, job in enumerate(sa_jobs):
+                _match_color = "#117A37" if job.match_score >= 72 else ("#A05A00" if job.match_score >= 52 else "#0A66C2")
+                _match_bar_w = job.match_score
+                _easy = '<span class="li-job-tag li-job-tag-easy">⚡ Easy Apply</span>' if job.is_easy_apply else ""
+                _net = (f'<span class="li-network-note">👥 {job.network_connections} connection{"s" if job.network_connections > 1 else ""} work here</span>'
+                        if job.network_connections > 0 else "")
+                _real_badge = (
+                    f'<span style="background:#057642;color:#fff;font-size:9px;font-weight:800;'
+                    f'border-radius:8px;padding:1px 7px;margin-left:6px">🟢 LIVE</span>'
+                ) if getattr(job, "is_real_job", False) else ""
+                _via_line = (
+                    f'<div class="li-job-detail" style="color:#0A66C2;font-weight:600">'
+                    f'via {getattr(job, "apply_source", "")}</div>'
+                ) if getattr(job, "is_real_job", False) and getattr(job, "apply_source", "") else ""
+
+                st.markdown(
+                    f'<div class="li-job-card">'
+                    f'  <div class="li-job-header">'
+                    f'    <div class="li-job-logo">{job.company_emoji}</div>'
+                    f'    <div class="li-job-meta">'
+                    f'      <div class="li-job-title">{job.title}{_real_badge}</div>'
+                    f'      <div class="li-job-company">{job.company}</div>'
+                    f'      <div class="li-job-detail">{job.location} · {job.job_type} · {job.salary_range}</div>'
+                    f'      {_via_line}'
+                    f'      <div class="li-job-detail">{job.seniority}</div>'
+                    f'    </div>'
+                    f'  </div>'
+                    f'  <div class="li-job-tags">'
+                    + "".join([f'<span class="li-job-tag">{r}</span>' for r in job.key_requirements[:3]])
+                    + _easy
+                    + f'  </div>'
+                    f'  <div class="li-match-bar-wrap">'
+                    f'    <div class="li-match-bar-label">'
+                    f'      <span>Profile match</span>'
+                    f'      <span style="color:{_match_color};font-weight:800">{job.match_score}%</span>'
+                    f'    </div>'
+                    f'    <div class="li-match-bar-bg">'
+                    f'      <div class="li-match-bar-fill" style="width:{_match_bar_w}%;background:{_match_color}"></div>'
+                    f'    </div>'
+                    f'  </div>'
+                    f'  <div class="li-job-footer">'
+                    f'    <span>Posted {job.posted_ago}</span>'
+                    f'    <span>{job.applicant_count} applicants</span>'
+                    + (_net if _net else "")
+                    + f'  </div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
                 )
 
-            gen = run_career_agent(
-                current_role=str(current),
-                target_role=str(target),
-                matrix=mat,
-                coords=art.coords,
-                model="gpt-4o",
-                max_iterations=10,
-                prefer_online=True,
-                cv_context=_agent_cv_context,
-            )
+                # Apply button per job — real jobs get "Apply Now" external link + package generator
+                _is_real = getattr(job, "is_real_job", False)
+                _apply_link = getattr(job, "apply_link", "")
+                if _is_real and _apply_link:
+                    apply_col_a, apply_col_b = st.columns([3, 4])
+                else:
+                    apply_col_a, apply_col_b = st.columns([2, 3])
+                with apply_col_a:
+                    if st.button(
+                        f"{'⚡ Easy Apply' if job.is_easy_apply else '📄 Generate Application Package'}",
+                        key=f"sa_apply_{i}",
+                        use_container_width=True,
+                    ):
+                        with st.spinner(f"Generating your personalised package for {job.company}…"):
+                            st.session_state.smart_apply_selected_idx = i
+                            _pkg = generate_application_package(
+                                job=job,
+                                current_role=str(current),
+                                target_role=str(target),
+                                cv_profile=st.session_state.cv_profile,
+                                top_transfer=_top_transfer_sa,
+                                top_missing=_top_missing_sa,
+                                model="gpt-4o",
+                                prefer_online=_has_openai_secret(),
+                                api_key=_sa_api_key or None,
+                            )
+                            st.session_state.smart_apply_package = _pkg
+                            st.session_state.pkg_quality_eval = None  # reset
+                        with st.spinner("Evaluating application quality…"):
+                            _pkg_eval = evaluate_application_package(
+                                cover_letter=_pkg.cover_letter,
+                                linkedin_inmail=_pkg.linkedin_inmail,
+                                cv_rewrites=[
+                                    {"skill_highlighted": r.skill_highlighted, "rewritten": r.rewritten}
+                                    for r in _pkg.cv_bullet_rewrites
+                                ],
+                                job_title=job.title,
+                                company=job.company,
+                                job_description=getattr(job, "full_description", ""),
+                                cv_text=st.session_state.cv_text or "",
+                                model="gpt-4o-mini",
+                                prefer_online=_has_openai_secret(),
+                                api_key=_sa_api_key or None,
+                            )
+                            st.session_state.pkg_quality_eval = _pkg_eval
+                        st.rerun()
+                if _is_real and _apply_link:
+                    with apply_col_b:
+                        st.link_button(
+                            "🔗 Apply Now",
+                            url=_apply_link,
+                            use_container_width=True,
+                        )
 
-            step_count = 0
-            max_expected = 20
-
-            try:
-                while True:
-                    step = next(gen)
-                    collected_steps.append(step)
-                    step_count += 1
-                    progress_bar.progress(
-                        min(step_count / max_expected, 0.95),
-                        text=f"Step {step_count}: {step.tool_name or step.kind}",
-                    )
-            except StopIteration as e:
-                agent_result_holder.append(e.value)
-            except Exception as exc:
-                st.error(f"Agent error: {exc}")
-
-            progress_bar.progress(1.0, text="Done.")
-            st.session_state.agent_steps = collected_steps
-            if agent_result_holder:
-                st.session_state.agent_result = agent_result_holder[0]
-            st.session_state.agent_running = False
-            st.rerun()
-
-        # Final recommendation — shown prominently at top
-        agent_result: Optional[AgentResult] = st.session_state.agent_result
-        if agent_result:
-            st.divider()
-
-            # Verdict badge row
-            v = agent_result.verdict
-            v_cls = "status-ok" if v == "Highly Feasible" else ("status-challenge" if v == "Challenging" else "status-warn")
-            cl_cls = "status-ok" if agent_result.confidence_level == "High" else ("status-warn" if agent_result.confidence_level == "Medium" else "status-challenge")
-            st.markdown(
-                f'<span class="status-pill {v_cls}">{v}</span>'
-                f'<span class="status-pill status-ok">Strategy: {agent_result.recommended_strategy}</span>'
-                f'<span class="status-pill {cl_cls}">Confidence: {agent_result.confidence_level}</span>',
-                unsafe_allow_html=True,
-            )
-
-            # Hero summary box
-            st.markdown(
-                f'<div class="agent-verdict-hero">'
-                f'<div class="agent-verdict-title">Executive Summary</div>'
-                f'<div class="agent-verdict-summary">{agent_result.executive_summary}</div>'
-                f'</div>',
-                unsafe_allow_html=True,
-            )
-
-            fr1, fr2, fr3 = st.columns(3, gap="large")
-            with fr1:
-                _render_bullet_list("Key Insights", agent_result.key_insights)
-            with fr2:
-                _render_bullet_list("Critical Risks", agent_result.critical_risks)
-            with fr3:
-                _render_bullet_list("First 30 Days", agent_result.first_30_day_actions)
-
-            st.caption(
-                f"Model: gpt-4o · "
-                f"{agent_result.iterations_used} iterations · "
-                f"{len(agent_result.tools_called)} tool calls · "
-                f"Source: {agent_result.source}"
-            )
-
-        # Reasoning trace
-        agent_steps: List[AgentStep] = st.session_state.agent_steps or []
-        if agent_steps:
-            st.divider()
-            st.markdown("**Agent reasoning trace**")
-            st.caption("Every tool call and result — fully transparent.")
-
-            tool_steps = [s for s in agent_steps if s.kind in ("tool_call", "tool_result", "thinking", "error")]
-
-            TOOL_ICONS = {
-                "get_occupation_similarity": "🔍",
-                "analyze_skill_gap": "📊",
-                "find_stepping_stone_route": "🗺️",
-                "retrieve_role_evidence": "📋",
-                "run_strategy_evaluation": "⚖️",
-                "investigate_disagreement": "🔬",
-                "simulate_skill_investment": "🧪",
-                "get_market_signal": "📈",
-                "finalize_recommendation": "✅",
-            }
-
-            for s in tool_steps:
-                if s.kind == "thinking" and s.thinking_text:
+                # Show package if this is the selected job
+                pkg: Optional[ApplicationPackage] = st.session_state.smart_apply_package
+                _pkg_eval = st.session_state.pkg_quality_eval
+                if pkg and st.session_state.smart_apply_selected_idx == i:
+                    # ── Quality score header ─────────────────────────────────
+                    _eval_html = ""
+                    if _pkg_eval:
+                        _qs = _pkg_eval.get("overall_score", 0)
+                        _qc = "#117A37" if _qs >= 75 else ("#A05A00" if _qs >= 55 else "#B71C1C")
+                        _ql = "Strong" if _qs >= 75 else ("Acceptable" if _qs >= 55 else "Needs work")
+                        _dims = _pkg_eval.get("dimension_scores", {})
+                        _verdict = _pkg_eval.get("one_line_verdict", "")
+                        _regen_note = (
+                            '<span style="background:#FFF3CD;color:#856404;font-size:10px;font-weight:700;'
+                            'border-radius:8px;padding:2px 8px;margin-left:6px">⚠ Regenerate recommended</span>'
+                            if _pkg_eval.get("regenerate_recommended") else ""
+                        )
+                        _dim_pills = "".join([
+                            f'<span style="background:{("#E7F6EC" if v>=75 else ("#FFF8E7" if v>=55 else "#FEECEC"))};'
+                            f'color:{("#117A37" if v>=75 else ("#A05A00" if v>=55 else "#B71C1C"))};'
+                            f'font-size:10px;font-weight:700;border-radius:8px;padding:2px 7px">'
+                            f'{k.replace("_"," ").title()} {v}</span>'
+                            for k, v in _dims.items()
+                        ])
+                        _eval_html = (
+                            f'<div style="margin-top:10px;padding-top:10px;border-top:1px solid rgba(10,102,194,0.15)">'
+                            f'<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'
+                            f'<span style="font-size:10px;font-weight:800;letter-spacing:0.06em;text-transform:uppercase;color:rgba(0,0,0,0.4)">AI Quality Evaluation</span>'
+                            f'<span style="font-size:18px;font-weight:900;color:{_qc}">{_qs}</span>'
+                            f'<span style="font-size:11px;font-weight:700;color:{_qc}">/100 · {_ql}</span>'
+                            f'{_regen_note}'
+                            f'</div>'
+                            f'<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px">{_dim_pills}</div>'
+                            f'<div style="font-size:12px;color:rgba(0,0,0,0.6);font-style:italic">{_verdict}</div>'
+                            f'</div>'
+                        )
                     st.markdown(
-                        f'<div class="thinking-block">💭 {s.thinking_text}</div>',
+                        f'<div style="background:#EEF3FB;border-radius:10px;padding:16px 20px;margin:8px 0 16px 0;">'
+                        f'<div style="font-size:10px;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;'
+                        f'color:#0A66C2;margin-bottom:4px">Application Package · {pkg.job_title} @ {pkg.company}</div>'
+                        f'<div style="font-size:13px;font-weight:600;color:rgba(0,0,0,0.75);font-style:italic;line-height:1.5">'
+                        f'"{pkg.positioning_statement}"</div>'
+                        f'{_eval_html}</div>',
                         unsafe_allow_html=True,
                     )
 
-                elif s.kind == "error":
-                    st.error(s.thinking_text or "Unknown error")
-
-                elif s.kind == "tool_result" and s.tool_result:
-                    tool_name = s.tool_name or ""
-                    result_data = s.tool_result
-                    icon = TOOL_ICONS.get(tool_name, "🔧")
-                    timer = f'<span class="tool-timer">⏱ {s.elapsed_ms:.0f} ms</span>' if s.elapsed_ms else ""
-
-                    st.markdown(
-                        f'<div class="tool-card-header">'
-                        f'<span class="tool-badge">{icon} {tool_name}</span>'
-                        f'{timer}'
-                        f'</div>',
-                        unsafe_allow_html=True,
+                    pkg_tab1, pkg_tab2, pkg_tab3, pkg_tab4 = st.tabs(
+                        ["📄 Cover Letter", "✏️ CV Rewrites", "💬 LinkedIn InMail", "🎯 Interview Prep"]
                     )
 
-                    if "error" in result_data:
-                        st.error(f"Tool error: {result_data['error']}")
-                    else:
-                        if tool_name == "get_occupation_similarity":
-                            cs = result_data.get("cosine_similarity_score", 0)
-                            hy = result_data.get("hybrid_score", 0)
-                            m1, m2 = st.columns(2)
-                            m1.metric("Cosine similarity", f"{cs:.0f} / 100")
-                            m2.metric("Hybrid score", f"{hy:.0f} / 100")
-                            st.caption(result_data.get("interpretation", ""))
+                    with pkg_tab1:
+                        st.markdown(
+                            f'<div class="li-pkg-section"><div class="li-pkg-label">Cover Letter</div>'
+                            f'<div style="font-size:13px;line-height:1.75;white-space:pre-wrap;color:rgba(0,0,0,0.8)">'
+                            f'{pkg.cover_letter}</div></div>',
+                            unsafe_allow_html=True,
+                        )
+                        st.download_button(
+                            "Download cover letter",
+                            data=pkg.cover_letter,
+                            file_name=f"cover_letter_{job.company.replace(' ', '_')}.txt",
+                            mime="text/plain",
+                            key=f"dl_cover_{i}",
+                        )
 
-                        elif tool_name == "analyze_skill_gap":
-                            m1, m2, m3 = st.columns(3)
-                            m1.metric("Missing skills", result_data.get("total_missing_skills", 0))
-                            m2.metric("High-signal gaps", result_data.get("high_signal_missing_count", 0))
-                            m3.metric("Avg gap", f"{result_data.get('average_gap_magnitude', 0):.2f}")
-                            st.caption(result_data.get("gap_summary", ""))
-
-                        elif tool_name == "find_stepping_stone_route":
-                            if result_data.get("reachable") and result_data.get("path"):
-                                st.success(" → ".join(result_data["path"]))
-                            else:
-                                st.warning(result_data.get("recommendation", "No route found."))
-
-                        elif tool_name == "retrieve_role_evidence":
-                            tasks = result_data.get("tasks", [])
-                            st.caption(f"{result_data.get('evidence_count', 0)} evidence items · {result_data.get('target_role', '')}")
-                            if tasks:
-                                for t in tasks[:3]:
-                                    st.markdown(f"- {t}")
-
-                        elif tool_name == "run_strategy_evaluation":
-                            m1, m2, m3 = st.columns(3)
-                            m1.metric("Winner", result_data.get("winner_strategy", "?"), f"{result_data.get('winner_score', 0):.0f}/100")
-                            m2.metric("Runner-up", result_data.get("runner_up_strategy", "?"), f"{result_data.get('runner_up_score', 0):.0f}/100")
-                            m3.metric("Controversy", f"{result_data.get('controversy_score', 0):.0f}/100")
-                            for d in result_data.get("major_disagreements", []):
-                                st.warning(f"⚠️ {d['strategy']}: {d['strongest_advocate']} vs {d['strongest_critic']} (range {d['score_range']})")
-
-                        elif tool_name == "investigate_disagreement":
-                            ad = result_data.get("strongest_advocate", {})
-                            cr = result_data.get("strongest_critic", {})
-                            ic1, ic2 = st.columns(2)
-                            with ic1:
-                                st.markdown(f"✅ **{ad.get('reviewer', '?')}** — {ad.get('score', 0):.0f}/100")
-                                st.caption((ad.get("key_reason") or "")[:150])
-                            with ic2:
-                                st.markdown(f"❌ **{cr.get('reviewer', '?')}** — {cr.get('score', 0):.0f}/100")
-                                st.caption((cr.get("killer_objection") or "")[:150])
-                            for cond in result_data.get("resolution_conditions", []):
-                                st.markdown(f"→ {cond}")
-                            st.caption(result_data.get("impact_on_recommendation", ""))
-
-                        elif tool_name == "simulate_skill_investment":
-                            m1, m2, m3 = st.columns(3)
-                            m1.metric("Before", f"{result_data.get('similarity_before', 0):.0f}/100")
-                            m2.metric("After", f"{result_data.get('similarity_after', 0):.0f}/100")
-                            m3.metric("Improvement", f"+{result_data.get('improvement', 0):.1f}")
-                            if result_data.get("reranked_winner"):
-                                st.success(f"Reranked winner: {result_data['reranked_winner']} ({result_data.get('reranked_winner_score', 0):.0f}/100)")
-
-                        elif tool_name == "get_market_signal":
-                            demand = result_data.get("job_demand", "?")
-                            competition = result_data.get("competition_level", "?")
-                            outlook = result_data.get("growth_outlook", "?")
-                            d_cls = "status-ok" if demand == "High" else ("status-warn" if demand == "Medium" else "status-challenge")
-                            o_cls = "status-ok" if outlook == "Growing" else ("status-warn" if outlook == "Stable" else "status-challenge")
+                    with pkg_tab2:
+                        st.markdown(
+                            '<div class="li-pkg-section"><div class="li-pkg-label">CV Bullet Rewrites</div>'
+                            '<div style="font-size:12px;color:rgba(0,0,0,0.5);margin-bottom:12px">'
+                            'Before → After · Optimised for this specific role</div></div>',
+                            unsafe_allow_html=True,
+                        )
+                        for rewrite in pkg.cv_bullet_rewrites:
                             st.markdown(
-                                f'<span class="status-pill {d_cls}">Demand: {demand}</span>'
-                                f'<span class="status-pill status-warn">Competition: {competition}</span>'
-                                f'<span class="status-pill {o_cls}">{outlook}</span>',
+                                f'<div style="margin-bottom:16px">'
+                                f'<div style="font-size:11px;font-weight:700;color:#0A66C2;text-transform:uppercase;'
+                                f'letter-spacing:0.05em;margin-bottom:6px">Skill targeted: {rewrite.skill_highlighted}</div>'
+                                f'<div class="li-cv-rewrite">'
+                                f'<div class="li-cv-before"><strong style="font-size:10px;text-transform:uppercase;color:rgba(0,0,0,0.45)">Before</strong><br>{rewrite.original}</div>'
+                                f'<div class="li-cv-after"><strong style="font-size:10px;text-transform:uppercase;color:#117A37">After</strong><br>{rewrite.rewritten}</div>'
+                                f'</div>'
+                                f'<div style="font-size:11px;color:rgba(0,0,0,0.5);margin-top:4px;font-style:italic">💡 {rewrite.why}</div>'
+                                f'</div>',
                                 unsafe_allow_html=True,
                             )
-                            st.markdown("<div style='margin-bottom:4px'></div>", unsafe_allow_html=True)
-                            hot_skills = result_data.get("top_employer_skills", [])
-                            if hot_skills:
-                                st.markdown(f"**Top employer skills:** {', '.join(hot_skills)}")
-                            sr = result_data.get("salary_range_usd", {})
-                            if sr and sr.get("low") and sr.get("high"):
-                                st.caption(f"Salary range: ${sr['low']:,} – ${sr['high']:,} · Timeline: {result_data.get('typical_hiring_timeline_weeks', '?')} weeks to hire")
-                            if result_data.get("pivot_market_fit"):
-                                st.caption(result_data["pivot_market_fit"])
-                            if result_data.get("source") == "llm_simulated":
-                                st.caption("⚠️ LLM-simulated market signal — directional only, not live job board data.")
 
-                        elif tool_name == "finalize_recommendation":
-                            st.success(f"Verdict: {result_data.get('verdict', '?')} · Strategy: {result_data.get('recommended_strategy', '?')}")
+                    with pkg_tab3:
+                        st.markdown(
+                            f'<div class="li-pkg-section"><div class="li-pkg-label">LinkedIn InMail to {job.hiring_manager_name}, {job.hiring_manager_title}</div>'
+                            f'<div style="font-size:13px;line-height:1.75;white-space:pre-wrap;color:rgba(0,0,0,0.8)">'
+                            f'{pkg.linkedin_inmail}</div></div>',
+                            unsafe_allow_html=True,
+                        )
+                        st.download_button(
+                            "Download InMail",
+                            data=pkg.linkedin_inmail,
+                            file_name=f"inmail_{job.hiring_manager_name.replace(' ', '_')}.txt",
+                            mime="text/plain",
+                            key=f"dl_inmail_{i}",
+                        )
 
-                    st.markdown("<div style='margin-bottom:12px'></div>", unsafe_allow_html=True)
+                    with pkg_tab4:
+                        for qi, q in enumerate(pkg.interview_prep, 1):
+                            with st.expander(f"Q{qi}: {q.get('question', '')}", expanded=qi == 1):
+                                st.markdown(
+                                    f'<div class="li-pkg-section">'
+                                    f'<div class="li-pkg-label">Model Answer Strategy</div>'
+                                    f'<div style="font-size:13px;line-height:1.65;color:rgba(0,0,0,0.8)">{q.get("model_answer","")}</div>'
+                                    f'</div>'
+                                    f'<div style="font-size:12px;color:rgba(0,0,0,0.5);margin-top:8px;font-style:italic">'
+                                    f'Why asked: {q.get("why_asked","")}</div>',
+                                    unsafe_allow_html=True,
+                                )
+
+                    st.markdown("<div style='margin-bottom:8px'></div>", unsafe_allow_html=True)
+
+        # ── Pivot Peers — social proof ──────────────────────────────
+        st.divider()
+        st.markdown(
+            '<div style="font-size:16px;font-weight:800;color:rgba(0,0,0,0.88);margin-bottom:4px">'
+            '👥 People who made this pivot</div>'
+            '<div style="font-size:13px;color:rgba(0,0,0,0.55);margin-bottom:14px">'
+            'Anonymised success stories from professionals who transitioned from '
+            f'{current} → {target}</div>',
+            unsafe_allow_html=True,
+        )
+        pp_col1, pp_col2 = st.columns([2, 1], gap="small")
+        with pp_col1:
+            if st.button("Show pivot peers", use_container_width=True, key="sa_pivot_peers"):
+                with st.spinner("Finding peer success stories…"):
+                    _pp_key = ""
+                    try:
+                        _pp_key = str(st.secrets.get("OPENAI_API_KEY", "")).strip()
+                    except Exception:
+                        pass
+                    _route_steps = None
+                    if st.session_state.route_result and st.session_state.route_result.get("reachable"):
+                        _route_steps = st.session_state.route_result.get("path", [])
+                    st.session_state.pivot_peers = generate_pivot_peers(
+                        current_role=str(current),
+                        target_role=str(target),
+                        match_score=match_score_display,
+                        route_steps=_route_steps,
+                        n_peers=3,
+                        model="gpt-4o-mini",
+                        prefer_online=_has_openai_secret(),
+                        api_key=_pp_key or None,
+                    )
+                st.rerun()
+        with pp_col2:
+            if st.session_state.pivot_peers:
+                if st.button("Clear", key="clear_peers", type="secondary", use_container_width=True):
+                    st.session_state.pivot_peers = None
+
+        peers_list: Optional[List[PivotPeer]] = st.session_state.pivot_peers
+        if peers_list:
+            peers_html = '<div class="li-peers-wrap">'
+            for peer in peers_list:
+                degree_label = f"• {peer.connection_degree}nd connection" if peer.connection_degree == 2 else "• 1st connection"
+                peers_html += (
+                    f'<div class="li-peer">'
+                    f'  <div class="li-peer-avatar" style="background:{peer.avatar_color}">{peer.initials}</div>'
+                    f'  <div class="li-peer-body">'
+                    f'    <div style="display:flex;justify-content:space-between;align-items:flex-start">'
+                    f'      <div>'
+                    f'        <div class="li-peer-name">{peer.name}</div>'
+                    f'        <div class="li-peer-path">{peer.previous_role} → {peer.current_role}</div>'
+                    f'        <div class="li-peer-company">{peer.current_role} at {peer.company_now}</div>'
+                    f'      </div>'
+                    f'      <span class="li-peer-timing">{peer.months_to_pivot} months</span>'
+                    f'    </div>'
+                    f'    <div class="li-peer-milestone">🔑 {peer.key_milestone}</div>'
+                    f'    <div class="li-peer-quote">"{peer.testimonial}"</div>'
+                    f'    <div class="li-degree">{degree_label}</div>'
+                    f'  </div>'
+                    f'</div>'
+                )
+            peers_html += '</div>'
+            st.markdown(peers_html, unsafe_allow_html=True)
+
+
+    # ============================================================
+    # Pivot Narrative Generator
+    # ============================================================
+    with st.container(border=True):
+        _pn_personal = bool(st.session_state.cv_profile and st.session_state.cv_profile.get("extracted_role"))
+        st.markdown(
+            '<div class="li-tool-header">'
+            '<div class="li-tool-icon" style="background:#F3EEF9">✍️</div>'
+            '<div><div class="li-tool-title">Pivot Narrative Generator</div>'
+            '<div class="li-tool-cap">Cover letter · elevator pitch · LinkedIn About · interview talking points</div></div>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+        st.caption(
+            ("Personalised to your CV — cover letter, elevator pitch, LinkedIn About, and interview talking points." if _pn_personal
+             else "Generate application materials for this pivot. Upload your CV in the sidebar to personalise the output.")
+        )
+        if _pn_personal:
+            st.markdown(
+                '<span class="status-pill status-ok">✓ Personal mode — output tailored to your CV</span>',
+                unsafe_allow_html=True,
+            )
+            st.markdown("<div style='margin-bottom:6px'></div>", unsafe_allow_html=True)
+
+        pn1, pn2 = st.columns([2, 1], gap="small")
+        with pn1:
+            if st.button("Generate pivot narrative", use_container_width=True):
+                with st.spinner("Generating your personalised pivot materials..."):
+                    _top_transfer_pn = (
+                        gap_df.assign(overlap=lambda d: np.minimum(d["current_importance"], d["target_importance"]))
+                        .sort_values("overlap", ascending=False)["skill"].head(5).tolist()
+                    )
+                    _top_missing_pn = (
+                        gap_df[gap_df["gap"] > 0]
+                        .sort_values(["gap", "target_importance"], ascending=False)["skill"].head(4).tolist()
+                    )
+                    _agent_summary = None
+                    if st.session_state.agent_result:
+                        _agent_summary = st.session_state.agent_result.executive_summary
+                    _api_key_pn = ""
+                    try:
+                        _api_key_pn = str(st.secrets.get("OPENAI_API_KEY", "")).strip()
+                    except Exception:
+                        pass
+                    narrative = generate_pivot_narrative(
+                        current_role=str(current),
+                        target_role=str(target),
+                        recommended_strategy=(
+                            st.session_state.agent_result.recommended_strategy
+                            if st.session_state.agent_result else
+                            (st.session_state.review_board_consensus.winner_strategy
+                             if st.session_state.review_board_consensus else "HYBRID")
+                        ),
+                        top_transfer=_top_transfer_pn,
+                        top_missing=_top_missing_pn,
+                        match_score=match_score_display,
+                        verdict=(
+                            st.session_state.agent_result.verdict
+                            if st.session_state.agent_result else "Feasible with Conditions"
+                        ),
+                        cv_profile=st.session_state.cv_profile,
+                        agent_executive_summary=_agent_summary,
+                        model="gpt-4o-mini",
+                        prefer_online=_has_openai_secret(),
+                        api_key=_api_key_pn or None,
+                    )
+                    st.session_state.pivot_narrative = narrative
+        with pn2:
+            if st.session_state.pivot_narrative:
+                if st.button("Clear", key="clear_narrative", type="secondary", use_container_width=True):
+                    st.session_state.pivot_narrative = None
+
+        pn = st.session_state.pivot_narrative
+        if pn:
+            st.divider()
+            src_label = "Personalised (CV + analysis)" if pn.get("personalized") else "Role-based (O*NET)"
+            st.caption(f"Source: {pn.get('source','?')} · {src_label}")
+
+            pn_tab1, pn_tab2, pn_tab3, pn_tab4 = st.tabs(
+                ["Cover Letter", "Elevator Pitch", "LinkedIn About", "Talking Points"]
+            )
+
+            with pn_tab1:
+                cl_text = pn.get("cover_letter", "")
+                if cl_text:
+                    st.markdown(
+                        f'<div style="background:#fff;border:1px solid rgba(0,0,0,0.08);border-radius:10px;padding:24px 28px;font-size:14px;line-height:1.75;white-space:pre-wrap">{cl_text}</div>',
+                        unsafe_allow_html=True,
+                    )
+                    st.download_button(
+                        "Download cover letter",
+                        data=cl_text,
+                        file_name=f"cover_letter_{str(target).replace(' ', '_').lower()}.txt",
+                        mime="text/plain",
+                    )
+
+            with pn_tab2:
+                pitch = pn.get("elevator_pitch", "")
+                if pitch:
+                    st.markdown(
+                        f'<div class="agent-verdict-hero"><div class="agent-verdict-title">Elevator Pitch</div>'
+                        f'<div class="agent-verdict-summary">{pitch}</div></div>',
+                        unsafe_allow_html=True,
+                    )
+
+            with pn_tab3:
+                about = pn.get("linkedin_about", "")
+                if about:
+                    st.markdown(
+                        f'<div style="background:#fff;border:1px solid rgba(0,0,0,0.08);border-radius:10px;padding:20px 24px;font-size:14px;line-height:1.75;white-space:pre-wrap">{about}</div>',
+                        unsafe_allow_html=True,
+                    )
+                    st.download_button(
+                        "Copy LinkedIn About",
+                        data=about,
+                        file_name="linkedin_about.txt",
+                        mime="text/plain",
+                        key="dl_linkedin",
+                    )
+
+            with pn_tab4:
+                points = pn.get("talking_points", [])
+                for i, pt in enumerate(points, 1):
+                    st.markdown(
+                        f'<div style="padding:12px 16px;border-left:3px solid #0A66C2;background:#F8FAFF;border-radius:0 8px 8px 0;margin-bottom:10px;font-size:14px">'
+                        f'<span style="font-weight:700;color:#0A66C2;margin-right:8px">{i}.</span>{pt}</div>',
+                        unsafe_allow_html=True,
+                    )
+
+
+    # ============================================================
+    # Job Posting Analyzer
+    # ============================================================
+    with st.container(border=True):
+        _jp_personal = bool(st.session_state.cv_profile and st.session_state.cv_profile.get("extracted_role"))
+        st.markdown(
+            '<div class="li-tool-header">'
+            '<div class="li-tool-icon" style="background:#EEF3FB">🎯</div>'
+            '<div><div class="li-tool-title">Job Posting Analyzer</div>'
+            '<div class="li-tool-cap">Instant match score · advantage/gap breakdown · application readiness verdict</div></div>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+        st.caption(
+            "Paste a real job posting — get an instant match score, advantage/gap breakdown, and application readiness verdict."
+            + (" Personalised to your CV." if _jp_personal else " Upload your CV for personalised results.")
+        )
+
+        job_text_input = st.text_area(
+            "Job posting",
+            value=st.session_state.job_posting_text,
+            height=180,
+            placeholder="Paste the full job description here...\n\nWorks best with the full posting including requirements, responsibilities, and qualifications.",
+            label_visibility="collapsed",
+        )
+
+        ja_col1, ja_col2 = st.columns([2, 1], gap="small")
+        with ja_col1:
+            if st.button("Analyse this job posting", use_container_width=True):
+                if job_text_input.strip():
+                    with st.spinner("Extracting requirements and computing match..."):
+                        st.session_state.job_posting_text = job_text_input
+                        _ja_key = ""
+                        try:
+                            _ja_key = str(st.secrets.get("OPENAI_API_KEY", "")).strip()
+                        except Exception:
+                            pass
+                        ja_result = analyze_job_posting(
+                            job_text=job_text_input,
+                            skill_columns=list(mat.columns),
+                            matrix=mat,
+                            current_role=str(current),
+                            target_role=str(target),
+                            cv_profile=st.session_state.cv_profile,
+                            model="gpt-4o-mini",
+                            prefer_online=_has_openai_secret(),
+                            api_key=_ja_key or None,
+                        )
+                        st.session_state.job_analysis = ja_result
+                    st.rerun()
+                else:
+                    st.warning("Paste a job posting first.")
+        with ja_col2:
+            if st.session_state.job_analysis:
+                if st.button("Clear", key="clear_job", type="secondary", use_container_width=True):
+                    st.session_state.job_analysis = None
+                    st.session_state.job_posting_text = ""
+
+        ja = st.session_state.job_analysis
+        if ja and not ja.get("error"):
+            st.divider()
+
+            # Header row
+            readiness = ja.get("application_readiness", "?")
+            r_cls = {"Strong": "status-ok", "Moderate": "status-warn", "Stretch": "status-challenge"}.get(readiness, "status-warn")
+            st.markdown(
+                f'<div style="font-size:20px;font-weight:800;margin-bottom:4px">{ja.get("role_title","?")} '
+                f'<span style="font-size:14px;font-weight:400;color:rgba(0,0,0,0.5)">at {ja.get("company","?")}</span></div>',
+                unsafe_allow_html=True,
+            )
+            st.markdown(
+                f'<span class="status-pill {r_cls}">Application readiness: {readiness}</span>'
+                f'<span class="status-pill status-ok">Match: {ja.get("match_score",0):.0f}/100</span>'
+                + (f'<span class="status-pill status-warn">vs. {ja.get("user_label","profile")}</span>' if _jp_personal else ""),
+                unsafe_allow_html=True,
+            )
+            st.markdown("<div style='margin-bottom:10px'></div>", unsafe_allow_html=True)
+            st.caption(ja.get("readiness_rationale", ""))
+
+            # Columns: matches vs gaps
+            jc1, jc2 = st.columns(2, gap="large")
+            with jc1:
+                st.markdown("**Your advantages for this role**")
+                matches = ja.get("top_matches", [])
+                if matches:
+                    match_df = pd.DataFrame(matches)
+                    _render_table_card(
+                        match_df,
+                        columns=["skill", "your_level", "job_requires"],
+                        headers=["Skill", "Your Level", "Job Needs"],
+                        numeric_cols=["your_level", "job_requires"],
+                    )
+                else:
+                    st.info("No strong skill matches detected.")
+
+            with jc2:
+                st.markdown("**Gaps to address before applying**")
+                gaps = ja.get("top_gaps", [])
+                if gaps:
+                    gap_df_ja = pd.DataFrame(gaps)
+                    _render_table_card(
+                        gap_df_ja,
+                        columns=["skill", "your_level", "job_requires", "gap"],
+                        headers=["Skill", "You", "Needed", "Gap"],
+                        numeric_cols=["your_level", "job_requires", "gap"],
+                    )
+                else:
+                    st.success("No significant gaps detected.")
+
+            # Key responsibilities + required skills
+            resp_col, skill_col = st.columns(2, gap="large")
+            with resp_col:
+                resps = ja.get("key_responsibilities", [])
+                if resps:
+                    st.markdown("**Key responsibilities**")
+                    for r in resps[:4]:
+                        st.markdown(f"- {r}")
+            with skill_col:
+                req_skills = ja.get("required_skills_raw", [])
+                if req_skills:
+                    st.markdown("**Required skills (from posting)**")
+                    pills = " ".join([f'<span class="status-pill status-warn">{s}</span>' for s in req_skills[:8]])
+                    st.markdown(pills, unsafe_allow_html=True)
+
+    # ============================================================
+    # Download Full Report
+    # ============================================================
+    with st.container(border=True):
+        st.markdown(
+            '<div class="li-tool-header">'
+            '<div class="li-tool-icon" style="background:#F3F6F9">📥</div>'
+            '<div><div class="li-tool-title">Download Pivot Report</div>'
+            '<div class="li-tool-cap">Full markdown report — all completed analyses in one file</div></div>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+        _rpt_sections = []
+        _rpt_sections.append(f"# Career Pivot Report\n\n**{current} → {target}**\n")
+        _rpt_sections.append(f"## Overview\n- Match Score: {match_score_display:.0f}/100\n- Confidence: {conf['confidence_score']:.0f}/100\n- Skill Gaps: {_n_gaps}\n- Pivot Readiness: {_readiness}/100 ({_r_label})\n")
+
+        if st.session_state.salary_result:
+            _sr2 = st.session_state.salary_result
+            _rpt_sections.append(
+                f"## Salary Impact\n"
+                f"- Current median: ${_sr2['current_median']:,.0f}\n"
+                f"- Target entry: ${_sr2['target_entry_median']:,.0f} ({_sr2['entry_delta_pct']:+.1f}%)\n"
+                f"- Target senior: ${_sr2['target_senior_median']:,.0f} ({_sr2['ceiling_delta_pct']:+.1f}%)\n"
+                f"- Break-even: {_sr2['months_to_breakeven']} months\n\n"
+                + "\n".join(f"- {i}" for i in _sr2.get("insights", []))
+            )
+
+        if not gap_df.empty:
+            _top_t = (gap_df.assign(ov=lambda d: np.minimum(d["current_importance"], d["target_importance"]))
+                      .sort_values("ov", ascending=False).head(5)["skill"].tolist())
+            _top_m = (gap_df[gap_df["gap"] > 0].sort_values(["gap","target_importance"],ascending=False)
+                      .head(5)["skill"].tolist())
+            _rpt_sections.append(f"## Skill Profile\n**Transferable:** {', '.join(_top_t)}\n**To develop:** {', '.join(_top_m)}\n")
+
+        if st.session_state.learning_plan_md:
+            _rpt_sections.append(f"## AI Learning Plan\n{st.session_state.learning_plan_md}\n")
+
+        if st.session_state.pivot_narrative:
+            _pn2 = st.session_state.pivot_narrative
+            _rpt_sections.append(f"## Cover Letter\n{_pn2.get('cover_letter','')}\n")
+            _rpt_sections.append(f"## Elevator Pitch\n{_pn2.get('elevator_pitch','')}\n")
+
+        if st.session_state.debate_result:
+            _v2 = st.session_state.debate_result.get("verdict")
+            if _v2:
+                _rpt_sections.append(
+                    f"## Adversarial Debate Verdict\n"
+                    f"- Viability: {_v2.pivot_viability_pct}% — {_v2.verdict_label}\n"
+                    f"- Decisive factor: {_v2.decisive_factor}\n"
+                    f"- Recommended action: {_v2.recommended_next_action}\n"
+                )
+
+        if st.session_state.agent_result:
+            _ag2 = st.session_state.agent_result
+            _rpt_sections.append(f"## AI Agent Summary\n{_ag2.executive_summary}\n")
+
+        _full_report = "\n\n---\n\n".join(_rpt_sections)
+        _full_report += f"\n\n---\n*Generated by Career Pivot Simulator · {current} → {target}*\n"
+
+        dl_col, info_col = st.columns([1, 3])
+        with dl_col:
+            st.download_button(
+                label="📥 Download Pivot Report",
+                data=_full_report,
+                file_name=f"pivot_report_{current[:15].replace(' ','_')}_{target[:15].replace(' ','_')}.md",
+                mime="text/markdown",
+                use_container_width=True,
+            )
+        with info_col:
+            _report_sections_done = sum([
+                bool(st.session_state.salary_result),
+                bool(st.session_state.learning_plan_md),
+                bool(st.session_state.pivot_narrative),
+                bool(st.session_state.debate_result),
+                bool(st.session_state.agent_result),
+            ])
+            st.markdown(
+                f'<div style="font-size:12px;color:rgba(0,0,0,0.55);padding-top:6px">'
+                f'Report includes {_report_sections_done + 2}/7 sections completed. '
+                f'Run more analyses above to enrich the report.</div>',
+                unsafe_allow_html=True,
+            )
+
+
+    st.markdown(
+        '<div class="li-phase"><div class="li-phase-line"></div>'
+        '<div class="li-phase-text">AI Advisor · Autonomous deep analysis</div>'
+        '<div class="li-phase-line"></div></div>',
+        unsafe_allow_html=True,
+    )
+    # ============================================================
+    # Career Intelligence Agent (A3)
+    # ============================================================
+    with st.container(border=True):
+        st.markdown(
+            '<div class="li-tool-header">'
+            '<div class="li-tool-icon" style="background:#EEF3FB">🤖</div>'
+            '<div><div class="li-tool-title">Career Intelligence Agent</div>'
+            '<div class="li-tool-cap">Autonomous AI that decides which tools to call, in what order, and when it has enough evidence</div></div>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+
+        # Tabs for context vs action
+        agent_tab_run, agent_tab_arch, agent_tab_compare = st.tabs(
+            ["Run Agent", "How it works", "Pipeline comparison"]
+        )
+
+        with agent_tab_arch:
+            for role, info in MODEL_RATIONALE.items():
+                col_label, col_model = st.columns([3, 1])
+                col_label.markdown(f"**{role.replace('_', ' ').title()}**")
+                col_model.code(info["model"])
+                st.markdown(f"{info['why']}")
+                st.caption(f"Alternative considered: {info['alternative_considered']}")
+                if "cost_note" in info:
+                    st.caption(info["cost_note"])
+                st.divider()
+
+        with agent_tab_compare:
+            c_a, c_b = st.columns(2, gap="large")
+            with c_a:
+                st.markdown("**A2 — Fixed 5-stage pipeline**")
+                st.code(
+                    "Stage 1: Strategy Generation\n"
+                    "    ↓ (always)\n"
+                    "Stage 2: Persona Evaluation × 5\n"
+                    "    ↓ (always)\n"
+                    "Stage 3: Structured Parsing\n"
+                    "    ↓ (always)\n"
+                    "Stage 4: Aggregation + Penalty\n"
+                    "    ↓ (always)\n"
+                    "Stage 5: Final Synthesis",
+                    language=None,
+                )
+                st.caption("Every run executes all stages. Disagreements are penalised silently.")
+            with c_b:
+                st.markdown("**A3 — Agentic loop**")
+                st.code(
+                    "Agent sees: current_role → target_role [+ personal CV]\n"
+                    "    ↓\n"
+                    "→ get_occupation_similarity\n"
+                    "→ analyze_skill_gap         (personal if CV loaded)\n"
+                    "→ get_market_signal         (NEW: job demand + hot skills)\n"
+                    "→ find_stepping_stone_route (if low sim)\n"
+                    "→ retrieve_role_evidence    (optional)\n"
+                    "→ run_strategy_evaluation\n"
+                    "→ investigate_disagreement  (if conflict)\n"
+                    "→ simulate_skill_investment (if gaps high)\n"
+                    "→ finalize_recommendation",
+                    language=None,
+                )
+                st.caption("9 tools. Tool selection by LLM each iteration. Personalised when CV is loaded.")
+
+        with agent_tab_run:
+            # ── Action area: button + secondary link ──────────────
+            run_agent_btn = st.button(
+                "🚀 Run Career Intelligence Agent",
+                disabled=st.session_state.agent_running,
+            )
+            if st.session_state.agent_result or st.session_state.agent_steps:
+                if st.button("Clear results", key="clear_agent", type="secondary"):
+                    st.session_state.agent_result = None
+                    st.session_state.agent_steps = []
+                    st.rerun()
+
+            # Run the agent
+            if run_agent_btn and current != target:
+                st.session_state.agent_running = True
+                st.session_state.agent_result = None
+                st.session_state.agent_steps = []
+
+                progress_bar = st.progress(0, text="Agent starting...")
+                collected_steps: List[AgentStep] = []
+                agent_result_holder: List[AgentResult] = []
+
+                # Build CV context string for the agent
+                _agent_cv_context: Optional[str] = None
+                if st.session_state.cv_profile:
+                    p = st.session_state.cv_profile
+                    top = ", ".join(p.get("top_skills", [])[:8])
+                    _agent_cv_context = (
+                        f"Role: {p.get('extracted_role', 'Unknown')}. "
+                        f"Experience: {p.get('years_experience', 0):.0f} years. "
+                        f"Education: {p.get('education_level', 'Unknown')}. "
+                        f"Top skills from CV: {top}. "
+                        f"Skills mapped to O*NET: {p.get('skills_mapped_count', 0)}."
+                    )
+
+                gen = run_career_agent(
+                    current_role=str(current),
+                    target_role=str(target),
+                    matrix=mat,
+                    coords=art.coords,
+                    model="gpt-4o",
+                    max_iterations=10,
+                    prefer_online=True,
+                    cv_context=_agent_cv_context,
+                )
+
+                step_count = 0
+                max_expected = 20
+
+                try:
+                    while True:
+                        step = next(gen)
+                        collected_steps.append(step)
+                        step_count += 1
+                        progress_bar.progress(
+                            min(step_count / max_expected, 0.95),
+                            text=f"Step {step_count}: {step.tool_name or step.kind}",
+                        )
+                except StopIteration as e:
+                    agent_result_holder.append(e.value)
+                except Exception as exc:
+                    st.error(f"Agent error: {exc}")
+
+                progress_bar.progress(1.0, text="Done.")
+                st.session_state.agent_steps = collected_steps
+                if agent_result_holder:
+                    st.session_state.agent_result = agent_result_holder[0]
+                st.session_state.agent_running = False
+                st.rerun()
+
+            # Final recommendation — shown prominently at top
+            agent_result: Optional[AgentResult] = st.session_state.agent_result
+            if agent_result:
+                st.divider()
+
+                # Verdict badge row
+                v = agent_result.verdict
+                v_cls = "status-ok" if v == "Highly Feasible" else ("status-challenge" if v == "Challenging" else "status-warn")
+                cl_cls = "status-ok" if agent_result.confidence_level == "High" else ("status-warn" if agent_result.confidence_level == "Medium" else "status-challenge")
+                st.markdown(
+                    f'<span class="status-pill {v_cls}">{v}</span>'
+                    f'<span class="status-pill status-ok">Strategy: {agent_result.recommended_strategy}</span>'
+                    f'<span class="status-pill {cl_cls}">Confidence: {agent_result.confidence_level}</span>',
+                    unsafe_allow_html=True,
+                )
+
+                # Hero summary box
+                st.markdown(
+                    f'<div class="agent-verdict-hero">'
+                    f'<div class="agent-verdict-title">Executive Summary</div>'
+                    f'<div class="agent-verdict-summary">{agent_result.executive_summary}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+
+                fr1, fr2, fr3 = st.columns(3, gap="large")
+                with fr1:
+                    _render_bullet_list("Key Insights", agent_result.key_insights)
+                with fr2:
+                    _render_bullet_list("Critical Risks", agent_result.critical_risks)
+                with fr3:
+                    _render_bullet_list("First 30 Days", agent_result.first_30_day_actions)
+
+                st.caption(
+                    f"Model: gpt-4o · "
+                    f"{agent_result.iterations_used} iterations · "
+                    f"{len(agent_result.tools_called)} tool calls · "
+                    f"Source: {agent_result.source}"
+                )
+
+            # Reasoning trace
+            agent_steps: List[AgentStep] = st.session_state.agent_steps or []
+            if agent_steps:
+                st.divider()
+                st.markdown("**Agent reasoning trace**")
+                st.caption("Every tool call and result — fully transparent.")
+
+                tool_steps = [s for s in agent_steps if s.kind in ("tool_call", "tool_result", "thinking", "error")]
+
+                TOOL_ICONS = {
+                    "get_occupation_similarity": "🔍",
+                    "analyze_skill_gap": "📊",
+                    "find_stepping_stone_route": "🗺️",
+                    "retrieve_role_evidence": "📋",
+                    "run_strategy_evaluation": "⚖️",
+                    "investigate_disagreement": "🔬",
+                    "simulate_skill_investment": "🧪",
+                    "get_market_signal": "📈",
+                    "finalize_recommendation": "✅",
+                }
+
+                for s in tool_steps:
+                    if s.kind == "thinking" and s.thinking_text:
+                        st.markdown(
+                            f'<div class="thinking-block">💭 {s.thinking_text}</div>',
+                            unsafe_allow_html=True,
+                        )
+
+                    elif s.kind == "error":
+                        st.error(s.thinking_text or "Unknown error")
+
+                    elif s.kind == "tool_result" and s.tool_result:
+                        tool_name = s.tool_name or ""
+                        result_data = s.tool_result
+                        icon = TOOL_ICONS.get(tool_name, "🔧")
+                        timer = f'<span class="tool-timer">⏱ {s.elapsed_ms:.0f} ms</span>' if s.elapsed_ms else ""
+
+                        st.markdown(
+                            f'<div class="tool-card-header">'
+                            f'<span class="tool-badge">{icon} {tool_name}</span>'
+                            f'{timer}'
+                            f'</div>',
+                            unsafe_allow_html=True,
+                        )
+
+                        if "error" in result_data:
+                            st.error(f"Tool error: {result_data['error']}")
+                        else:
+                            if tool_name == "get_occupation_similarity":
+                                cs = result_data.get("cosine_similarity_score", 0)
+                                hy = result_data.get("hybrid_score", 0)
+                                m1, m2 = st.columns(2)
+                                m1.metric("Cosine similarity", f"{cs:.0f} / 100")
+                                m2.metric("Hybrid score", f"{hy:.0f} / 100")
+                                st.caption(result_data.get("interpretation", ""))
+
+                            elif tool_name == "analyze_skill_gap":
+                                m1, m2, m3 = st.columns(3)
+                                m1.metric("Missing skills", result_data.get("total_missing_skills", 0))
+                                m2.metric("High-signal gaps", result_data.get("high_signal_missing_count", 0))
+                                m3.metric("Avg gap", f"{result_data.get('average_gap_magnitude', 0):.2f}")
+                                st.caption(result_data.get("gap_summary", ""))
+
+                            elif tool_name == "find_stepping_stone_route":
+                                if result_data.get("reachable") and result_data.get("path"):
+                                    st.success(" → ".join(result_data["path"]))
+                                else:
+                                    st.warning(result_data.get("recommendation", "No route found."))
+
+                            elif tool_name == "retrieve_role_evidence":
+                                tasks = result_data.get("tasks", [])
+                                st.caption(f"{result_data.get('evidence_count', 0)} evidence items · {result_data.get('target_role', '')}")
+                                if tasks:
+                                    for t in tasks[:3]:
+                                        st.markdown(f"- {t}")
+
+                            elif tool_name == "run_strategy_evaluation":
+                                m1, m2, m3 = st.columns(3)
+                                m1.metric("Winner", result_data.get("winner_strategy", "?"), f"{result_data.get('winner_score', 0):.0f}/100")
+                                m2.metric("Runner-up", result_data.get("runner_up_strategy", "?"), f"{result_data.get('runner_up_score', 0):.0f}/100")
+                                m3.metric("Controversy", f"{result_data.get('controversy_score', 0):.0f}/100")
+                                for d in result_data.get("major_disagreements", []):
+                                    st.warning(f"⚠️ {d['strategy']}: {d['strongest_advocate']} vs {d['strongest_critic']} (range {d['score_range']})")
+
+                            elif tool_name == "investigate_disagreement":
+                                ad = result_data.get("strongest_advocate", {})
+                                cr = result_data.get("strongest_critic", {})
+                                ic1, ic2 = st.columns(2)
+                                with ic1:
+                                    st.markdown(f"✅ **{ad.get('reviewer', '?')}** — {ad.get('score', 0):.0f}/100")
+                                    st.caption((ad.get("key_reason") or "")[:150])
+                                with ic2:
+                                    st.markdown(f"❌ **{cr.get('reviewer', '?')}** — {cr.get('score', 0):.0f}/100")
+                                    st.caption((cr.get("killer_objection") or "")[:150])
+                                for cond in result_data.get("resolution_conditions", []):
+                                    st.markdown(f"→ {cond}")
+                                st.caption(result_data.get("impact_on_recommendation", ""))
+
+                            elif tool_name == "simulate_skill_investment":
+                                m1, m2, m3 = st.columns(3)
+                                m1.metric("Before", f"{result_data.get('similarity_before', 0):.0f}/100")
+                                m2.metric("After", f"{result_data.get('similarity_after', 0):.0f}/100")
+                                m3.metric("Improvement", f"+{result_data.get('improvement', 0):.1f}")
+                                if result_data.get("reranked_winner"):
+                                    st.success(f"Reranked winner: {result_data['reranked_winner']} ({result_data.get('reranked_winner_score', 0):.0f}/100)")
+
+                            elif tool_name == "get_market_signal":
+                                demand = result_data.get("job_demand", "?")
+                                competition = result_data.get("competition_level", "?")
+                                outlook = result_data.get("growth_outlook", "?")
+                                d_cls = "status-ok" if demand == "High" else ("status-warn" if demand == "Medium" else "status-challenge")
+                                o_cls = "status-ok" if outlook == "Growing" else ("status-warn" if outlook == "Stable" else "status-challenge")
+                                st.markdown(
+                                    f'<span class="status-pill {d_cls}">Demand: {demand}</span>'
+                                    f'<span class="status-pill status-warn">Competition: {competition}</span>'
+                                    f'<span class="status-pill {o_cls}">{outlook}</span>',
+                                    unsafe_allow_html=True,
+                                )
+                                st.markdown("<div style='margin-bottom:4px'></div>", unsafe_allow_html=True)
+                                hot_skills = result_data.get("top_employer_skills", [])
+                                if hot_skills:
+                                    st.markdown(f"**Top employer skills:** {', '.join(hot_skills)}")
+                                sr = result_data.get("salary_range_usd", {})
+                                if sr and sr.get("low") and sr.get("high"):
+                                    st.caption(f"Salary range: ${sr['low']:,} – ${sr['high']:,} · Timeline: {result_data.get('typical_hiring_timeline_weeks', '?')} weeks to hire")
+                                if result_data.get("pivot_market_fit"):
+                                    st.caption(result_data["pivot_market_fit"])
+                                if result_data.get("source") == "llm_simulated":
+                                    st.caption("⚠️ LLM-simulated market signal — directional only, not live job board data.")
+
+                            elif tool_name == "finalize_recommendation":
+                                st.success(f"Verdict: {result_data.get('verdict', '?')} · Strategy: {result_data.get('recommended_strategy', '?')}")
+
+                        st.markdown("<div style='margin-bottom:12px'></div>", unsafe_allow_html=True)
