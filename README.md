@@ -1,6 +1,7 @@
 # Career Pivot Simulator — Assignment 3
 
-AI-powered career transition tool: from confused professional to **interview-ready in one guided session**.
+**One end-goal: get the interview.**  
+Two paths to get there. Every AI output evaluated before you see it.
 
 **Live App:** https://career-pivot-simulator.streamlit.app/  
 **Repository:** https://github.com/Thisisntevenmyfinale/career-pivot-simulator
@@ -13,25 +14,40 @@ Instructor: Jose A. Rodriguez Serrano
 
 ## The Product Thesis
 
-Most career tools give you one output (a skills gap, a course recommendation) and leave you stranded. This simulator is different: it takes you through a **complete, guided 45-minute sprint** from career ambiguity to a concrete, scored, downloadable pivot package.
-
-**What you leave with:**
-1. A skill gap analysis (O*NET cosine similarity, 900+ occupations)
-2. A personalised learning plan (AI-generated, AI-evaluated)
-3. A validated decision (adversarial debate: Advocate vs. Skeptic vs. gpt-4o Judge)
-4. A real job application (cover letter + CV rewrites + LinkedIn InMail)
-5. Coached interview answers (scored on STAR structure, specificity, keywords)
-6. An optimised LinkedIn profile (headline + about + experience bullets)
-7. A downloadable Pivot Playbook (Markdown, everything above in one file)
+Most career tools give you one disconnected output — a gap list, a template, a course link — and leave you to figure out the rest. This simulator is built around a single obsessive end-goal: **get the interview**. Two entry points, one destination.
 
 ---
 
-## Architecture
+## Path A — Quick Apply (90 seconds)
 
-The app operates in two modes:
+**You have a specific job. You want the application.**
 
-### Sprint Mode (Guided)
-A linear 5-step wizard. Each step has one primary action. Steps auto-advance. The Pivot Readiness Score (0–100) updates in real time as steps complete.
+```
+Paste job posting text
+        ↓  gpt-4o-mini extracts: title, company, requirements, description
+Find closest O*NET occupation  (difflib fuzzy match → top-5 candidates)
+        ↓  compute_gap_df → quantified skill gap vs. this role
+Match score (percentile) + top skill gaps displayed
+        ↓  one button
+gpt-4o generates: cover letter + LinkedIn InMail + CV bullet rewrites
+        ↓  gpt-4o-mini evaluates: job_relevance × 0.35 + specificity × 0.25 + ...
+Quality score shown. regenerate_recommended flag if score < 70.
+        ↓
+Interview questions tailored to the actual JD → answer scoring → coached rewrites
+        ↓
+Download complete application package (Markdown)
+```
+
+**What makes this technically non-trivial:**
+- Hybrid: O*NET vector math for quantified match + LLM for tailored content generation
+- Two separate LLM calls per artifact: generate (gpt-4o) → evaluate (gpt-4o-mini)
+- Evaluation happens before the output reaches the user — nothing shown raw
+
+---
+
+## Path B — Career Sprint (45 minutes)
+
+**You don't have a specific job. You want to validate the pivot.**
 
 ```
 Step 1: Assess       → O*NET cosine similarity, skill gap vector, timeline estimate [auto]
@@ -42,9 +58,14 @@ Step 5: Interview    → Role-specific questions → answer scoring → coached 
 Bonus:  LinkedIn     → AI-written headline/about/bullets → pivot_clarity × keyword_density eval
 ```
 
-### Research Mode
+Pivot Readiness Score (0–100) updates after each step. Ends with a downloadable **Pivot Playbook** (learning plan + debate verdict + cover letter + interview coaching, all in one Markdown file).
+
+---
+
+## Research Mode
+
 Full tabbed interface: Assess · Plan · Validate · Execute · Interview  
-Each tab exposes the full depth of each phase — raw scores, aggregation diagnostics, A/B comparisons.
+Exposes: raw aggregation diagnostics, model A/B comparison, career intelligence agent (agentic loop with tool calls), architecture panel, zero-shot benchmark, dev reflection.
 
 ---
 
