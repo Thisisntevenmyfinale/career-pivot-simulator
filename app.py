@@ -828,6 +828,8 @@ DEFAULT_STATE = {
     "interview_answers": {},       # {idx: answer_text}
     "interview_evals": {},         # {idx: eval_dict}
     "interview_prep_done": False,  # True when ≥1 answer evaluated
+    # Sprint Mode
+    "sprint_step": 1,              # 1-5: active sprint step
     # Phase navigation
     "current_phase": "assess",     # "assess" | "plan" | "validate" | "execute"
 }
@@ -1513,14 +1515,492 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# ── Phase Tabs ─────────────────────────────────────────────────────────────
-_tab_assess, _tab_plan, _tab_validate, _tab_execute, _tab_interview = st.tabs([
-    "🔍 Assess · Skill landscape",
-    "📋 Plan · Salary + roadmap",
-    "⚔️ Validate · Debate + decision",
-    "🚀 Execute · Apply + materials",
-    "🎤 Interview · Prep + Coach",
-])
+# ══════════════════════════════════════════════════════════════════════════════
+# SPRINT MODE — Guided linear flow (one active step at a time)
+# The research mode (tabs) is below under `if not guided:`
+# ══════════════════════════════════════════════════════════════════════════════
+if guided:
+
+    _sp = st.session_state.sprint_step          # current active step 1-5
+
+    # ── Sprint header ─────────────────────────────────────────────────────
+    _sp_steps = ["Assess", "Plan", "Validate", "Execute", "Interview"]
+    _sp_done  = [
+        True,
+        bool(st.session_state.learning_plan_md),
+        bool(st.session_state.debate_result),
+        bool(st.session_state.smart_apply_package),
+        bool(st.session_state.interview_prep_done),
+    ]
+    # advance sprint_step to the first incomplete step automatically
+    for _si, _sd in enumerate(_sp_done):
+        if not _sd:
+            _sp = _si + 1
+            break
+    else:
+        _sp = 5  # all done, stay on step 5
+
+    _sp_nodes = ""
+    for _si, (_sname, _sdone) in enumerate(zip(_sp_steps, _sp_done)):
+        _active = (_si + 1 == _sp)
+        _nc = "#0A66C2" if _sdone else ("rgba(0,0,0,0.88)" if _active else "rgba(0,0,0,0.2)")
+        _nbg = "#0A66C2" if _sdone else ("#fff" if _active else "#fff")
+        _nborder = "#0A66C2" if (_sdone or _active) else "rgba(0,0,0,0.15)"
+        _ntext = "✓" if _sdone else str(_si + 1)
+        _nfg = "#fff" if _sdone else ("#0A66C2" if _active else "rgba(0,0,0,0.25)")
+        _lbl_w = "900" if _active else "600"
+        _lbl_c = "rgba(0,0,0,0.88)" if (_active or _sdone) else "rgba(0,0,0,0.35)"
+        _connector = (
+            f'<div style="flex:1;height:2px;background:{"#0A66C2" if _sdone else "rgba(0,0,0,0.1)"};'
+            f'border-radius:1px;margin:0 6px;align-self:center;margin-top:-22px"></div>'
+            if _si < 4 else ""
+        )
+        _sp_nodes += (
+            f'<div style="display:flex;flex-direction:column;align-items:center;gap:4px;min-width:60px">'
+            f'<div style="width:32px;height:32px;border-radius:50%;background:{_nbg};'
+            f'border:2px solid {_nborder};display:flex;align-items:center;justify-content:center;'
+            f'font-size:12px;font-weight:900;color:{_nfg}">{_ntext}</div>'
+            f'<div style="font-size:10px;font-weight:{_lbl_w};color:{_lbl_c};text-align:center">{_sname}</div>'
+            f'</div>{_connector}'
+        )
+
+    _sp_pct = int(sum(_sp_done) / len(_sp_done) * 100)
+    _sp_time_labels = ["5 min", "10 min", "8 min", "15 min", "7 min"]
+    _sp_time_total = 45
+
+    st.markdown(
+        f'<div style="background:#fff;border:1px solid rgba(0,0,0,0.1);border-radius:12px;'
+        f'padding:18px 24px 14px 24px;margin-bottom:16px;box-shadow:0 1px 4px rgba(0,0,0,0.05)">'
+        f'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">'
+        f'<div>'
+        f'<div style="font-size:12px;font-weight:900;color:#0A66C2;letter-spacing:-0.2px">Career Pivot Sprint</div>'
+        f'<div style="font-size:11px;color:rgba(0,0,0,0.4);margin-top:1px">'
+        f'~{_sp_time_total} min total · {sum(_sp_done)}/5 steps complete</div>'
+        f'</div>'
+        f'<div style="font-size:22px;font-weight:900;color:{"#117A37" if _sp_pct==100 else "#0A66C2"}">'
+        f'{_sp_pct}<span style="font-size:11px;font-weight:600;color:rgba(0,0,0,0.3)">%</span></div>'
+        f'</div>'
+        f'<div style="display:flex;align-items:center;margin-bottom:12px">{_sp_nodes}</div>'
+        f'<div style="height:3px;background:rgba(0,0,0,0.07);border-radius:2px;overflow:hidden">'
+        f'<div style="width:{_sp_pct}%;height:3px;background:#0A66C2;border-radius:2px;transition:width 0.8s"></div>'
+        f'</div>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+
+    # ── STEP 1: ASSESS ────────────────────────────────────────────────────
+    with st.container(border=True):
+        _s1_done = _sp_done[0]
+        _s1_active = (_sp == 1)
+        st.markdown(
+            f'<div style="display:flex;align-items:center;gap:10px;margin-bottom:{"12px" if _s1_done or _s1_active else "0"}">'
+            f'<div style="width:26px;height:26px;border-radius:50%;background:#0A66C2;'
+            f'display:flex;align-items:center;justify-content:center;'
+            f'font-size:11px;font-weight:900;color:#fff;flex-shrink:0">✓</div>'
+            f'<div><div style="font-size:14px;font-weight:800;color:rgba(0,0,0,0.88)">Step 1 · Assess your gap</div>'
+            f'<div style="font-size:11px;color:rgba(0,0,0,0.45)">{_sp_time_labels[0]} · Auto-complete</div>'
+            f'</div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+        # Always show assess summary
+        _s1c1, _s1c2, _s1c3, _s1c4 = st.columns(4)
+        _s1c1.metric("Match", f"{match_score_display:.0f}/100")
+        _s1c2.metric("Skill gaps", str(_n_gaps))
+        _s1c3.metric("Confidence", f"{int(conf['confidence_score'])}/100")
+        _s1c4.metric("Timeline", f"~{_weeks}w")
+        if _n_gaps > 0 and not gap_df.empty:
+            _top3_gaps = (gap_df[gap_df["gap"] > 0]
+                         .sort_values("gap", ascending=False).head(3)["skill"].tolist())
+            st.caption(f"Top 3 gaps to close: {' · '.join(_top3_gaps)}")
+
+    # ── STEP 2: PLAN ─────────────────────────────────────────────────────
+    with st.container(border=True):
+        _s2_done = _sp_done[1]
+        _s2_active = (_sp == 2)
+        _s2_icon = "✓" if _s2_done else ("→" if _s2_active else "○")
+        _s2_bg = "#0A66C2" if _s2_done else ("rgba(0,0,0,0.88)" if _s2_active else "rgba(0,0,0,0.15)")
+        _s2_fg = "#fff" if (_s2_done or _s2_active) else "rgba(0,0,0,0.3)"
+        st.markdown(
+            f'<div style="display:flex;align-items:center;gap:10px;margin-bottom:{"12px" if _s2_done or _s2_active else "0"}">'
+            f'<div style="width:26px;height:26px;border-radius:50%;background:{_s2_bg};'
+            f'display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;color:{_s2_fg};flex-shrink:0">{_s2_icon}</div>'
+            f'<div><div style="font-size:14px;font-weight:800;color:{"rgba(0,0,0,0.88)" if (_s2_done or _s2_active) else "rgba(0,0,0,0.3)"}">'
+            f'Step 2 · Build your learning plan</div>'
+            f'<div style="font-size:11px;color:rgba(0,0,0,0.45)">{_sp_time_labels[1]} · AI generates gap-specific roadmap</div>'
+            f'</div></div>',
+            unsafe_allow_html=True,
+        )
+        if _s2_done:
+            _plan_eval_s = st.session_state.plan_quality_eval
+            _ps = _plan_eval_s.get("overall_score", 0) if _plan_eval_s else None
+            _ps_color = "#117A37" if (_ps or 0) >= 75 else "#A05A00"
+            st.markdown(
+                f'<div style="background:#F0FAF4;border-left:3px solid #057642;border-radius:0 8px 8px 0;'
+                f'padding:10px 14px;font-size:12px;color:rgba(0,0,0,0.65);margin-bottom:8px">'
+                f'✓ Learning plan generated'
+                + (f' · Quality score: <strong style="color:{_ps_color}">{_ps}/100</strong>' if _ps else "")
+                + f'</div>',
+                unsafe_allow_html=True,
+            )
+            with st.expander("View learning plan"):
+                st.markdown(st.session_state.learning_plan_md)
+        elif _s2_active:
+            if st.button("📋 Generate my learning plan", key="sp_gen_plan", use_container_width=True, type="primary"):
+                _lp_key_sp = ""
+                try:
+                    _lp_key_sp = str(st.secrets.get("OPENAI_API_KEY", "")).strip()
+                except Exception:
+                    pass
+                with st.spinner("Building your personalised roadmap…"):
+                    _sp_md = generate_learning_plan_markdown(
+                        current_role=str(current), target_role=str(target),
+                        gap_df=gap_df, language="en", model="gpt-4o-mini",
+                        max_missing=6, prefer_online=True,
+                    )
+                    st.session_state.learning_plan_md = _sp_md
+                    st.session_state.learning_plan_source = _learning_plan_source_label(_sp_md)
+                    st.session_state.plan_quality_eval = None
+                with st.spinner("Evaluating plan quality…"):
+                    _gap_names_sp = (gap_df[gap_df["gap"] > 0].sort_values("gap", ascending=False)["skill"].head(8).tolist())
+                    st.session_state.plan_quality_eval = evaluate_learning_plan(
+                        plan_markdown=_sp_md, skill_gaps=_gap_names_sp,
+                        target_role=str(target), model="gpt-4o-mini",
+                        api_key=_lp_key_sp or None, prefer_online=bool(_lp_key_sp),
+                    )
+                st.rerun()
+        else:
+            st.markdown('<div style="height:4px"></div>', unsafe_allow_html=True)
+
+    # ── STEP 3: VALIDATE ─────────────────────────────────────────────────
+    with st.container(border=True):
+        _s3_done = _sp_done[2]
+        _s3_active = (_sp == 3)
+        _s3_icon = "✓" if _s3_done else ("→" if _s3_active else "○")
+        _s3_bg = "#0A66C2" if _s3_done else ("rgba(0,0,0,0.88)" if _s3_active else "rgba(0,0,0,0.15)")
+        _s3_fg = "#fff" if (_s3_done or _s3_active) else "rgba(0,0,0,0.3)"
+        st.markdown(
+            f'<div style="display:flex;align-items:center;gap:10px;margin-bottom:{"12px" if _s3_done or _s3_active else "0"}">'
+            f'<div style="width:26px;height:26px;border-radius:50%;background:{_s3_bg};'
+            f'display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;color:{_s3_fg};flex-shrink:0">{_s3_icon}</div>'
+            f'<div><div style="font-size:14px;font-weight:800;color:{"rgba(0,0,0,0.88)" if (_s3_done or _s3_active) else "rgba(0,0,0,0.3)"}">'
+            f'Step 3 · Validate your decision</div>'
+            f'<div style="font-size:11px;color:rgba(0,0,0,0.45)">{_sp_time_labels[2]} · AI advocate vs skeptic debate</div>'
+            f'</div></div>',
+            unsafe_allow_html=True,
+        )
+        if _s3_done:
+            _dr_sp = st.session_state.debate_result
+            _v_sp = _dr_sp.get("verdict") if _dr_sp else None
+            if _v_sp:
+                _vib = _v_sp.pivot_viability_pct
+                _vc = "#117A37" if _vib >= 65 else ("#A05A00" if _vib >= 40 else "#B71C1C")
+                st.markdown(
+                    f'<div style="background:#F0FAF4;border-left:3px solid #057642;border-radius:0 8px 8px 0;'
+                    f'padding:10px 14px;font-size:12px;color:rgba(0,0,0,0.65);margin-bottom:8px">'
+                    f'✓ Verdict: <strong style="color:{_vc}">{_v_sp.verdict_label}</strong> ({_vib}% viability) · '
+                    f'{_v_sp.decisive_factor}</div>',
+                    unsafe_allow_html=True,
+                )
+                with st.expander("View debate details"):
+                    st.markdown(f"**Recommended action:** {_v_sp.recommended_next_action}")
+                    _rounds_sp = _dr_sp.get("rounds", []) if _dr_sp else []
+                    for _r in _rounds_sp[:2]:
+                        if isinstance(_r, dict):
+                            st.markdown(f"**{_r.get('topic','')}** — Advocate: {_r.get('advocate_point','')} | Skeptic: {_r.get('skeptic_point','')}")
+        elif _s3_active:
+            if not _sp_done[1]:
+                st.warning("Complete Step 2 first — the debate uses your learning plan as context.")
+            else:
+                if st.button("⚔️ Run adversarial debate", key="sp_debate", use_container_width=True, type="primary"):
+                    _db_key_sp = ""
+                    try:
+                        _db_key_sp = str(st.secrets.get("OPENAI_API_KEY", "")).strip()
+                    except Exception:
+                        pass
+                    _gap_str_sp = ", ".join(
+                        gap_df[gap_df["gap"] > 0].sort_values("gap", ascending=False)["skill"].head(5).tolist()
+                    ) if not gap_df.empty else ""
+                    with st.spinner("Advocate and skeptic arguing your case…"):
+                        _db_result_sp = run_pivot_debate(
+                            current_role=str(current), target_role=str(target),
+                            match_score=match_score_display, gap_summary=_gap_str_sp,
+                            cv_profile=st.session_state.cv_profile,
+                            model_debate="gpt-4o-mini", model_judge="gpt-4o",
+                            prefer_online=_has_openai_secret(), api_key=_db_key_sp or None,
+                        )
+                    st.session_state.debate_result = _db_result_sp
+                    st.rerun()
+        else:
+            st.markdown('<div style="height:4px"></div>', unsafe_allow_html=True)
+
+    # ── STEP 4: EXECUTE ──────────────────────────────────────────────────
+    with st.container(border=True):
+        _s4_done = _sp_done[3]
+        _s4_active = (_sp == 4)
+        _s4_icon = "✓" if _s4_done else ("→" if _s4_active else "○")
+        _s4_bg = "#0A66C2" if _s4_done else ("rgba(0,0,0,0.88)" if _s4_active else "rgba(0,0,0,0.15)")
+        _s4_fg = "#fff" if (_s4_done or _s4_active) else "rgba(0,0,0,0.3)"
+        st.markdown(
+            f'<div style="display:flex;align-items:center;gap:10px;margin-bottom:{"12px" if _s4_done or _s4_active else "0"}">'
+            f'<div style="width:26px;height:26px;border-radius:50%;background:{_s4_bg};'
+            f'display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;color:{_s4_fg};flex-shrink:0">{_s4_icon}</div>'
+            f'<div><div style="font-size:14px;font-weight:800;color:{"rgba(0,0,0,0.88)" if (_s4_done or _s4_active) else "rgba(0,0,0,0.3)"}">'
+            f'Step 4 · Apply to a real job</div>'
+            f'<div style="font-size:11px;color:rgba(0,0,0,0.45)">{_sp_time_labels[3]} · Real listings + tailored cover letter + quality score</div>'
+            f'</div></div>',
+            unsafe_allow_html=True,
+        )
+        if _s4_done:
+            _pkg_sp: Optional[ApplicationPackage] = st.session_state.smart_apply_package
+            _pe_sp = st.session_state.pkg_quality_eval
+            _pe_score = _pe_sp.get("overall_score", 0) if _pe_sp else None
+            _pe_color = "#117A37" if (_pe_score or 0) >= 75 else "#A05A00"
+            st.markdown(
+                f'<div style="background:#F0FAF4;border-left:3px solid #057642;border-radius:0 8px 8px 0;'
+                f'padding:10px 14px;font-size:12px;color:rgba(0,0,0,0.65);margin-bottom:8px">'
+                f'✓ Application generated'
+                + (f' for {_pkg_sp.job_title} at {_pkg_sp.company}' if _pkg_sp else "")
+                + (f' · Quality: <strong style="color:{_pe_color}">{_pe_score}/100</strong>' if _pe_score else "")
+                + f'</div>',
+                unsafe_allow_html=True,
+            )
+            if _pkg_sp:
+                with st.expander("View cover letter"):
+                    st.text(_pkg_sp.cover_letter)
+        elif _s4_active:
+            if not _sp_done[2]:
+                st.warning("Complete Step 3 first — validate your decision before applying.")
+            else:
+                _serp_key_sp = None
+                try:
+                    _serp_key_sp = st.secrets.get("SERP_API_KEY")
+                except Exception:
+                    pass
+                _sa_api_sp = ""
+                try:
+                    _sa_api_sp = str(st.secrets.get("OPENAI_API_KEY", "")).strip()
+                except Exception:
+                    pass
+
+                # Get or generate job listings
+                if not st.session_state.smart_apply_jobs:
+                    _find_col, _ = st.columns([2, 1])
+                    with _find_col:
+                        if st.button(
+                            "🔍 Find real jobs" if _serp_key_sp else "🎯 Generate job listings",
+                            key="sp_find_jobs", use_container_width=True, type="primary",
+                        ):
+                            with st.spinner("Searching for jobs…"):
+                                if _serp_key_sp:
+                                    _rj = search_real_jobs(str(target), n_jobs=5, serp_api_key=_serp_key_sp)
+                                    if _rj and not _rj[0].get("error"):
+                                        st.session_state.smart_apply_jobs = [real_job_to_listing(r, i) for i, r in enumerate(_rj)]
+                                        st.session_state.smart_apply_jobs_source = "real"
+                                    else:
+                                        st.session_state.smart_apply_jobs = generate_job_listings(str(current), str(target), n=3, prefer_online=bool(_sa_api_sp))
+                                        st.session_state.smart_apply_jobs_source = "ai"
+                                else:
+                                    st.session_state.smart_apply_jobs = generate_job_listings(str(current), str(target), n=3, prefer_online=bool(_sa_api_sp))
+                                    st.session_state.smart_apply_jobs_source = "ai"
+                            st.rerun()
+                else:
+                    # Show top job + apply button
+                    _sp_jobs: List[JobListing] = st.session_state.smart_apply_jobs
+                    st.caption(f"Found {len(_sp_jobs)} jobs · Select one to generate your application")
+                    for _sji, _spj in enumerate(_sp_jobs[:3]):
+                        _spj_col, _spj_btn = st.columns([3, 1])
+                        with _spj_col:
+                            _is_real_sp = getattr(_spj, "is_real_job", False)
+                            st.markdown(
+                                f'<div style="padding:10px 0;border-bottom:1px solid rgba(0,0,0,0.07)">'
+                                f'<div style="font-size:13px;font-weight:700;color:#0A66C2">{_spj.title}</div>'
+                                f'<div style="font-size:11px;color:rgba(0,0,0,0.55)">{_spj.company} · {_spj.location}'
+                                + (f' · <span style="color:#057642;font-weight:700">LIVE</span>' if _is_real_sp else "")
+                                + f'</div></div>',
+                                unsafe_allow_html=True,
+                            )
+                        with _spj_btn:
+                            if st.button("Apply", key=f"sp_apply_{_sji}", use_container_width=True, type="primary"):
+                                _top_t_sp = (gap_df.assign(ov=lambda d: np.minimum(d["current_importance"], d["target_importance"]))
+                                             .sort_values("ov", ascending=False).head(4)["skill"].tolist()) if not gap_df.empty else []
+                                _top_m_sp = (gap_df[gap_df["gap"] > 0].sort_values(["gap", "target_importance"], ascending=False)
+                                             .head(4)["skill"].tolist()) if not gap_df.empty else []
+                                with st.spinner(f"Generating application for {_spj.company}…"):
+                                    _pkg_sp_new = generate_application_package(
+                                        job_title=_spj.title, company=_spj.company,
+                                        job_description=getattr(_spj, "full_description", "") or _spj.description_preview,
+                                        current_role=str(current), target_role=str(target),
+                                        cv_profile=st.session_state.cv_profile,
+                                        top_transfer=_top_t_sp, top_missing=_top_m_sp,
+                                        model="gpt-4o", prefer_online=bool(_sa_api_sp), api_key=_sa_api_sp or None,
+                                    )
+                                st.session_state.smart_apply_package = _pkg_sp_new
+                                st.session_state.smart_apply_selected_idx = _sji
+                                with st.spinner("Evaluating application quality…"):
+                                    _pkg_eval_sp = evaluate_application_package(
+                                        cover_letter=_pkg_sp_new.cover_letter,
+                                        linkedin_inmail=_pkg_sp_new.linkedin_inmail,
+                                        cv_rewrites=[{"skill_highlighted": r.skill_highlighted, "rewritten": r.rewritten}
+                                                     for r in _pkg_sp_new.cv_bullet_rewrites],
+                                        job_title=_spj.title, company=_spj.company,
+                                        job_description=getattr(_spj, "full_description", ""),
+                                        cv_text=st.session_state.cv_text or "",
+                                        model="gpt-4o-mini", api_key=_sa_api_sp or None,
+                                        prefer_online=bool(_sa_api_sp),
+                                    )
+                                st.session_state.pkg_quality_eval = _pkg_eval_sp
+                                st.rerun()
+                    if _is_real_sp if _sp_jobs else False:
+                        st.caption("🔗 These are real live jobs — Apply button opens the actual posting")
+        else:
+            st.markdown('<div style="height:4px"></div>', unsafe_allow_html=True)
+
+    # ── STEP 5: INTERVIEW ────────────────────────────────────────────────
+    with st.container(border=True):
+        _s5_done = _sp_done[4]
+        _s5_active = (_sp == 5)
+        _s5_icon = "✓" if _s5_done else ("→" if _s5_active else "○")
+        _s5_bg = "#0A66C2" if _s5_done else ("rgba(0,0,0,0.88)" if _s5_active else "rgba(0,0,0,0.15)")
+        _s5_fg = "#fff" if (_s5_done or _s5_active) else "rgba(0,0,0,0.3)"
+        st.markdown(
+            f'<div style="display:flex;align-items:center;gap:10px;margin-bottom:{"12px" if _s5_done or _s5_active else "0"}">'
+            f'<div style="width:26px;height:26px;border-radius:50%;background:{_s5_bg};'
+            f'display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;color:{_s5_fg};flex-shrink:0">{_s5_icon}</div>'
+            f'<div><div style="font-size:14px;font-weight:800;color:{"rgba(0,0,0,0.88)" if (_s5_done or _s5_active) else "rgba(0,0,0,0.3)"}">'
+            f'Step 5 · Prepare for the interview</div>'
+            f'<div style="font-size:11px;color:rgba(0,0,0,0.45)">{_sp_time_labels[4]} · AI generates questions · you answer · AI coaches</div>'
+            f'</div></div>',
+            unsafe_allow_html=True,
+        )
+        if _s5_done:
+            _itv_sc = st.session_state.interview_evals or {}
+            _itv_scores_sp = [v["overall_score"] for v in _itv_sc.values() if isinstance(v, dict)]
+            _itv_avg_sp = int(sum(_itv_scores_sp) / len(_itv_scores_sp)) if _itv_scores_sp else None
+            _iac = "#117A37" if (_itv_avg_sp or 0) >= 75 else "#A05A00"
+            st.markdown(
+                f'<div style="background:#F0FAF4;border-left:3px solid #057642;border-radius:0 8px 8px 0;'
+                f'padding:10px 14px;font-size:12px;color:rgba(0,0,0,0.65);margin-bottom:8px">'
+                f'✓ Interview prep complete'
+                + (f' · Readiness: <strong style="color:{_iac}">{_itv_avg_sp}/100</strong>' if _itv_avg_sp else "")
+                + f'</div>',
+                unsafe_allow_html=True,
+            )
+        elif _s5_active:
+            if not _sp_done[3]:
+                st.warning("Complete Step 4 first — interview prep is tailored to your target job.")
+            else:
+                if not st.session_state.interview_questions:
+                    _itv_job_title_sp = str(target)
+                    _itv_jd_sp = ""
+                    if st.session_state.smart_apply_package:
+                        _itv_job_title_sp = getattr(st.session_state.smart_apply_package, "job_title", str(target))
+                        _itv_idx_sp = st.session_state.smart_apply_selected_idx
+                        _itv_jobs_sp = st.session_state.smart_apply_jobs or []
+                        if _itv_idx_sp is not None and _itv_idx_sp < len(_itv_jobs_sp):
+                            _itv_jd_sp = getattr(_itv_jobs_sp[_itv_idx_sp], "full_description", "")
+                    _sp_itv_key = ""
+                    try:
+                        _sp_itv_key = str(st.secrets.get("OPENAI_API_KEY", "")).strip()
+                    except Exception:
+                        pass
+                    if st.button("🎤 Generate interview questions", key="sp_gen_itv", use_container_width=True, type="primary"):
+                        with st.spinner("Generating role-specific questions…"):
+                            _itv_qs_sp = generate_interview_questions(
+                                target_role=_itv_job_title_sp,
+                                job_description=_itv_jd_sp,
+                                cv_text=st.session_state.cv_text or "",
+                                n=5, api_key=_sp_itv_key or None,
+                                prefer_online=bool(_sp_itv_key),
+                            )
+                        st.session_state.interview_questions = _itv_qs_sp
+                        st.session_state.interview_answers = {}
+                        st.session_state.interview_evals = {}
+                        st.rerun()
+                else:
+                    st.caption("Answer at least one question below to complete Step 5.")
+                    _qs_sp = st.session_state.interview_questions
+                    _sp_itv_key2 = ""
+                    try:
+                        _sp_itv_key2 = str(st.secrets.get("OPENAI_API_KEY", "")).strip()
+                    except Exception:
+                        pass
+                    for _qii, _qsp in enumerate(_qs_sp[:3]):
+                        st.markdown(
+                            f'<div style="font-size:13px;font-weight:700;color:#1D2226;margin:10px 0 4px 0">'
+                            f'Q{_qii+1}: {_qsp.get("question","")}</div>'
+                            f'<div style="font-size:10px;color:rgba(0,0,0,0.4);margin-bottom:4px">'
+                            f'{_qsp.get("type","")} · {_qsp.get("difficulty","")}</div>',
+                            unsafe_allow_html=True,
+                        )
+                        _ans_sp = st.text_area(
+                            f"Your answer", height=80, key=f"sp_ans_{_qii}",
+                            value=(st.session_state.interview_answers or {}).get(_qii, ""),
+                            placeholder="Type a draft answer…", label_visibility="collapsed",
+                        )
+                        if st.button(f"⚡ Evaluate", key=f"sp_ev_{_qii}", disabled=not bool(_ans_sp.strip())):
+                            if st.session_state.interview_answers is None:
+                                st.session_state.interview_answers = {}
+                            st.session_state.interview_answers[_qii] = _ans_sp
+                            with st.spinner("Scoring…"):
+                                _ev_sp = evaluate_interview_answer(
+                                    question=_qsp.get("question",""),
+                                    answer=_ans_sp,
+                                    target_role=str(target),
+                                    api_key=_sp_itv_key2 or None,
+                                    prefer_online=bool(_sp_itv_key2),
+                                )
+                            if st.session_state.interview_evals is None:
+                                st.session_state.interview_evals = {}
+                            st.session_state.interview_evals[_qii] = _ev_sp
+                            st.session_state.interview_prep_done = True
+                            st.rerun()
+                        _ev_sp_r = (st.session_state.interview_evals or {}).get(_qii)
+                        if _ev_sp_r:
+                            _es_sp = _ev_sp_r.get("overall_score", 0)
+                            _esc = "#117A37" if _es_sp >= 75 else "#A05A00"
+                            st.markdown(
+                                f'<div style="font-size:11px;color:{_esc};font-weight:700;margin-bottom:2px">'
+                                f'Score: {_es_sp}/100 — {_ev_sp_r.get("one_line_verdict","")}</div>',
+                                unsafe_allow_html=True,
+                            )
+                            if _ev_sp_r.get("coached_answer"):
+                                with st.expander("✨ Coached answer"):
+                                    st.markdown(_ev_sp_r["coached_answer"])
+        else:
+            st.markdown('<div style="height:4px"></div>', unsafe_allow_html=True)
+
+    # ── Sprint finish line ────────────────────────────────────────────────
+    if all(_sp_done):
+        st.markdown(
+            '<div style="background:linear-gradient(135deg,#057642 0%,#0A8C52 100%);'
+            'border-radius:12px;padding:24px 28px;text-align:center;margin-top:8px">'
+            '<div style="font-size:28px;margin-bottom:8px">🎉</div>'
+            '<div style="font-size:20px;font-weight:900;color:#fff;margin-bottom:6px">'
+            'Sprint complete — you\'re interview-ready</div>'
+            '<div style="font-size:13px;color:rgba(255,255,255,0.75);margin-bottom:16px">'
+            'You have a learning plan, a validated decision, a real job application, '
+            'and coached interview answers. Download your playbook below.'
+            '</div>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+
+    st.markdown(
+        '<div style="font-size:11px;color:rgba(0,0,0,0.35);text-align:right;margin-top:8px">'
+        'Switch to <strong>Research</strong> mode in the sidebar for advanced tools</div>',
+        unsafe_allow_html=True,
+    )
+
+# ── Phase Tabs (Research / Advanced Mode) ──────────────────────────────────
+if not guided:
+    _tab_assess, _tab_plan, _tab_validate, _tab_execute, _tab_interview = st.tabs([
+        "🔍 Assess · Skill landscape",
+        "📋 Plan · Salary + roadmap",
+        "⚔️ Validate · Debate + decision",
+        "🚀 Execute · Apply + materials",
+        "🎤 Interview · Prep + Coach",
+    ])
 
 with _tab_assess:
     st.markdown(
