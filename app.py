@@ -44,6 +44,7 @@ from src.salary_estimator import estimate_salary_impact
 from src.job_search import search_real_jobs, real_job_to_listing, extract_cv_text
 from src.evaluator import evaluate_application_package, evaluate_learning_plan
 from src.interview_coach import generate_interview_questions, evaluate_interview_answer
+from src.linkedin_optimizer import generate_linkedin_profile, evaluate_linkedin_profile
 import plotly.graph_objects as go
 import plotly.express as px
 
@@ -815,6 +816,8 @@ DEFAULT_STATE = {
     "smart_apply_package": None,
     # Pivot Peers
     "pivot_peers": None,
+    # LinkedIn Profile Optimizer
+    "linkedin_profile": None,   # dict: headline, about, experience_bullets, skills_list
     # Salary Estimator
     "salary_result": None,
     # Quality Evaluations (second-pass LLM evaluation layer)
@@ -1377,6 +1380,7 @@ with st.container(border=True):
     if st.session_state.pivot_narrative:         _done_list.append("pivot narrative")
     if st.session_state.job_analysis:            _done_list.append("job posting analysis")
     if st.session_state.smart_apply_package:     _done_list.append("application package")
+    if st.session_state.linkedin_profile:        _done_list.append("LinkedIn profile")
     if st.session_state.agent_result:            _done_list.append("agent deep analysis")
     if st.session_state.interview_prep_done:     _done_list.append("interview preparation")
     else:                                        _next_list.append("Interview Coach")
@@ -3441,6 +3445,204 @@ with _tab_execute:
 
 
     # ============================================================
+    # LinkedIn Profile Optimizer
+    # ============================================================
+    with st.container(border=True):
+        _li_opt_personal = bool((st.session_state.cv_text or "").strip())
+        st.markdown(
+            '<div class="li-tool-header">'
+            '<div class="li-tool-icon" style="background:#EEF3FB">🔗</div>'
+            '<div><div class="li-tool-title">LinkedIn Profile Optimizer</div>'
+            '<div class="li-tool-cap">Headline · About section · Experience rewrites · Skills list — ready to paste into LinkedIn</div></div>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+        st.caption(
+            "Generates a complete LinkedIn profile update for your pivot. "
+            "Paste the output directly into LinkedIn — no editing required."
+            + (" CV loaded — output is personalised to your background." if _li_opt_personal
+               else " Upload your CV in the sidebar for a personalised profile.")
+        )
+
+        _li_gen_btn_col, _li_info_col = st.columns([2, 3])
+        with _li_gen_btn_col:
+            _li_gen_btn = st.button(
+                "✨ Generate LinkedIn Profile",
+                use_container_width=True,
+                key="li_gen_btn",
+            )
+        with _li_info_col:
+            st.markdown(
+                '<div style="font-size:12px;color:rgba(0,0,0,0.45);padding-top:8px">'
+                'Headline · About (200–260 words) · 3 experience rewrites · 14 skills to list'
+                '</div>',
+                unsafe_allow_html=True,
+            )
+
+        if _li_gen_btn:
+            _oai_key_li = None
+            try:
+                _oai_key_li = st.secrets.get("OPENAI_API_KEY")
+            except Exception:
+                pass
+
+            # Pull transferable skills + gaps from gap_df
+            _li_xfer_skills: List[str] = []
+            _li_gap_skills: List[str] = []
+            if not gap_df.empty:
+                _li_xfer_skills = (
+                    gap_df.assign(ov=lambda d: np.minimum(d["current_importance"], d["target_importance"]))
+                    .sort_values("ov", ascending=False).head(6)["skill"].tolist()
+                )
+                _li_gap_skills = (
+                    gap_df[gap_df["gap"] > 0]
+                    .sort_values(["gap", "target_importance"], ascending=False)
+                    .head(5)["skill"].tolist()
+                )
+
+            _li_salary_delta = None
+            if st.session_state.salary_result:
+                _li_salary_delta = st.session_state.salary_result.get("entry_delta_pct")
+
+            with st.spinner("Generating your LinkedIn profile update…"):
+                _li_profile = generate_linkedin_profile(
+                    current_role=str(current),
+                    target_role=str(target),
+                    cv_text=st.session_state.cv_text or "",
+                    top_transferable_skills=_li_xfer_skills,
+                    top_gap_skills=_li_gap_skills,
+                    salary_delta_pct=_li_salary_delta,
+                    api_key=_oai_key_li,
+                    prefer_online=bool(_oai_key_li),
+                )
+            st.session_state.linkedin_profile = _li_profile
+
+            # Evaluate immediately
+            with st.spinner("Scoring your profile…"):
+                _li_eval = evaluate_linkedin_profile(
+                    profile=_li_profile,
+                    current_role=str(current),
+                    target_role=str(target),
+                    api_key=_oai_key_li,
+                    prefer_online=bool(_oai_key_li),
+                )
+            st.session_state.linkedin_profile["_eval"] = _li_eval
+            st.rerun()
+
+        if st.session_state.linkedin_profile:
+            if st.button("↺ Regenerate", key="li_regen", type="secondary"):
+                st.session_state.linkedin_profile = None
+                st.rerun()
+
+        _li_prof = st.session_state.linkedin_profile
+        if _li_prof:
+            _li_ev = _li_prof.get("_eval", {})
+            _li_score = _li_ev.get("overall_score", 0) if _li_ev else 0
+            _li_sc = "#117A37" if _li_score >= 75 else ("#A05A00" if _li_score >= 55 else "#B71C1C")
+            _li_dims = _li_ev.get("dimension_scores", {}) if _li_ev else {}
+            _li_dim_names = {"pivot_clarity": "Pivot clarity", "keyword_density": "Keyword density",
+                             "authenticity": "Authenticity", "call_to_action": "Call to action"}
+
+            # Quality badge
+            if _li_score:
+                _li_dim_pills = "".join(
+                    f'<span style="font-size:10px;padding:2px 8px;border-radius:20px;'
+                    f'background:rgba(0,0,0,0.04);border:1px solid rgba(0,0,0,0.12);'
+                    f'color:rgba(0,0,0,0.6);margin-right:4px">'
+                    f'{_li_dim_names.get(k, k)}: {v}</span>'
+                    for k, v in _li_dims.items()
+                )
+                st.markdown(
+                    f'<div style="background:#F8FAFF;border:1px solid #C7D8F0;border-radius:8px;'
+                    f'padding:10px 14px;margin-bottom:12px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">'
+                    f'<div style="font-size:10px;font-weight:800;letter-spacing:0.06em;text-transform:uppercase;color:#0A66C2">Profile Score</div>'
+                    f'<div style="font-size:20px;font-weight:900;color:{_li_sc}">{_li_score}'
+                    f'<span style="font-size:11px;font-weight:600;color:rgba(0,0,0,0.35)">/100</span></div>'
+                    f'<div style="font-size:11px;color:rgba(0,0,0,0.5)">{_li_ev.get("one_line_verdict","")}</div>'
+                    f'<div style="width:100%;margin-top:4px">{_li_dim_pills}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+
+            _li_tab_head, _li_tab_about, _li_tab_exp, _li_tab_skills = st.tabs(
+                ["Headline", "About", "Experience", "Skills"]
+            )
+
+            with _li_tab_head:
+                _headline = _li_prof.get("headline", "")
+                _hlen = len(_headline)
+                _hlen_color = "#117A37" if _hlen <= 180 else ("#A05A00" if _hlen <= 210 else "#B71C1C")
+                st.markdown(
+                    f'<div style="background:#F8FAFF;border:1px solid #C7D8F0;border-radius:8px;'
+                    f'padding:16px 18px;font-size:15px;font-weight:700;color:#1D2226;line-height:1.5;'
+                    f'margin-bottom:8px">{_headline}</div>',
+                    unsafe_allow_html=True,
+                )
+                st.markdown(
+                    f'<div style="font-size:11px;color:{_hlen_color};font-weight:600">'
+                    f'{_hlen}/220 characters · '
+                    f'{"Good length" if _hlen <= 180 else ("Near limit" if _hlen <= 210 else "Too long — LinkedIn will truncate")}'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+                st.code(_headline, language=None)
+                st.caption("Copy the text above and paste it into LinkedIn → Me → View Profile → Edit headline")
+
+            with _li_tab_about:
+                _about = _li_prof.get("about", "")
+                _wc = len(_about.split())
+                st.markdown(
+                    f'<div style="background:#F8FAFF;border:1px solid #C7D8F0;border-radius:8px;'
+                    f'padding:16px 18px;font-size:13px;color:#1D2226;line-height:1.7;'
+                    f'white-space:pre-wrap;margin-bottom:8px">{_about}</div>',
+                    unsafe_allow_html=True,
+                )
+                st.caption(f"{_wc} words · Paste into LinkedIn → Me → View Profile → About → Edit")
+                if _li_ev and _li_ev.get("strengths"):
+                    _s_col2, _i_col2 = st.columns(2)
+                    with _s_col2:
+                        for _s in _li_ev.get("strengths", []):
+                            st.markdown(f"✓ {_s}")
+                    with _i_col2:
+                        for _imp in _li_ev.get("improvements", []):
+                            st.markdown(f"→ {_imp}")
+
+            with _li_tab_exp:
+                st.caption(
+                    f"These bullets reframe your {str(current)} experience to signal value for {str(target)} roles. "
+                    f"Replace your current experience bullets with these."
+                )
+                for _bi, _bullet in enumerate(_li_prof.get("experience_bullets", []), 1):
+                    st.markdown(
+                        f'<div style="background:#fff;border:1px solid rgba(0,0,0,0.1);border-radius:8px;'
+                        f'padding:12px 16px;margin-bottom:8px;font-size:13px;color:#1D2226;line-height:1.5">'
+                        f'<span style="font-weight:700;color:#0A66C2;margin-right:6px">{_bi}.</span>{_bullet}'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
+                st.caption("Paste into: LinkedIn → Experience → [Your current role] → Edit → Description")
+
+            with _li_tab_skills:
+                skills = _li_prof.get("skills_list", [])
+                st.caption(
+                    f"Top {len(skills)} skills to add to your LinkedIn Skills section for {str(target)} visibility. "
+                    f"LinkedIn surfaces profiles with these exact keywords to recruiters."
+                )
+                _skills_html = "".join(
+                    f'<span style="font-size:12px;font-weight:600;padding:5px 12px;border-radius:20px;'
+                    f'background:#EEF3FB;color:#0A66C2;border:1px solid #C0D8F0;'
+                    f'margin-right:6px;margin-bottom:6px;display:inline-block">{s}</span>'
+                    for s in skills
+                )
+                st.markdown(
+                    f'<div style="margin-bottom:12px;line-height:2.2">{_skills_html}</div>',
+                    unsafe_allow_html=True,
+                )
+                st.caption("Add these via: LinkedIn → Skills → Add a skill")
+
+            st.caption(f"Source: {_li_prof.get('source', 'llm')}")
+
+    # ============================================================
     # Job Posting Analyzer
     # ============================================================
     with st.container(border=True):
@@ -3574,6 +3776,7 @@ with _tab_execute:
         ("Adversarial debate",     bool(st.session_state.debate_result)),
         ("Decision board",         bool(st.session_state.review_board_consensus)),
         ("Application package",    bool(st.session_state.smart_apply_package)),
+        ("LinkedIn profile",       bool(st.session_state.linkedin_profile)),
         ("Interview prep",         bool(st.session_state.interview_prep_done)),
         ("Agent deep analysis",    bool(st.session_state.agent_result)),
     ]
@@ -3720,6 +3923,24 @@ with _tab_execute:
             f"### LinkedIn Headline\n{_pn2.get('linkedin_headline','')}\n\n"
             f"### Elevator Pitch\n{_pn2.get('elevator_pitch','')}\n\n"
             f"### Cover Letter\n{_pn2.get('cover_letter','')}\n"
+        )
+
+    if st.session_state.linkedin_profile:
+        _li2 = st.session_state.linkedin_profile
+        _li_ev2 = _li2.get("_eval", {})
+        _li_score_note = (
+            f"\n> AI Profile Score: **{_li_ev2['overall_score']}/100** — {_li_ev2.get('one_line_verdict','')}"
+            if _li_ev2 else ""
+        )
+        _rpt_sections.append(
+            f"## LinkedIn Profile Update{_li_score_note}\n\n"
+            f"### Headline\n{_li2.get('headline','')}\n\n"
+            f"### About Section\n{_li2.get('about','')}\n\n"
+            f"### Experience Bullets (reframed for {target})\n"
+            + "\n".join(f"- {b}" for b in _li2.get("experience_bullets", []))
+            + f"\n\n### Skills to Add\n"
+            + ", ".join(_li2.get("skills_list", []))
+            + "\n"
         )
 
     # Interview prep section
