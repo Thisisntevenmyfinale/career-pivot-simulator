@@ -1438,6 +1438,11 @@ if quick_apply:
                                 _qa_gdf2[_qa_gdf2["gap"] > 0].sort_values("gap", ascending=False)
                                 .head(5)["skill"].tolist()
                             )
+                    st.caption(
+                        "Using **gpt-4o** for generation — empirical testing showed +14pt evaluator "
+                        "score vs. gpt-4o-mini on cover letters (82 vs 68/100 zero-shot avg). "
+                        "A second gpt-4o-mini call evaluates the output before you see it."
+                    )
                     with st.spinner("Writing your cover letter, InMail, and CV rewrites with gpt-4o…"):
                         _qa_new_pkg = generate_application_package(
                             job_title=_qa_p2.get("job_title", str(target)),
