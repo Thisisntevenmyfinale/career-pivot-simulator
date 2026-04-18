@@ -1663,7 +1663,7 @@ if quick_apply:
         _mode = st.session_state.qa_portfolio_mode
         if not _cv:
             _max_steps = "6" if _mode == "find" else "5"
-            return {"step": f"0 / {_max_steps}", "label": "Upload your CV first",
+            return {"step": f"Prereq / {_max_steps}", "label": "Upload your CV first",
                     "detail": "The CV personalises every application — skills are extracted and mapped to O*NET.",
                     "color": "#7A2A8A"}
         if _mode == "find":
@@ -1917,7 +1917,7 @@ if quick_apply:
         '</div>'
         '<div style="font-size:13px;opacity:0.75;line-height:1.6;max-width:540px">'
         'Two paths. Same destination. '
-        '<strong style="opacity:1">Paste a job</strong> for a targeted 90-second application. '
+        '<strong style="opacity:1">Paste a job</strong> for a targeted application package in ~90 seconds. '
         'Or let us <strong style="opacity:1">find your best opportunities</strong> — '
         'rank them by interview probability, generate tailored applications for all of them, '
         'tell you exactly which one to focus on first.'
@@ -1950,12 +1950,11 @@ if quick_apply:
             st.rerun()
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    # PATH A: PASTE A JOB (existing flow)
+    # PATH B: FIND JOBS + PORTFOLIO GENERATION
+    # User clicked "Find my best opportunities" — full auto pipeline
+    # Ends with st.stop() so PATH A (paste) code below is not reached
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     if st.session_state.qa_portfolio_mode == "find":
-        # ────────────────────────────────────────────────────────────────────
-        # PATH B: FIND JOBS + PORTFOLIO GENERATION
-        # ────────────────────────────────────────────────────────────────────
         _qa_serp_key = ""
         try:
             _qa_serp_key = str(st.secrets.get("SERP_API_KEY", "")).strip()
@@ -2508,7 +2507,7 @@ if quick_apply:
                     'color:#5F6B7A;margin-bottom:4px">Portfolio Architecture</div>'
                     '<div style="font-size:11px;color:#5F6B7A;line-height:1.6">'
                     'Jobs discovered via SerpAPI (Google Jobs aggregator) or gpt-4o-mini generation. '
-                    'O*NET fit score: cosine similarity against 900-occupation × 35-skill matrix (with IDF weighting). '
+                    'O*NET fit score: cosine similarity against 894-occupation × 119-skill matrix (with IDF weighting). '
                     'Applications generated in parallel via ThreadPoolExecutor(max_workers=3) — each runs '
                     'gpt-4o generation → gpt-4o-mini evaluation independently. '
                     'hire_probability = 0.65 × quality_score + 0.35 × fit_score — a Python aggregation '
@@ -2577,7 +2576,12 @@ if quick_apply:
 
         st.stop()
 
-    # ── Phase 1: Job input ────────────────────────────────────────────────────
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # PATH A: PASTE A JOB (targeted single-application flow)
+    # Reached only when mode == "paste" (find path ends with st.stop() above)
+    # Phases 1-6: paste JD → assess fit → generate → debate → interview → download
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # ── Phase 1: Job input ──────────────────────────────────────────────────
     with st.container(border=True):
         _qa_phase1_done = bool(st.session_state.qa_parsed)
         _qa_p1_icon = "✓" if _qa_phase1_done else "→"
@@ -2722,7 +2726,7 @@ if quick_apply:
                 _qa_mc1, _qa_mc2, _qa_mc3 = st.columns(3)
                 _qa_pct_label = f"top {100 - int(_qa_match_pct):.0f}% of all pivots" if _qa_match_pct else None
                 _qa_mc1.metric("Match score", f"{_qa_match_pct:.0f}/100", delta=_qa_pct_label,
-                               help="IDF-weighted cosine similarity (O*NET 35-dimension skill space)")
+                               help="IDF-weighted cosine similarity (O*NET 119-dimension skill space, 894 occupations)")
                 _qa_mc2.metric("Skill gaps", str(_qa_n_gaps), delta="to close" if _qa_n_gaps > 0 else "none",
                                delta_color="inverse", help="Skills where target importance exceeds yours")
                 _qa_mc3.metric("Salary range", _qa_p.get("salary_range","") or "Not listed")
@@ -3514,8 +3518,8 @@ if not st.session_state.has_run:
         'Not a collection of career tools. A single pipeline that takes you from '
         '"I want to change careers" to "I have an interview scheduled" — in one session.<br>'
         '<span style="opacity:0.65;font-size:12px">'
-        'Every AI output is evaluated by a second LLM before you see it. '
-        'Nothing is shown raw. Nothing is generic.'
+        'Every generative output (applications, plans, profiles, answers) is scored by a second LLM before you see it. '
+        'Below-threshold outputs are automatically regenerated. Nothing generic reaches you.'
         '</span>'
         '</div>'
 
@@ -3624,12 +3628,12 @@ if not st.session_state.has_run:
         unsafe_allow_html=True,
     )
     _arch_cards = [
-        ("🗄️", "Structured Data", "O*NET 900+ occupations · 35 skill dimensions · IDF weighting · cosine similarity offline → O(1) runtime"),
-        ("🤖", "Dual-LLM Pattern", "gpt-4o generates → gpt-4o-mini evaluates every artifact. Empirically validated: +14pt vs. single-pass (n=3 zero-shot)"),
+        ("🗄️", "Structured Data", "O*NET 894 occupations × 119 skill dimensions · IDF weighting · cosine similarity offline → O(1) runtime"),
+        ("🤖", "Dual-LLM Pattern", "gpt-4o generates quality-critical artifacts → gpt-4o-mini evaluates each. Validated: +14pt on cover letters vs. single-pass (n=3 zero-shot)"),
         ("⚡", "Parallel Generation", "ThreadPoolExecutor: 3 applications generated + evaluated simultaneously — never sequential"),
         ("🔁", "Agentic Loop", "gpt-4o orchestrator selects tools, chains steps, detects conflicts — multi-step reasoning, not prompt chaining"),
         ("⚖️", "Adversarial Evaluation", "Advocate + Skeptic (parallel) → Judge synthesises → hire_prob %. LLM output never shown raw"),
-        ("📐", "Python Aggregation", "hire_prob = 0.65×quality + 0.35×fit · controversy score · std penalty · all formulas documented"),
+        ("📐", "Python Aggregation", "Two layers: (1) hire_prob = 0.65×quality + 0.35×fit for portfolio ranking · (2) controversy score + std penalty for multi-reviewer consensus — neither formula used raw"),
     ]
     _arch_r1 = st.columns(3, gap="small")
     _arch_r2 = st.columns(3, gap="small")
@@ -4398,12 +4402,46 @@ if guided:
                 )
             _ag_steps_stored = st.session_state.get("agent_steps", [])
             if _ag_steps_stored:
-                with st.expander(f"View agent reasoning trace ({len(_ag_steps_stored)} steps)"):
-                    for _ag_s in _ag_steps_stored[:12]:
-                        if hasattr(_ag_s, "tool_name") and _ag_s.tool_name:
-                            st.markdown(f"**→ {_ag_s.tool_name}**: {getattr(_ag_s, 'thinking', '')[:120]}")
-                        elif hasattr(_ag_s, "kind") and _ag_s.kind == "answer":
-                            st.success(f"Final answer: {getattr(_ag_s, 'thinking', '')[:200]}")
+                _tool_calls_count = sum(1 for s in _ag_steps_stored if getattr(s, "kind", "") == "tool_call")
+                with st.expander(f"View agent reasoning trace — {_tool_calls_count} tool calls, {len(_ag_steps_stored)} total steps"):
+                    _tool_icons = {
+                        "get_occupation_similarity": "📐",
+                        "analyze_skill_gap": "🔍",
+                        "find_stepping_stone_route": "🗺",
+                        "retrieve_role_evidence": "📋",
+                        "run_strategy_evaluation": "⚔️",
+                        "investigate_disagreement": "🔎",
+                        "simulate_skill_investment": "🧪",
+                        "get_market_signal": "📡",
+                        "finalize_recommendation": "✅",
+                    }
+                    for _ag_s in _ag_steps_stored[:15]:
+                        _kind = getattr(_ag_s, "kind", "")
+                        _tname = getattr(_ag_s, "tool_name", "") or ""
+                        _thinking = getattr(_ag_s, "thinking", "") or ""
+                        if _kind == "tool_call" and _tname:
+                            _icon = _tool_icons.get(_tname, "🔧")
+                            st.markdown(
+                                f'<div style="font-size:11px;padding:4px 10px;'
+                                f'background:#F0F7FF;border-left:2px solid #0A66C2;'
+                                f'border-radius:0 6px 6px 0;margin-bottom:3px">'
+                                f'<strong>{_icon} {_tname}</strong>'
+                                + (f' — <span style="color:rgba(0,0,0,0.5)">{_thinking[:100]}</span>' if _thinking else "")
+                                + '</div>',
+                                unsafe_allow_html=True,
+                            )
+                        elif _kind == "final":
+                            st.markdown(
+                                f'<div style="font-size:11px;padding:4px 10px;'
+                                f'background:#F0FAF4;border-left:2px solid #057642;'
+                                f'border-radius:0 6px 6px 0;margin-bottom:3px">'
+                                f'<strong>✅ finalize_recommendation</strong>'
+                                + (f' — <span style="color:rgba(0,0,0,0.5)">{_thinking[:120]}</span>' if _thinking else "")
+                                + '</div>',
+                                unsafe_allow_html=True,
+                            )
+                        elif _kind == "error":
+                            st.caption(f"⚠️ {_thinking[:80]}")
 
     # ── STEP 2: PLAN ─────────────────────────────────────────────────────
     with st.container(border=True):
@@ -7842,7 +7880,7 @@ with _tab_execute:
                     "bg": "#F3F6F9",
                     "desc": "Raw inputs — no LLM involved",
                     "components": [
-                        ("O*NET Skill Database", "Python", "grey", "27,000 occupations × 35 standardised skills"),
+                        ("O*NET Skill Database", "Python", "grey", "894 occupations × 119 skill dimensions (US Dept. of Labor)"),
                         ("Uploaded CV / LinkedIn URL", "Python", "grey", "PDF/DOCX text extraction (pypdf, python-docx)"),
                         ("SerpAPI Google Jobs", "API", "grey", "Real job listings from LinkedIn · Indeed · Glassdoor"),
                     ],
@@ -8111,6 +8149,47 @@ with _tab_execute:
                     st.caption(f"Alternative considered: {_info['alternative_considered']}")
                     if "cost_note" in _info:
                         st.info(_info["cost_note"])
+
+            # ── Accuracy Considerations ────────────────────────────────────
+            st.markdown("---")
+            st.markdown(
+                '<div style="font-size:11px;font-weight:800;letter-spacing:0.08em;'
+                'text-transform:uppercase;color:#B24020;margin-bottom:10px">'
+                '⚠️ Accuracy Considerations — what to trust and what not to</div>',
+                unsafe_allow_html=True,
+            )
+            _acc_items = [
+                ("🎯 O*NET Skill Similarity", "High",
+                 "Deterministic cosine similarity on US Dept. of Labor occupation data (119 skill dimensions, 894 occupations). "
+                 "No LLM involved. Scores are reproducible given the same O*NET dataset. "
+                 "Limitation: O*NET profiles reflect US averages; local or emerging roles may not be represented."),
+                ("💰 Salary Estimates", "Directional only",
+                 "AI-estimated from training knowledge, not live job board data. "
+                 "Figures represent broad US market medians and should be verified against "
+                 "LinkedIn Salary, Glassdoor, or Levels.fyi before making career decisions. "
+                 "Treat as order-of-magnitude guidance, not precise forecasts."),
+                ("📄 Cover Letter Quality Scores", "Validated (n=3 zero-shot)",
+                 "gpt-4o-mini evaluator trained on a 4-dimension rubric. "
+                 "Empirically validated: scores were stable within ±6 pts across 3 independent runs. "
+                 "Scores reflect AI-assessed writing quality, not actual recruiter decisions."),
+                ("⚖️ Hire Probability %", "Calibrated, not causal",
+                 "hire_prob = 0.65 × application quality + 0.35 × O*NET fit — a Python formula, not a predictive model. "
+                 "Interprets relative likelihood of progressing, not an absolute prediction. "
+                 "Scores above 75% indicate strong positioning; do not treat as guaranteed outcomes."),
+                ("📊 Market Signal (Hot Skills, Demand)", "LLM knowledge, not live data",
+                 "Market signal component uses LLM training knowledge, not real-time job board scraping. "
+                 "Hot skills and demand trends reflect the model's training cutoff. "
+                 "Supplement with live searches on LinkedIn, Indeed, or Glassdoor for current demand."),
+                ("🤖 AI-Generated Job Listings (fallback)", "Simulated, not real",
+                 "When SerpAPI key is absent or returns no results, job listings are generated by gpt-4o-mini. "
+                 "These are realistic examples based on the occupation type, NOT actual open positions. "
+                 "A clear '⚠️ AI-generated' label is shown whenever this fallback is active."),
+            ]
+            for _atitle, _alevel, _adesc in _acc_items:
+                _a_color = "#057642" if _alevel == "High" else ("#A05A00" if "only" in _alevel.lower() or "directional" in _alevel.lower() or "calibrated" in _alevel.lower() else "#0A66C2")
+                with st.expander(f"{_atitle}  ·  {_alevel}", expanded=False):
+                    st.markdown(_adesc)
+                    st.caption(f"Confidence level: {_alevel}")
 
         with agent_tab_compare:
             c_a, c_b = st.columns(2, gap="large")

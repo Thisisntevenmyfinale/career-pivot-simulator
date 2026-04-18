@@ -80,7 +80,7 @@ controversy_score > 50  →  auto-expand diagnostics panel
 
 ### 6. O*NET Structured Data Foundation
 
-900+ occupations × 35 standardised skill dimensions.  
+894 occupations × 119 skill dimensions (US Dept. of Labor O*NET database).  
 Offline preprocessing (PCA, IDF weighting, cosine similarity matrix).  
 Runtime: O(1) lookup. No LLM call needed for fit scoring.
 
@@ -225,7 +225,7 @@ The app has a hard separation between preprocessing (runs once, ships with app) 
 ### Ships offline — no API key needed
 | Component | What it does | Where |
 |---|---|---|
-| O*NET skill matrix | 900+ occupations × 35 skill dimensions, loaded from parquet | `artifacts/occupation_skill_matrix.parquet` |
+| O*NET skill matrix | 894 occupations × 119 skill dimensions, loaded from parquet | `artifacts/occupation_skill_matrix.parquet` |
 | IDF weighting | Downweights universal skills (communication, critical thinking) | `build_cosine_core()` in `app.py` |
 | Cosine similarity | IDF-weighted L2-normalised dot product, precomputed per query | `get_score_distribution()` in `app.py` |
 | PCA coordinates | 2D embedding for map proximity scoring | `artifacts/pca_coords.parquet` |
@@ -257,7 +257,7 @@ Every LLM call has a deterministic fallback. The app runs fully offline (heurist
 
 ## Technical Stack
 
-- **Data:** O*NET occupational database (US Dept. of Labor) — 900+ occupations × 35 skills
+- **Data:** O*NET occupational database (US Dept. of Labor) — 894 occupations × 119 skill dimensions
 - **Job search:** SerpAPI → Google Jobs aggregator (LinkedIn, Indeed, Glassdoor)
 - **LLM:** OpenAI gpt-4o + gpt-4o-mini (see architecture table above)
 - **Parallelism:** `concurrent.futures.ThreadPoolExecutor` for portfolio generation and A/B testing
