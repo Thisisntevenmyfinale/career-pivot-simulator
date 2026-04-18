@@ -192,8 +192,16 @@ def compute_gap_df(matrix: pd.DataFrame, current_occ: str, target_occ: str) -> p
     )
     # Keep both signed and absolute gap forms; different panels rank on different notions of "need".
     df["abs_gap"] = df["gap"].abs()
-    # Simple interaction term: highlights skills that matter in both roles (transfer leverage).
-    df["transfer_strength"] = df["current_importance"] * df["target_importance"]
+
+    # leverage_score: the skill you can bring TODAY — min(what you have, what they need).
+    # High when you already exceed or match the target level.
+    df["leverage_score"] = np.minimum(df["current_importance"], df["target_importance"])
+
+    # investment_priority: gap × target_importance — how urgently you need to build this skill.
+    # Combines how far you are (gap) with how much it matters in the target role.
+    # (Old transfer_strength = current × target conflated both and ignored whether the gap was 0 or large.)
+    df["investment_priority"] = np.maximum(0.0, df["gap"]) * df["target_importance"]
+
     return df
 
 
@@ -225,16 +233,22 @@ def compute_skill_contributions(gap_df: pd.DataFrame) -> dict[str, pd.DataFrame]
     """Derive compact, high-signal tables explaining match drivers and gaps."""
     df = gap_df.copy()
 
-    # Overlap is the shared mass between profiles; useful as an intuitive transfer signal.
-    df["overlap"] = np.minimum(df["current_importance"], df["target_importance"])
-    # Weight overlap by importance to emphasize skills that matter in both roles.
-    df["match_driver_score"] = df["overlap"] * (df["target_importance"] + df["current_importance"]) / 2.0
+    # leverage_score is already computed in compute_gap_df: min(current, target).
+    # match_driver_score = leverage × target_importance:
+    #   "how much of your existing skill is directly useful in the target role,
+    #    weighted by how important that skill is there."
+    # This is more interpretable than the old overlap × mean(current, target),
+    # which double-weighted common skills.
+    if "leverage_score" not in df.columns:
+        df["leverage_score"] = np.minimum(df["current_importance"], df["target_importance"])
+    df["match_driver_score"] = df["leverage_score"] * df["target_importance"]
     match_drivers = df.sort_values("match_driver_score", ascending=False).head(10)
 
     missing = df[df["gap"] > 0].copy()
-    # Prioritize skills that are both missing and important for the target role.
-    missing["missing_priority"] = missing["gap"] * missing["target_importance"]
-    missing_drivers = missing.sort_values(["missing_priority", "gap"], ascending=False).head(10)
+    # Use investment_priority if available (gap × target_importance), otherwise recompute.
+    if "investment_priority" not in missing.columns:
+        missing["investment_priority"] = missing["gap"] * missing["target_importance"]
+    missing_drivers = missing.sort_values(["investment_priority", "gap"], ascending=False).head(10)
 
     surplus = df[df["gap"] < 0].copy()
     # Surplus can be used as a narrative tool (strengths), not necessarily a penalty.
@@ -414,28 +428,42 @@ def compute_confidence_score(
     a = matrix.loc[current_occ].astype(float).values
     b = matrix.loc[target_occ].astype(float).values
 
-    # Binary support overlap approximates how comparable the profiles are given sparse skill signals.
+    # Jaccard: binary skill overlap (pair-specific — how structurally comparable these two profiles are)
     a_nz = a > 0
     b_nz = b > 0
-    overlap = float((a_nz & b_nz).mean()) if len(a_nz) else 0.0
-    union = float((a_nz | b_nz).mean()) if len(a_nz) else 0.0
-    jacc = 0.0 if union == 0.0 else overlap / union
+    overlap_count = float((a_nz & b_nz).sum())
+    union_count = float((a_nz | b_nz).sum())
+    jacc = 0.0 if union_count == 0.0 else overlap_count / union_count
 
-    # The embedding EVR acts as a proxy for how meaningful "map distance" is in this dataset.
+    # Pair density: fraction of skills where BOTH occupations have non-zero ratings.
+    # Measures data richness for this specific pair, not the whole matrix.
+    # (The old "density" term was a global matrix constant — identical for every pair.)
+    pair_density = overlap_count / max(1.0, float(len(a_nz)))
+
+    # EVR: how much variance the 2D PCA embedding captures — a dataset-level quality signal
+    # that scales down the map-proximity contribution when the embedding is lossy.
     evr = pca_meta.get("explained_variance_ratio", [0.0, 0.0])
     evr2 = float(sum(evr[:2])) if isinstance(evr, list) else 0.0
 
-    score_0_1 = np.clip(0.45 * jacc + 0.25 * density + 0.30 * evr2, 0.0, 1.0)
+    # All three terms now convey distinct information:
+    #   jacc        (0.50) — structural profile overlap for this pair
+    #   pair_density (0.30) — how data-rich this specific pair is
+    #   evr2        (0.20) — how reliable the embedding space is at the dataset level
+    score_0_1 = np.clip(0.50 * jacc + 0.30 * pair_density + 0.20 * evr2, 0.0, 1.0)
     score = float(score_0_1 * 100.0)
 
     return {
         "confidence_score": score,
         "signals": {
             "overlap_jaccard": float(jacc),
-            "matrix_density": float(density),
+            "pair_density": float(pair_density),
             "pca_evr_2d": float(evr2),
         },
-        "notes": "Heuristic confidence: overlap + density + PCA 2D EVR. Not a calibrated probability.",
+        "notes": (
+            "Heuristic confidence: Jaccard profile overlap (pair-specific) + "
+            "co-rated skill density (pair-specific) + PCA 2D EVR (dataset quality). "
+            "Not a calibrated probability."
+        ),
     }
 
 

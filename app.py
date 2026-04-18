@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from typing import Any, Dict, List, Optional
 
 import numpy as np
@@ -504,23 +505,85 @@ Respond ONLY with valid JSON:
         }
 
 
-def _find_closest_occupation(job_title: str, occupations: List[str]) -> List[str]:
+def _find_closest_occupation_string(job_title: str, occupations: List[str]) -> List[str]:
     """
-    Return top-3 O*NET occupations closest to the given job title.
-    Uses difflib SequenceMatcher for fast offline matching.
-    Falls back gracefully on edge cases.
+    Offline fallback: character-level SequenceMatcher ranking.
+    Fast but semantically limited — 'ML Engineer' won't match
+    'Computer and Information Research Scientists' despite close semantic proximity.
+    Used as a pre-filter to generate candidates for the LLM step.
     """
     from difflib import SequenceMatcher
     jt_lower = job_title.lower().strip()
     scored = []
     for occ in occupations:
         ratio = SequenceMatcher(None, jt_lower, occ.lower()).ratio()
-        # Boost for substring matches
         if jt_lower in occ.lower() or occ.lower() in jt_lower:
             ratio += 0.25
         scored.append((ratio, occ))
     scored.sort(reverse=True)
-    return [occ for _, occ in scored[:5]]
+    return [occ for _, occ in scored[:30]]
+
+
+def _find_closest_occupation(
+    job_title: str,
+    occupations: List[str],
+    api_key: Optional[str] = None,
+) -> List[str]:
+    """
+    Return top-5 O*NET occupations semantically closest to the given job title.
+
+    Two-stage pipeline:
+      1. SequenceMatcher pre-filter → top-30 candidates (fast, offline)
+      2. gpt-4o-mini semantic re-ranking of those 30 candidates (when api_key provided)
+
+    Without stage 2, character-level matching produces wrong results for
+    roles whose O*NET title differs substantially from common usage:
+      'ML Engineer' → should match 'Computer and Information Research Scientists'
+      'Product Manager' → should match 'Marketing Managers' or 'General and Operations Managers'
+    Stage 2 handles these cases by understanding job semantics, not just string characters.
+    Falls back silently to stage 1 if the LLM call fails.
+    """
+    # Stage 1: string pre-filter (always runs)
+    candidates = _find_closest_occupation_string(job_title, occupations)
+
+    if not api_key or not candidates:
+        return candidates[:5]
+
+    # Stage 2: LLM semantic re-ranking of the top-30 candidates
+    try:
+        from openai import OpenAI
+        _occ_client = OpenAI(api_key=api_key)
+        candidates_block = "\n".join(f"{i+1}. {c}" for i, c in enumerate(candidates))
+        prompt = (
+            f"You are an expert in the O*NET occupational classification system.\n"
+            f"A user has a job titled: \"{job_title}\"\n\n"
+            f"From this list of O*NET occupation titles, pick the 5 that are most "
+            f"semantically similar to the user's role — considering the actual work "
+            f"performed, required skills, and career context. Order them best-first.\n\n"
+            f"Candidates:\n{candidates_block}\n\n"
+            f"Respond ONLY with valid JSON: {{\"ranked\": [\"best match\", \"2nd\", \"3rd\", \"4th\", \"5th\"]}}\n"
+            f"Use the exact occupation names from the list above."
+        )
+        resp = _occ_client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"},
+            temperature=0.0,
+            max_tokens=200,
+        )
+        data = json.loads(resp.choices[0].message.content or "{}")
+        ranked = [str(r) for r in data.get("ranked", []) if str(r) in occupations]
+        if ranked:
+            # Append any string-matched candidates not returned by LLM (safety fallback)
+            seen = set(ranked)
+            for c in candidates:
+                if c not in seen:
+                    ranked.append(c)
+            return ranked[:5]
+    except Exception:
+        pass
+
+    return candidates[:5]
 
 
 def _run_ab_cover_letter_test(
@@ -705,11 +768,13 @@ def _portfolio_item_worker(
     description = job_dict.get("description", job_dict.get("cleaned_description", ""))
 
     # Step 1 — Find closest O*NET occupation for this job title
-    matched_occs = _find_closest_occupation(title, occupations_list)
+    # Two-stage: string pre-filter (fast, offline) → LLM semantic re-ranking (when api_key available)
+    matched_occs = _find_closest_occupation(title, occupations_list, api_key=api_key or None)
     occ = matched_occs[0] if matched_occs else current_occ
 
-    # Step 2 — Compute O*NET fit score
+    # Step 2 — Compute O*NET fit score + percentile rank
     fit_score = 50.0
+    fit_percentile = 50.0
     try:
         cur_idx = occ_to_idx.get(current_occ, -1)
         tgt_idx = occ_to_idx.get(occ, -1)
@@ -717,6 +782,12 @@ def _portfolio_item_worker(
             _core = build_cosine_core(use_idf)
             _raw = float(np.dot(_core["Xn"][cur_idx], _core["Xn"][tgt_idx]))
             fit_score = min(100.0, max(0.0, _raw * 100.0))
+            # Percentile rank among all other occupations from current_occ's perspective.
+            # Raw cosine scores cluster in 35-85 range (O*NET vectors are dense and correlated).
+            # A score of 65 may be the 78th percentile — without this, it looks mediocre.
+            _pct_dist = get_score_distribution(use_idf, current_occ)
+            if _pct_dist["scores_sorted"].size > 0:
+                fit_percentile = _percentile_from_sorted(_pct_dist["scores_sorted"], fit_score)
     except Exception:
         pass
 
@@ -726,12 +797,15 @@ def _portfolio_item_worker(
     try:
         _gdf = compute_gap_df(mat, current_occ, occ)
         if not _gdf.empty:
+            # Use leverage_score (min overlap) to rank transferable skills — now in gap_df
             top_transfer = (
-                _gdf.assign(ov=lambda d: np.minimum(d["current_importance"], d["target_importance"]))
-                .sort_values("ov", ascending=False).head(5)["skill"].tolist()
+                _gdf.sort_values("leverage_score", ascending=False).head(5)["skill"].tolist()
             )
+            # Use investment_priority (gap × target_importance) to rank skills to build
             top_missing = (
-                _gdf[_gdf["gap"] > 0].sort_values("gap", ascending=False).head(5)["skill"].tolist()
+                _gdf[_gdf["gap"] > 0]
+                .sort_values("investment_priority", ascending=False)
+                .head(5)["skill"].tolist()
             )
     except Exception:
         pass
@@ -754,7 +828,7 @@ def _portfolio_item_worker(
         )
     except Exception as e:
         return {"job": job_dict, "package": None, "eval": {}, "fit_score": fit_score,
-                "hire_prob": 40, "occ": occ, "error": repr(e)}
+                "fit_percentile": fit_percentile, "hire_prob": 40, "occ": occ, "error": repr(e)}
 
     # Step 5 — Evaluate application quality (gpt-4o-mini)
     eval_result: Dict[str, Any] = {}
@@ -790,6 +864,7 @@ def _portfolio_item_worker(
         "package": package,
         "eval": eval_result,
         "fit_score": round(fit_score, 1),
+        "fit_percentile": round(fit_percentile, 1),
         "hire_prob": hire_prob,
         "occ": occ,
         "error": None,
@@ -2261,6 +2336,7 @@ if quick_apply:
                     _pf_co2 = _pf_j2.get("company", "")
                     _pf_hp = _pf_rd.get("hire_prob", 60)
                     _pf_fs = _pf_rd.get("fit_score", 55.0)
+                    _pf_fp = _pf_rd.get("fit_percentile", 50.0)
                     _pf_ev2 = _pf_rd.get("eval", {})
                     _pf_qs = _pf_ev2.get("overall_score", 70)
                     _pf_verd = _pf_ev2.get("one_line_verdict", "")
@@ -2299,7 +2375,8 @@ if quick_apply:
                         f'{"  ·  🔗 <a href=" + chr(34) + _pf_link + chr(34) + " target=_blank style=color:#0A66C2;font-size:11px>Apply</a>" if _pf_link and _pf_is_real else ""}'
                         f'</div>'
                         f'<div style="display:flex;gap:12px;font-size:11px">'
-                        f'<span>O*NET fit: <strong>{_pf_fs:.0f}</strong></span>'
+                        f'<span>O*NET fit: <strong>{_pf_fs:.0f}</strong> '
+                        f'<span style="color:rgba(0,0,0,0.45)">· top {100-int(_pf_fp):.0f}%</span></span>'
                         f'<span>App quality: <strong>{_pf_qs}</strong>/100</span>'
                         f'<span style="color:{_pf_hp_color};font-weight:700">{_pf_rank_label}</span>'
                         f'</div>'
@@ -2367,7 +2444,7 @@ if quick_apply:
                     _pf_doc.append(
                         f"| {_pf_rank2+1} | {_pf_rd2['job'].get('title','')} "
                         f"| {_pf_rd2['job'].get('company','')} "
-                        f"| {_pf_rd2.get('fit_score',0):.0f} "
+                        f"| {_pf_rd2.get('fit_score',0):.0f} (top {100-int(_pf_rd2.get('fit_percentile',50)):.0f}%) "
                         f"| {_pf_rd2.get('eval',{}).get('overall_score','—')} "
                         f"| **{_pf_rd2.get('hire_prob',0)}%** |\n"
                     )
