@@ -330,4 +330,11 @@ def compute_personal_gap_df(
     # Only include skills where either role cares about it
     df = df[(df["current_importance"] > 0) | (df["target_importance"] > 0)].copy()
     df = df.sort_values("target_importance", ascending=False).reset_index(drop=True)
+
+    # Add derived columns matching compute_gap_df schema so downstream code works in both modes
+    import numpy as _np
+    df["abs_gap"] = df["gap"].abs()
+    df["leverage_score"] = _np.minimum(df["current_importance"], df["target_importance"])
+    df["investment_priority"] = _np.maximum(0.0, df["gap"]) * df["target_importance"]
+
     return df

@@ -4043,6 +4043,63 @@ if guided:
         unsafe_allow_html=True,
     )
 
+    # Pivot Readiness Score transparency expander
+    with st.expander("How is the Pivot Readiness Score calculated?", expanded=False):
+        _pr_rows = [
+            ("Skill match quality (O*NET cosine similarity)",
+             "0-30 pts", _base_pts, True,
+             f"{_base_pts} pts = 45%×match({match_score_display:.0f}) + 30%×gap_coverage + 25%×CV_depth"),
+            ("CV uploaded",
+             "8 pts", 8 if bool((st.session_state.cv_text or "").strip()) else 0,
+             bool((st.session_state.cv_text or "").strip()), None),
+            ("Learning plan generated",
+             "10 pts", 10 if bool(st.session_state.learning_plan_md) else 0,
+             bool(st.session_state.learning_plan_md), None),
+            ("Adversarial debate complete",
+             "12 pts", 12 if bool(st.session_state.debate_result) else 0,
+             bool(st.session_state.debate_result), None),
+            ("Decision review board complete",
+             "10 pts", 10 if bool(st.session_state.review_board_strategies) else 0,
+             bool(st.session_state.review_board_strategies), None),
+            ("Application package generated",
+             "15 pts", 15 if bool(st.session_state.smart_apply_package) else 0,
+             bool(st.session_state.smart_apply_package), None),
+            ("Interview prep complete",
+             "15 pts", 15 if bool(st.session_state.interview_prep_done) else 0,
+             bool(st.session_state.interview_prep_done), None),
+        ]
+        _pr_total_max = 30 + 8 + 10 + 12 + 10 + 15 + 15
+        _pr_total_earned = sum(r[2] for r in _pr_rows)
+        _pr_rows_html = ""
+        for _pr_label, _pr_max_label, _pr_earned, _pr_done, _pr_note in _pr_rows:
+            _prc = "#057642" if _pr_done else "rgba(0,0,0,0.35)"
+            _prb = "✓" if _pr_done else "○"
+            _pr_rows_html += (
+                f'<div style="display:flex;justify-content:space-between;align-items:flex-start;'
+                f'padding:5px 0;border-bottom:1px solid rgba(0,0,0,0.05);gap:8px">'
+                f'<div style="display:flex;align-items:flex-start;gap:8px;color:{_prc};font-size:12px">'
+                f'<span style="font-size:11px;font-weight:700;width:14px;text-align:center;flex-shrink:0;margin-top:1px">{_prb}</span>'
+                f'<div>{_pr_label}'
+                + (f'<div style="font-size:10px;color:rgba(0,0,0,0.4);margin-top:1px">{_pr_note}</div>' if _pr_note else "")
+                + f'</div></div>'
+                f'<div style="font-size:12px;font-weight:700;color:{_prc};white-space:nowrap">'
+                f'{_pr_earned} / {_pr_max_label}</div>'
+                f'</div>'
+            )
+        st.markdown(
+            f'<div style="font-size:11px;color:rgba(0,0,0,0.5);margin-bottom:8px">'
+            f'Score = base signal (O*NET quality, 0–30) + milestone completion (70 pts). '
+            f'No LLM involved — deterministic Python aggregation.'
+            f'</div>'
+            f'<div style="border:1px solid rgba(0,0,0,0.08);border-radius:8px;padding:12px 14px">'
+            + _pr_rows_html +
+            f'<div style="display:flex;justify-content:flex-end;padding-top:8px;'
+            f'font-size:13px;font-weight:800;color:{_readiness_bar_color}">'
+            f'Total: {_pr_total_earned} / {_pr_total_max}</div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+
     # ── STEP 1: ASSESS ────────────────────────────────────────────────────
     with st.container(border=True):
         _s1_done = _sp_done[0]
@@ -4058,37 +4115,57 @@ if guided:
             f'</div>',
             unsafe_allow_html=True,
         )
-        # Always show assess summary
-        _s1c1, _s1c2, _s1c3, _s1c4 = st.columns(4)
-        _match_pct_label = f"top {100 - int(pct_target):.0f}%" if pct_target > 0 else None
-        _s1c1.metric(
-            "Match score",
-            f"{match_score_display:.0f}/100",
-            delta=_match_pct_label,
-            delta_color="normal",
-            help="O*NET IDF-weighted cosine similarity · delta = percentile among all 900+ occupation pairs from your role",
-        )
-        _gap_delta = ("critical — many gaps" if _n_gaps > 25 else
-                      "manageable" if _n_gaps <= 12 else "significant")
-        _s1c2.metric(
-            "Skill gaps",
-            str(_n_gaps),
-            delta=_gap_delta,
-            delta_color="inverse",
-            help="Skills where target importance exceeds current. Ranked by investment_priority = gap × target_importance.",
-        )
-        _s1c3.metric(
-            "Confidence",
-            f"{int(conf['confidence_score'])}/100",
-            help="Pair-specific: Jaccard profile overlap (50%) + co-rated skill density (30%) + PCA 2D EVR (20%). Not a probability.",
-        )
-        _s1c4.metric("Timeline", f"~{_weeks}w", help="Estimate: n_gaps × 3.5w × (1 − match/200). Actual varies by skill learnability.")
+        # ── Compact salary summary (if already estimated) or quick-estimate button ───
+        _s1_sal = st.session_state.salary_result
+        if _s1_sal:
+            _s1_sal_c1, _s1_sal_c2, _s1_sal_c3, _s1_sal_c4 = st.columns(4)
+            _s1_sal_c1.metric("Current salary", f"${_s1_sal['current_median']:,.0f}")
+            _s1_sal_c2.metric(
+                "Target entry",
+                f"${_s1_sal['target_entry_median']:,.0f}",
+                delta=f"{_s1_sal['entry_delta_pct']:+.0f}%",
+                delta_color="inverse" if _s1_sal["entry_delta_pct"] < 0 else "normal",
+            )
+            _s1_sal_c3.metric(
+                "Target senior",
+                f"${_s1_sal['target_senior_median']:,.0f}",
+                delta=f"{_s1_sal['ceiling_delta_pct']:+.0f}%",
+            )
+            _s1_sal_c4.metric("Break-even", f"{_s1_sal['months_to_breakeven']}mo",
+                              help="Months from starting target role until pay exceeds current")
+            st.caption("Salary figures are AI-estimated from US market data — use as directional guidance. Full chart in Advanced → Plan tab.")
+        else:
+            _s1_sal_key = ""
+            try:
+                _s1_sal_key = str(st.secrets.get("OPENAI_API_KEY", "")).strip()
+            except Exception:
+                pass
+            if _s1_sal_key:
+                if st.button("💰 Estimate salary impact for this pivot", key="sp_s1_salary",
+                             use_container_width=False):
+                    with st.spinner("Modelling compensation trajectory…"):
+                        _yrs_s1 = float(_cv_profile.get("years_experience", 0)) if _cv_profile else 0.0
+                        st.session_state.salary_result = estimate_salary_impact(
+                            current_role=str(current), target_role=str(target),
+                            match_score=match_score_display, years_experience=_yrs_s1,
+                            model="gpt-4o-mini", prefer_online=True, api_key=_s1_sal_key,
+                        )
+                    st.rerun()
 
         # ── Radar chart: current vs target skill profile ─────────────────
         if not gap_df.empty and str(current) in mat.index and str(target) in mat.index:
             try:
-                _rc_cur = mat.loc[str(current)].astype(float)
                 _rc_tgt = mat.loc[str(target)].astype(float)
+                # When CV is uploaded, use personal skill scores; otherwise use O*NET role average
+                if _personal_mode and "current_importance" in gap_df.columns:
+                    _rc_cur = pd.Series(
+                        gap_df["current_importance"].values,
+                        index=gap_df["skill"].values,
+                    ).reindex(mat.columns, fill_value=0.0).astype(float)
+                    _rc_cur_label = f"Your CV skills"
+                else:
+                    _rc_cur = mat.loc[str(current)].astype(float)
+                    _rc_cur_label = str(current)[:28]
                 # Select top 10 skills by combined importance — these tell the biggest story
                 _rc_combined = (_rc_cur + _rc_tgt) / 2
                 _rc_skills = _rc_combined.nlargest(10).index.tolist()
@@ -4108,7 +4185,7 @@ if guided:
                 ))
                 _rc_fig.add_trace(go.Scatterpolar(
                     r=_rc_cur_r, theta=_rc_theta, fill="toself",
-                    name=str(current)[:28],
+                    name=_rc_cur_label,
                     line=dict(color="#0A66C2", width=2),
                     fillcolor="rgba(10, 102, 194, 0.18)",
                 ))
@@ -4126,10 +4203,14 @@ if guided:
                 )
                 _rc_col1, _rc_col2 = st.columns([3, 2])
                 with _rc_col1:
+                    _radar_subtitle = (
+                        "Your CV skills vs. target role (O*NET top 10 dimensions)" if _personal_mode
+                        else "Skill Profile — current vs. target role (O*NET top 10 dimensions)"
+                    )
                     st.markdown(
-                        '<div style="font-size:10px;font-weight:800;text-transform:uppercase;'
-                        'letter-spacing:0.08em;color:rgba(0,0,0,0.4);margin-bottom:2px">'
-                        'Skill Profile — current vs. target (top 10 shared dimensions)</div>',
+                        f'<div style="font-size:10px;font-weight:800;text-transform:uppercase;'
+                        f'letter-spacing:0.08em;color:rgba(0,0,0,0.4);margin-bottom:2px">'
+                        f'{_radar_subtitle}</div>',
                         unsafe_allow_html=True,
                     )
                     st.plotly_chart(_rc_fig, use_container_width=True, config={"displayModeBar": False})
@@ -4407,6 +4488,15 @@ if guided:
                     pass
 
         elif _s2_active:
+            st.markdown(
+                '<div style="background:#F0FAF4;border-left:3px solid #057642;border-radius:0 8px 8px 0;'
+                'padding:8px 12px;margin-bottom:10px;font-size:11px;color:rgba(0,0,0,0.65)">'
+                '<strong style="color:#057642">Dual-LLM pattern:</strong> '
+                'gpt-4o-mini generates the plan from your O*NET gap vector · '
+                'gpt-4o-mini evaluates it on 4 dimensions (gap coverage, resource quality, timeline, actionability) · '
+                'Score < 60 triggers auto-regeneration. Nothing shown without an evaluation score.</div>',
+                unsafe_allow_html=True,
+            )
             if st.button("📋 Generate my learning plan", key="sp_gen_plan", use_container_width=True, type="primary"):
                 _lp_key_sp = ""
                 try:
@@ -4473,7 +4563,17 @@ if guided:
             if not _sp_done[1]:
                 st.warning("Complete Step 2 first — the debate uses your learning plan as context.")
             else:
-                if st.button("⚔️ Run adversarial debate", key="sp_debate", use_container_width=True, type="primary"):
+                st.markdown(
+                        '<div style="background:#F8F3FD;border-left:3px solid #7A3E9D;border-radius:0 8px 8px 0;'
+                        'padding:8px 12px;margin-bottom:10px;font-size:11px;color:rgba(0,0,0,0.65)">'
+                        '<strong style="color:#7A3E9D">3-agent architecture:</strong> '
+                        'Advocate (gpt-4o-mini, parallel) argues for the pivot · '
+                        'Skeptic (gpt-4o-mini, parallel) argues against · '
+                        'Judge (gpt-4o) reads both arguments and gives a calibrated viability % — '
+                        'cannot ignore the strongest objection.</div>',
+                        unsafe_allow_html=True,
+                    )
+            if st.button("⚔️ Run adversarial debate", key="sp_debate", use_container_width=True, type="primary"):
                     _db_key_sp = ""
                     try:
                         _db_key_sp = str(st.secrets.get("OPENAI_API_KEY", "")).strip()
@@ -4482,7 +4582,7 @@ if guided:
                     _gap_str_sp = ", ".join(
                         gap_df[gap_df["gap"] > 0].sort_values("gap", ascending=False)["skill"].head(5).tolist()
                     ) if not gap_df.empty else ""
-                    with st.spinner("Advocate and skeptic arguing your case…"):
+                    with st.spinner("Advocate and skeptic arguing in parallel · gpt-4o Judge synthesising verdict…"):
                         _db_result_sp = run_pivot_debate(
                             current_role=str(current), target_role=str(target),
                             match_score=match_score_display, gap_summary=_gap_str_sp,
@@ -4686,7 +4786,7 @@ if guided:
                         _sp_itv_key2 = str(st.secrets.get("OPENAI_API_KEY", "")).strip()
                     except Exception:
                         pass
-                    for _qii, _qsp in enumerate(_qs_sp[:3]):
+                    for _qii, _qsp in enumerate(_qs_sp[:5]):
                         st.markdown(
                             f'<div style="font-size:13px;font-weight:700;color:#1D2226;margin:10px 0 4px 0">'
                             f'Q{_qii+1}: {_qsp.get("question","")}</div>'
