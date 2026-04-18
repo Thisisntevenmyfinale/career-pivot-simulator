@@ -1520,13 +1520,18 @@ with st.sidebar:
 
     st.divider()
 
-    st.markdown("**Scoring**")
-    use_idf = st.toggle("Downweight common skills (IDF)", value=True)
-    score_mode = st.radio(
-        "Score display",
-        options=["Percentile", "Raw similarity"],
-        index=0,
-    )
+    # Scoring options — only relevant in Advanced mode; Sprint/QA use sensible defaults
+    if not guided and not quick_apply:
+        st.markdown("**Scoring**")
+        use_idf = st.toggle("Downweight common skills (IDF)", value=True)
+        score_mode = st.radio(
+            "Score display",
+            options=["Percentile", "Raw similarity"],
+            index=0,
+        )
+    else:
+        use_idf = True       # IDF-weighted is always the better default for non-expert users
+        score_mode = "Percentile"
 
     if not guided:
         st.divider()
@@ -1624,7 +1629,11 @@ with st.sidebar:
         '<div style="font-size:11px;font-weight:800;letter-spacing:0.06em;text-transform:uppercase;color:rgba(0,0,0,0.45);margin-bottom:6px">Run Analysis</div>',
         unsafe_allow_html=True,
     )
-    if st.button("🚀 Run pivot analysis", use_container_width=True, type="primary"):
+    _run_btn_label = (
+        "🧭 Start Career Sprint →" if guided else
+        "🔬 Open Advanced Analysis →"
+    )
+    if st.button(_run_btn_label, use_container_width=True, type="primary"):
         st.session_state.has_run = True
 
     st.caption(f"Dataset · {mat.shape[0]} occupations · {mat.shape[1]} skills")
@@ -3775,8 +3784,9 @@ with st.container(border=True):
         unsafe_allow_html=True,
     )
 
-    # ── Match score distribution sparkline ──────────────────────
-    if scores_all_sorted.size > 10:
+    # ── Match score distribution sparkline (Advanced + Quick Apply only) ──────
+    # Hidden in Sprint mode — the radar chart in Step 1 carries this information visually
+    if scores_all_sorted.size > 10 and not guided:
         _hist_counts, _hist_edges = np.histogram(scores_all_sorted, bins=40)
         _bin_centers = (_hist_edges[:-1] + _hist_edges[1:]) / 2
         _fig_dist = go.Figure()
@@ -3855,33 +3865,35 @@ with st.container(border=True):
         for _label, _done in _milestone_labels
     )
 
-    st.markdown(
-        f'<div style="background:#F8FAFF;border:1px solid #C7D8F0;border-radius:10px;'
-        f'padding:14px 18px;margin:16px 0 4px 0;">'
-        f'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">'
-        f'<div style="font-size:10px;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;color:#0A66C2">'
-        f'📋 Pivot Intelligence Brief</div>'
-        f'<div style="font-size:18px;font-weight:900;color:{_brief_readiness_color}">{_readiness}'
-        f'<span style="font-size:11px;font-weight:600;color:rgba(0,0,0,0.35)">/100</span></div>'
-        f'</div>'
-        f'<div style="height:6px;background:rgba(0,0,0,0.07);border-radius:3px;overflow:hidden;margin-bottom:10px">'
-        f'<div style="width:{_readiness}%;height:6px;background:{_brief_readiness_color};border-radius:3px;transition:width 0.8s"></div>'
-        f'</div>'
-        f'<div style="margin-bottom:8px">{_milestone_pills_html}</div>'
-        f'<div style="font-size:13px;color:rgba(0,0,0,0.75);line-height:1.7">'
-        f'<div>{_situation_text}</div>'
-        f'<div style="color:rgba(0,0,0,0.5);font-size:12px;margin-top:3px">{_done_text}</div>'
-        f'<div style="margin-top:5px;color:rgba(0,0,0,0.75)">{_next_text}</div>'
-        f'</div>'
-        f'</div>',
-        unsafe_allow_html=True,
-    )
+    # Intelligence Brief only shown in QA + Advanced — Sprint has its own step tracker
+    if not guided:
+        st.markdown(
+            f'<div style="background:#F8FAFF;border:1px solid #C7D8F0;border-radius:10px;'
+            f'padding:14px 18px;margin:16px 0 4px 0;">'
+            f'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">'
+            f'<div style="font-size:10px;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;color:#0A66C2">'
+            f'📋 Pivot Intelligence Brief</div>'
+            f'<div style="font-size:18px;font-weight:900;color:{_brief_readiness_color}">{_readiness}'
+            f'<span style="font-size:11px;font-weight:600;color:rgba(0,0,0,0.35)">/100</span></div>'
+            f'</div>'
+            f'<div style="height:6px;background:rgba(0,0,0,0.07);border-radius:3px;overflow:hidden;margin-bottom:10px">'
+            f'<div style="width:{_readiness}%;height:6px;background:{_brief_readiness_color};border-radius:3px;transition:width 0.8s"></div>'
+            f'</div>'
+            f'<div style="margin-bottom:8px">{_milestone_pills_html}</div>'
+            f'<div style="font-size:13px;color:rgba(0,0,0,0.75);line-height:1.7">'
+            f'<div>{_situation_text}</div>'
+            f'<div style="color:rgba(0,0,0,0.5);font-size:12px;margin-top:3px">{_done_text}</div>'
+            f'<div style="margin-top:5px;color:rgba(0,0,0,0.75)">{_next_text}</div>'
+            f'</div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
 
 
 
 # ── Journey Stepper ────────────────────────────────────────────────────────
-# Always-visible 5-phase progress bar. Shows the professor (and user) that this
-# is a product with a clear end-goal — not a collection of disconnected tools.
+# Shown in Quick Apply and Advanced modes. Sprint mode has an equivalent step
+# tracker built into the Sprint header — showing both would be redundant.
 _journey_phases = [
     ("🔍", "Assess",    "Skill landscape",   True),                                                  # always done
     ("📋", "Plan",      "Salary + roadmap",  bool(st.session_state.learning_plan_md or st.session_state.salary_result)),
@@ -3918,48 +3930,50 @@ for _pi, (_, _phase_name, _phase_sub, _phase_done) in enumerate(_journey_phases)
 
 _readiness_bar_color = "#117A37" if _readiness >= 65 else ("#0A66C2" if _readiness >= 40 else "#A05A00")
 
-st.markdown(
-    f'<div style="background:#fff;border:1px solid rgba(0,0,0,0.1);border-radius:12px;'
-    f'padding:16px 24px 14px 24px;margin:12px 0 8px 0;'
-    f'box-shadow:0 1px 4px rgba(0,0,0,0.05)">'
+# Journey Stepper card — hidden in Sprint mode (Sprint has its own dedicated step tracker)
+if not guided:
+    st.markdown(
+        f'<div style="background:#fff;border:1px solid rgba(0,0,0,0.1);border-radius:12px;'
+        f'padding:16px 24px 14px 24px;margin:12px 0 8px 0;'
+        f'box-shadow:0 1px 4px rgba(0,0,0,0.05)">'
 
-    # Top row: tagline left, readiness score right
-    f'<div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:14px">'
-    f'<div>'
-    f'<div style="font-size:13px;font-weight:900;color:#1D2226;letter-spacing:-0.2px">'
-    f'{str(current).replace("_", " ")} → {str(target).replace("_", " ")}'
-    f'</div>'
-    f'<div style="font-size:11px;color:rgba(0,0,0,0.45);margin-top:2px">'
-    f'Career Pivot Simulator · from career thought to interview-ready in one session'
-    f'</div>'
-    f'</div>'
-    f'<div style="text-align:right;flex-shrink:0;padding-left:16px">'
-    f'<div style="font-size:22px;font-weight:900;color:{_readiness_bar_color};line-height:1">'
-    f'{_readiness}<span style="font-size:11px;font-weight:600;color:rgba(0,0,0,0.3)">/100</span></div>'
-    f'<div style="font-size:9px;font-weight:800;letter-spacing:0.06em;text-transform:uppercase;'
-    f'color:rgba(0,0,0,0.4)">Pivot Readiness</div>'
-    f'</div>'
-    f'</div>'
+        # Top row: tagline left, readiness score right
+        f'<div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:14px">'
+        f'<div>'
+        f'<div style="font-size:13px;font-weight:900;color:#1D2226;letter-spacing:-0.2px">'
+        f'{str(current).replace("_", " ")} → {str(target).replace("_", " ")}'
+        f'</div>'
+        f'<div style="font-size:11px;color:rgba(0,0,0,0.45);margin-top:2px">'
+        f'Career Pivot Simulator · from career thought to interview-ready in one session'
+        f'</div>'
+        f'</div>'
+        f'<div style="text-align:right;flex-shrink:0;padding-left:16px">'
+        f'<div style="font-size:22px;font-weight:900;color:{_readiness_bar_color};line-height:1">'
+        f'{_readiness}<span style="font-size:11px;font-weight:600;color:rgba(0,0,0,0.3)">/100</span></div>'
+        f'<div style="font-size:9px;font-weight:800;letter-spacing:0.06em;text-transform:uppercase;'
+        f'color:rgba(0,0,0,0.4)">Pivot Readiness</div>'
+        f'</div>'
+        f'</div>'
 
-    # Journey stepper nodes
-    f'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">'
-    f'{_phase_nodes_html}'
-    f'</div>'
+        # Journey stepper nodes
+        f'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">'
+        f'{_phase_nodes_html}'
+        f'</div>'
 
-    # Progress bar
-    f'<div style="height:4px;background:rgba(0,0,0,0.07);border-radius:2px;overflow:hidden">'
-    f'<div style="width:{_journey_pct}%;height:4px;background:{_readiness_bar_color};'
-    f'border-radius:2px;transition:width 0.8s"></div>'
-    f'</div>'
-    f'<div style="display:flex;justify-content:space-between;margin-top:4px">'
-    f'<div style="font-size:9px;color:rgba(0,0,0,0.35)">{_n_phases_done}/{len(_journey_phases)} phases complete</div>'
-    f'<div style="font-size:9px;font-weight:700;color:{_readiness_bar_color}">'
-    + ("Interview-ready ✓" if _journey_pct == 100 else f"{100 - _journey_pct}% to interview-ready")
-    + f'</div>'
-    f'</div>'
-    f'</div>',
-    unsafe_allow_html=True,
-)
+        # Progress bar
+        f'<div style="height:4px;background:rgba(0,0,0,0.07);border-radius:2px;overflow:hidden">'
+        f'<div style="width:{_journey_pct}%;height:4px;background:{_readiness_bar_color};'
+        f'border-radius:2px;transition:width 0.8s"></div>'
+        f'</div>'
+        f'<div style="display:flex;justify-content:space-between;margin-top:4px">'
+        f'<div style="font-size:9px;color:rgba(0,0,0,0.35)">{_n_phases_done}/{len(_journey_phases)} phases complete</div>'
+        f'<div style="font-size:9px;font-weight:700;color:{_readiness_bar_color}">'
+        + ("Interview-ready ✓" if _journey_pct == 100 else f"{100 - _journey_pct}% to interview-ready")
+        + f'</div>'
+        f'</div>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
 
 # ══════════════════════════════════════════════════════════════════════════════
 # SPRINT MODE — Guided linear flow (one active step at a time)
