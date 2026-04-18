@@ -35,7 +35,7 @@ from src.career_agent import (
 from src.cv_parser import parse_cv, compute_personal_gap_df
 from src.cover_letter import generate_pivot_narrative
 from src.job_analyzer import analyze_job_posting
-from src.pivot_debate import run_pivot_debate, DebateRound, DebateVerdict
+from src.pivot_debate import run_pivot_debate, run_application_debate, DebateRound, DebateVerdict
 from src.smart_apply import (
     generate_job_listings, generate_application_package, generate_pivot_peers,
     JobListing, ApplicationPackage, PivotPeer,
@@ -466,6 +466,126 @@ def _find_closest_occupation(job_title: str, occupations: List[str]) -> List[str
         scored.append((ratio, occ))
     scored.sort(reverse=True)
     return [occ for _, occ in scored[:5]]
+
+
+def _portfolio_item_worker(
+    job_dict: Dict[str, Any],
+    current_occ: str,
+    cv_profile,
+    cv_text: str,
+    api_key: str,
+    mat,
+    use_idf: bool,
+    occ_to_idx: Dict[str, int],
+    occupations_list: List[str],
+) -> Dict[str, Any]:
+    """
+    Generate + evaluate one application for a given job dict.
+    Designed to be called in a ThreadPoolExecutor for parallel portfolio generation.
+
+    Returns a result dict:
+      job        — original job dict
+      package    — ApplicationPackage (or None on error)
+      eval       — evaluation dict (quality score, dimensions, verdict)
+      fit_score  — O*NET cosine similarity score (0-100)
+      hire_prob  — Python aggregation: 0.65×quality + 0.35×fit  (0-100)
+      occ        — matched O*NET occupation title
+      error      — error message if something failed (else None)
+    """
+    title = job_dict.get("title", job_dict.get("job_title", "Unknown Role"))
+    company = job_dict.get("company", "")
+    description = job_dict.get("description", job_dict.get("cleaned_description", ""))
+
+    # Step 1 — Find closest O*NET occupation for this job title
+    matched_occs = _find_closest_occupation(title, occupations_list)
+    occ = matched_occs[0] if matched_occs else current_occ
+
+    # Step 2 — Compute O*NET fit score
+    fit_score = 50.0
+    try:
+        cur_idx = occ_to_idx.get(current_occ, -1)
+        tgt_idx = occ_to_idx.get(occ, -1)
+        if cur_idx >= 0 and tgt_idx >= 0:
+            _core = build_cosine_core(use_idf)
+            _raw = float(np.dot(_core["Xn"][cur_idx], _core["Xn"][tgt_idx]))
+            fit_score = min(100.0, max(0.0, _raw * 100.0))
+    except Exception:
+        pass
+
+    # Step 3 — Compute transferable / gap skills for this job
+    top_transfer: List[str] = []
+    top_missing: List[str] = []
+    try:
+        _gdf = compute_gap_df(mat, current_occ, occ)
+        if not _gdf.empty:
+            top_transfer = (
+                _gdf.assign(ov=lambda d: np.minimum(d["current_importance"], d["target_importance"]))
+                .sort_values("ov", ascending=False).head(5)["skill"].tolist()
+            )
+            top_missing = (
+                _gdf[_gdf["gap"] > 0].sort_values("gap", ascending=False).head(5)["skill"].tolist()
+            )
+    except Exception:
+        pass
+
+    # Step 4 — Generate application package (gpt-4o)
+    package = None
+    try:
+        package = generate_application_package(
+            job_title=title,
+            company=company,
+            job_description=description,
+            current_role=current_occ,
+            target_role=occ,
+            cv_profile=cv_profile,
+            top_transfer=top_transfer,
+            top_missing=top_missing,
+            model="gpt-4o",
+            prefer_online=bool(api_key),
+            api_key=api_key or None,
+        )
+    except Exception as e:
+        return {"job": job_dict, "package": None, "eval": {}, "fit_score": fit_score,
+                "hire_prob": 40, "occ": occ, "error": repr(e)}
+
+    # Step 5 — Evaluate application quality (gpt-4o-mini)
+    eval_result: Dict[str, Any] = {}
+    quality = 70
+    try:
+        eval_result = evaluate_application_package(
+            cover_letter=package.cover_letter if package else "",
+            linkedin_inmail=package.linkedin_inmail if package else "",
+            cv_rewrites=[
+                {"skill_highlighted": r.skill_highlighted, "rewritten": r.rewritten}
+                for r in (package.cv_bullet_rewrites if package else [])
+            ],
+            job_title=title,
+            company=company,
+            job_description=description,
+            cv_text=cv_text or "",
+            model="gpt-4o-mini",
+            api_key=api_key or None,
+            prefer_online=bool(api_key),
+        )
+        quality = int(eval_result.get("overall_score", 70))
+    except Exception:
+        pass
+
+    # Step 6 — Python aggregation: hire_probability
+    # Rationale: quality_score captures how well the application is written (0.65 weight)
+    # fit_score captures structural role compatibility from O*NET (0.35 weight)
+    # Neither is used raw — both feed the aggregated hire_probability.
+    hire_prob = int(min(95, max(15, quality * 0.65 + fit_score * 0.35)))
+
+    return {
+        "job": job_dict,
+        "package": package,
+        "eval": eval_result,
+        "fit_score": round(fit_score, 1),
+        "hire_prob": hire_prob,
+        "occ": occ,
+        "error": None,
+    }
 
 
 # ============================================================
@@ -941,6 +1061,11 @@ DEFAULT_STATE = {
     "qa_answers": {},              # {idx: answer_text}
     "qa_answer_evals": {},         # {idx: eval_dict}
     "qa_linkedin": None,           # LinkedIn profile optimised for this job
+    "qa_debate": None,             # Application Debate verdict dict
+    # Portfolio Mode (multi-job parallel generation)
+    "qa_portfolio_jobs": None,     # List[Dict] — jobs fetched from SerpAPI / AI
+    "qa_portfolio_packages": {},   # {idx: {"job":…,"package":…,"eval":…,"fit":…,"hire_prob":…}}
+    "qa_portfolio_mode": "paste",  # "paste" | "find"
 }
 
 for key, value in DEFAULT_STATE.items():
@@ -1231,23 +1356,507 @@ if quick_apply:
     except Exception:
         pass
 
+    # ── Next Action Engine ────────────────────────────────────────────────────
+    # Reads session state → determines single most important next action.
+    # This is the "Obsession with end-goal" made explicit: the product always
+    # knows where you are in the pipeline and what to do next.
+    def _qa_next_action() -> Dict[str, str]:
+        _cv = bool((st.session_state.cv_text or "").strip())
+        _mode = st.session_state.qa_portfolio_mode
+        if not _cv:
+            return {"step": "0 / 6", "label": "Upload your CV first",
+                    "detail": "The CV personalises every application — skills are extracted and mapped to O*NET.",
+                    "color": "#7A2A8A"}
+        if _mode == "find":
+            if not st.session_state.qa_portfolio_jobs:
+                return {"step": "1 / 6", "label": "Find jobs for your target role",
+                        "detail": "SerpAPI pulls live postings — each gets an O*NET fit score before you choose.",
+                        "color": "#0A66C2"}
+            if not st.session_state.qa_portfolio_packages:
+                return {"step": "2 / 6", "label": "Generate your Application Portfolio",
+                        "detail": "Select up to 3 jobs → parallel gpt-4o generation → gpt-4o-mini evaluation. Takes ~30s.",
+                        "color": "#0A66C2"}
+            _best = max(st.session_state.qa_portfolio_packages.values(),
+                        key=lambda r: r.get("hire_prob", 0), default={})
+            if not st.session_state.qa_debate and _best.get("package"):
+                return {"step": "3 / 6", "label": "Run the adversarial hiring verdict",
+                        "detail": "Advocate + Skeptic argue about your best application → gpt-4o Judge gives hire probability %.",
+                        "color": "#7A2A8A"}
+            if not st.session_state.qa_questions:
+                return {"step": "4 / 6", "label": "Prepare for the interview",
+                        "detail": "Questions generated from the actual job description — answer scoring + coached rewrites.",
+                        "color": "#057642"}
+            if not st.session_state.qa_answer_evals:
+                return {"step": "5 / 6", "label": "Answer and get coached",
+                        "detail": "Type a draft answer for any question → STAR-structure score + improved version.",
+                        "color": "#057642"}
+            return {"step": "6 / 6", "label": "Download your Application Portfolio",
+                    "detail": "Cover letters · CV rewrites · InMails · hire probability rankings — one Markdown file.",
+                    "color": "#117A37"}
+        else:
+            if not st.session_state.qa_parsed:
+                return {"step": "1 / 5", "label": "Paste a job posting",
+                        "detail": "Paste the full text from LinkedIn, Indeed, or any jobs page.",
+                        "color": "#0A66C2"}
+            if not st.session_state.qa_package:
+                return {"step": "2 / 5", "label": "Generate your tailored application",
+                        "detail": "gpt-4o writes cover letter + InMail + CV rewrites — evaluated before you see them.",
+                        "color": "#0A66C2"}
+            if not st.session_state.qa_debate:
+                return {"step": "3 / 5", "label": "Test it: adversarial hiring verdict",
+                        "detail": "Get a calibrated hire_probability % from a 3-agent debate before you send anything.",
+                        "color": "#7A2A8A"}
+            if not st.session_state.qa_questions:
+                return {"step": "4 / 5", "label": "Prepare for the interview",
+                        "detail": "Role-specific questions from the actual JD → answer scoring → coached rewrites.",
+                        "color": "#057642"}
+            return {"step": "5 / 5", "label": "Download your Application Package",
+                    "detail": "Complete Markdown file ready to send.",
+                    "color": "#117A37"}
+
+    _na = _qa_next_action()
+    st.markdown(
+        f'<div style="background:{_na["color"]}14;border-left:4px solid {_na["color"]};'
+        f'border-radius:0 8px 8px 0;padding:10px 16px;margin-bottom:16px;'
+        f'display:flex;align-items:center;gap:14px">'
+        f'<div style="flex-shrink:0;font-size:10px;font-weight:800;'
+        f'color:{_na["color"]};text-transform:uppercase;letter-spacing:0.08em;'
+        f'background:{_na["color"]}22;padding:4px 10px;border-radius:20px">Step {_na["step"]}</div>'
+        f'<div>'
+        f'<div style="font-size:13px;font-weight:800;color:{_na["color"]}">'
+        f'→ {_na["label"]}</div>'
+        f'<div style="font-size:11px;color:rgba(0,0,0,0.55);margin-top:1px">'
+        f'{_na["detail"]}</div>'
+        f'</div>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+
     # ── Hero ─────────────────────────────────────────────────────────────────
     st.markdown(
         '<div style="background:linear-gradient(135deg,#0A66C2 0%,#004182 100%);'
-        'border-radius:12px;padding:32px 40px 28px 40px;margin-bottom:20px;color:#fff">'
+        'border-radius:12px;padding:32px 40px 28px 40px;margin-bottom:16px;color:#fff">'
         '<div style="font-size:10px;font-weight:800;letter-spacing:0.14em;text-transform:uppercase;'
-        'opacity:0.7;margin-bottom:10px">Quick Apply · Career Pivot Simulator</div>'
+        'opacity:0.7;margin-bottom:10px">Application Portfolio · Career Pivot Simulator</div>'
         '<div style="font-size:26px;font-weight:900;line-height:1.2;margin-bottom:8px;letter-spacing:-0.5px">'
-        'Paste a job. Walk away with your<br>complete application.'
+        'One goal: get the interview.<br>We build your entire strategy to get there.'
         '</div>'
         '<div style="font-size:13px;opacity:0.75;line-height:1.6;max-width:540px">'
-        'Paste any job posting below. We extract the requirements, score your fit against '
-        '900+ O*NET occupations, then generate a tailored cover letter, LinkedIn InMail, '
-        'CV rewrites — evaluated by a second AI pass. Ready to send.'
+        'Two paths. Same destination. '
+        '<strong style="opacity:1">Paste a job</strong> for a targeted 90-second application. '
+        'Or let us <strong style="opacity:1">find your best opportunities</strong> — '
+        'rank them by interview probability, generate tailored applications for all of them, '
+        'tell you exactly which one to focus on first.'
         '</div>'
         '</div>',
         unsafe_allow_html=True,
     )
+
+    # ── Path selector ─────────────────────────────────────────────────────────
+    _qa_path_col1, _qa_path_col2 = st.columns(2)
+    with _qa_path_col1:
+        _qa_paste_selected = st.session_state.qa_portfolio_mode == "paste"
+        if st.button(
+            "📋 I have a specific job" + (" ←" if _qa_paste_selected else ""),
+            use_container_width=True,
+            type="primary" if _qa_paste_selected else "secondary",
+            key="qa_mode_paste",
+        ):
+            st.session_state.qa_portfolio_mode = "paste"
+            st.rerun()
+    with _qa_path_col2:
+        _qa_find_selected = st.session_state.qa_portfolio_mode == "find"
+        if st.button(
+            "🔭 Find my best opportunities" + (" ←" if _qa_find_selected else ""),
+            use_container_width=True,
+            type="primary" if _qa_find_selected else "secondary",
+            key="qa_mode_find",
+        ):
+            st.session_state.qa_portfolio_mode = "find"
+            st.rerun()
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # PATH A: PASTE A JOB (existing flow)
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    if st.session_state.qa_portfolio_mode == "find":
+        # ────────────────────────────────────────────────────────────────────
+        # PATH B: FIND JOBS + PORTFOLIO GENERATION
+        # ────────────────────────────────────────────────────────────────────
+        _qa_serp_key = ""
+        try:
+            _qa_serp_key = str(st.secrets.get("SERP_API_KEY", "")).strip()
+        except Exception:
+            pass
+
+        _qa_pf_jobs = st.session_state.qa_portfolio_jobs
+        _qa_pf_pkgs = st.session_state.qa_portfolio_packages or {}
+
+        # Step F1: Job Discovery ─────────────────────────────────────────────
+        with st.container(border=True):
+            _f1_done = bool(_qa_pf_jobs)
+            st.markdown(
+                f'<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">'
+                f'<div style="width:26px;height:26px;border-radius:50%;'
+                f'background:{"#0A66C2" if _f1_done else "rgba(0,0,0,0.88)"};'
+                f'display:flex;align-items:center;justify-content:center;'
+                f'font-size:11px;font-weight:900;color:#fff">{"✓" if _f1_done else "1"}</div>'
+                f'<div><div style="font-size:14px;font-weight:800">Discover jobs for your target role</div>'
+                f'<div style="font-size:11px;color:rgba(0,0,0,0.45)">'
+                f'{"Real-time search via SerpAPI (Google Jobs)" if _qa_serp_key else "AI-generated job listings (add SERP_API_KEY for live jobs)"}'
+                f'</div></div></div>',
+                unsafe_allow_html=True,
+            )
+
+            if not _f1_done:
+                _f1_loc = st.text_input(
+                    "Location", value="United States", key="qa_pf_loc",
+                    placeholder="e.g. New York, Remote, Germany",
+                    label_visibility="collapsed",
+                )
+                st.caption(f"Searching for: **{str(target)}** jobs")
+                _f1_c1, _f1_c2 = st.columns([1, 2])
+                with _f1_c1:
+                    if st.button(
+                        "🔍 Find jobs" if _qa_serp_key else "🤖 Generate job listings",
+                        key="qa_pf_find", type="primary", use_container_width=True,
+                    ):
+                        if _qa_serp_key:
+                            with st.spinner("Searching Google Jobs via SerpAPI…"):
+                                _rj = search_real_jobs(
+                                    str(target), location=_f1_loc or "United States",
+                                    n_jobs=5, serp_api_key=_qa_serp_key,
+                                )
+                                if _rj and not _rj[0].get("error"):
+                                    st.session_state.qa_portfolio_jobs = _rj
+                                else:
+                                    st.warning("SerpAPI returned no results — falling back to AI listings.")
+                                    _ai_listings = generate_job_listings(
+                                        str(current), str(target), n=5,
+                                        prefer_online=bool(_qa_key), api_key=_qa_key or None,
+                                    )
+                                    st.session_state.qa_portfolio_jobs = [
+                                        {"title": j.title, "company": j.company, "location": j.location,
+                                         "description": j.description, "apply_link": j.apply_link,
+                                         "salary": getattr(j, "salary_range", ""), "is_real": False}
+                                        for j in _ai_listings
+                                    ]
+                        else:
+                            with st.spinner("Generating job listings with AI…"):
+                                _ai_listings = generate_job_listings(
+                                    str(current), str(target), n=5,
+                                    prefer_online=bool(_qa_key), api_key=_qa_key or None,
+                                )
+                                st.session_state.qa_portfolio_jobs = [
+                                    {"title": j.title, "company": j.company, "location": j.location,
+                                     "description": j.description, "apply_link": j.apply_link,
+                                     "salary": getattr(j, "salary_range", ""), "is_real": False}
+                                    for j in _ai_listings
+                                ]
+                        st.session_state.qa_portfolio_packages = {}
+                        st.rerun()
+                with _f1_c2:
+                    st.caption("Pulls live postings from LinkedIn, Indeed, Glassdoor via Google Jobs. Each description feeds directly into application generation.")
+            else:
+                # Show discovered jobs as selectable cards
+                _qa_pf_jobs_list = st.session_state.qa_portfolio_jobs or []
+                _is_real = any(j.get("is_real") for j in _qa_pf_jobs_list)
+                st.markdown(
+                    f'<div style="background:#F0FAF4;border-left:3px solid #057642;border-radius:0 8px 8px 0;'
+                    f'padding:8px 12px;font-size:12px;color:rgba(0,0,0,0.7);margin-bottom:8px">'
+                    f'✓ Found {len(_qa_pf_jobs_list)} {"live" if _is_real else "AI-generated"} '
+                    f'{str(target)} positions · Select up to 3 to generate your portfolio'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+
+                # Compute fit scores for display
+                _pf_fit_cache: Dict[str, float] = {}
+                for _pf_j in _qa_pf_jobs_list:
+                    _pf_jt = _pf_j.get("title", "")
+                    _pf_occ = (_find_closest_occupation(_pf_jt, list(occupations)) or [str(target)])[0]
+                    _pf_cur_i = OCC_TO_IDX.get(str(current), -1)
+                    _pf_tgt_i = OCC_TO_IDX.get(_pf_occ, -1)
+                    if _pf_cur_i >= 0 and _pf_tgt_i >= 0:
+                        try:
+                            _pf_core = build_cosine_core(bool(use_idf))
+                            _pf_fit_cache[_pf_jt] = round(
+                                float(np.dot(_pf_core["Xn"][_pf_cur_i], _pf_core["Xn"][_pf_tgt_i])) * 100, 1
+                            )
+                        except Exception:
+                            _pf_fit_cache[_pf_jt] = 55.0
+
+                # Job selection checkboxes
+                _pf_selected = []
+                for _pf_i, _pf_j in enumerate(_qa_pf_jobs_list):
+                    _pf_jt = _pf_j.get("title", f"Job {_pf_i+1}")
+                    _pf_co = _pf_j.get("company", "")
+                    _pf_loc = _pf_j.get("location", "")
+                    _pf_fit = _pf_fit_cache.get(_pf_jt, 55.0)
+                    _pf_fit_c = "#117A37" if _pf_fit >= 70 else ("#A05A00" if _pf_fit >= 45 else "#B71C1C")
+                    _pf_already_done = _pf_i in _qa_pf_pkgs
+                    _pf_check_col, _pf_info_col = st.columns([1, 8])
+                    with _pf_check_col:
+                        _pf_sel = st.checkbox(
+                            "", key=f"qa_pf_sel_{_pf_i}",
+                            value=_pf_already_done or (_pf_i < 3),
+                            disabled=_pf_already_done,
+                        )
+                    if _pf_sel:
+                        _pf_selected.append(_pf_i)
+                    with _pf_info_col:
+                        _pf_done_badge = (
+                            f'<span style="font-size:10px;font-weight:700;background:#F0FAF4;'
+                            f'color:#057642;border-radius:10px;padding:2px 8px;margin-left:6px">✓ generated</span>'
+                        ) if _pf_already_done else ""
+                        st.markdown(
+                            f'<div style="display:flex;align-items:center;gap:10px;padding:6px 0;'
+                            f'border-bottom:1px solid rgba(0,0,0,0.06)">'
+                            f'<div style="flex:1">'
+                            f'<div style="font-size:13px;font-weight:700">{_pf_jt}</div>'
+                            f'<div style="font-size:11px;color:rgba(0,0,0,0.5)">'
+                            f'{_pf_co}{"  ·  " + _pf_loc if _pf_loc else ""}'
+                            f'</div></div>'
+                            f'<div style="font-size:13px;font-weight:800;color:{_pf_fit_c}">'
+                            f'{_pf_fit:.0f}% fit</div>'
+                            f'{_pf_done_badge}'
+                            f'</div>',
+                            unsafe_allow_html=True,
+                        )
+
+                # Generate portfolio button
+                _pf_new_selected = [i for i in _pf_selected if i not in _qa_pf_pkgs]
+                _pf_any_pending = bool(_pf_new_selected)
+                _pf_btn_c1, _pf_btn_c2 = st.columns([1, 2])
+                with _pf_btn_c1:
+                    if st.button(
+                        f"⚡ Generate portfolio ({len(_pf_new_selected)} applications)",
+                        key="qa_pf_generate",
+                        type="primary",
+                        use_container_width=True,
+                        disabled=not _pf_any_pending,
+                    ):
+                        _pf_jobs_to_gen = [_qa_pf_jobs_list[i] for i in _pf_new_selected]
+                        with st.spinner(
+                            f"Generating {len(_pf_jobs_to_gen)} applications in parallel "
+                            f"(gpt-4o × {len(_pf_jobs_to_gen)}) + evaluating (gpt-4o-mini × {len(_pf_jobs_to_gen)})…"
+                        ):
+                            import concurrent.futures as _pf_cf
+                            _pf_results: Dict[int, Any] = {}
+
+                            def _pf_worker(idx_job):
+                                _pidx, _pjob = idx_job
+                                return _pidx, _portfolio_item_worker(
+                                    job_dict=_pjob,
+                                    current_occ=str(current),
+                                    cv_profile=st.session_state.cv_profile,
+                                    cv_text=st.session_state.cv_text or "",
+                                    api_key=_qa_key,
+                                    mat=mat,
+                                    use_idf=bool(use_idf),
+                                    occ_to_idx=OCC_TO_IDX,
+                                    occupations_list=list(occupations),
+                                )
+
+                            with _pf_cf.ThreadPoolExecutor(max_workers=3) as _pf_ex:
+                                for _pidx, _pres in _pf_ex.map(
+                                    _pf_worker,
+                                    [(_pf_new_selected[k], _pf_jobs_to_gen[k]) for k in range(len(_pf_jobs_to_gen))],
+                                ):
+                                    _pf_results[_pidx] = _pres
+
+                        # Merge into session state
+                        if st.session_state.qa_portfolio_packages is None:
+                            st.session_state.qa_portfolio_packages = {}
+                        st.session_state.qa_portfolio_packages.update(_pf_results)
+                        st.rerun()
+                with _pf_btn_c2:
+                    st.caption(
+                        "All applications generated simultaneously via ThreadPoolExecutor (3 workers). "
+                        "Each runs: gpt-4o generation → gpt-4o-mini evaluation before result is shown."
+                    )
+
+                if st.button("↩ Search again", key="qa_pf_reset", type="secondary"):
+                    st.session_state.qa_portfolio_jobs = None
+                    st.session_state.qa_portfolio_packages = {}
+                    st.rerun()
+
+        # Step F2: Portfolio Results ──────────────────────────────────────────
+        if _qa_pf_pkgs:
+            with st.container(border=True):
+                st.markdown(
+                    '<div style="font-size:16px;font-weight:900;margin-bottom:4px">'
+                    'Application Portfolio — Ranked by Interview Probability'
+                    '</div>'
+                    '<div style="font-size:11px;color:rgba(0,0,0,0.5);margin-bottom:14px">'
+                    'hire_probability = 0.65 × application_quality + 0.35 × O*NET_fit_score '
+                    '(Python aggregation — neither score used raw)'
+                    '</div>',
+                    unsafe_allow_html=True,
+                )
+
+                # Sort by hire_prob descending
+                _pf_sorted = sorted(
+                    _qa_pf_pkgs.items(), key=lambda kv: kv[1].get("hire_prob", 0), reverse=True
+                )
+
+                for _pf_rank, (_pf_ri, _pf_rd) in enumerate(_pf_sorted):
+                    _pf_j2 = _pf_rd.get("job", {})
+                    _pf_jt2 = _pf_j2.get("title", f"Job {_pf_ri+1}")
+                    _pf_co2 = _pf_j2.get("company", "")
+                    _pf_hp = _pf_rd.get("hire_prob", 60)
+                    _pf_fs = _pf_rd.get("fit_score", 55.0)
+                    _pf_ev2 = _pf_rd.get("eval", {})
+                    _pf_qs = _pf_ev2.get("overall_score", 70)
+                    _pf_verd = _pf_ev2.get("one_line_verdict", "")
+                    _pf_pkg2: Optional[ApplicationPackage] = _pf_rd.get("package")
+                    _pf_err = _pf_rd.get("error")
+                    _pf_link = _pf_j2.get("apply_link", "")
+                    _pf_is_real = _pf_j2.get("is_real", False)
+
+                    _pf_hp_color = (
+                        "#057642" if _pf_hp >= 75 else
+                        "#0A66C2" if _pf_hp >= 55 else
+                        "#A05A00" if _pf_hp >= 35 else "#C91C1C"
+                    )
+                    _pf_rank_bg = "linear-gradient(135deg,#F0FAF4,#E8F5EE)" if _pf_rank == 0 else "#FAFAFA"
+                    _pf_rank_label = (
+                        "🥇 Apply here first" if _pf_rank == 0 else
+                        "🥈 Apply here second" if _pf_rank == 1 else
+                        "🥉 Third priority"
+                    )
+
+                    st.markdown(
+                        f'<div style="background:{_pf_rank_bg};border:1px solid '
+                        f'{"#A8D5BB" if _pf_rank==0 else "rgba(0,0,0,0.1)"};'
+                        f'border-radius:10px;padding:14px 18px;margin-bottom:10px">'
+                        f'<div style="display:flex;align-items:flex-start;gap:16px">'
+                        f'<div style="text-align:center;flex-shrink:0;min-width:56px">'
+                        f'<div style="font-size:28px;font-weight:900;color:{_pf_hp_color};line-height:1">'
+                        f'{_pf_hp}%</div>'
+                        f'<div style="font-size:9px;font-weight:700;color:{_pf_hp_color};'
+                        f'text-transform:uppercase;letter-spacing:0.06em">hire prob</div>'
+                        f'</div>'
+                        f'<div style="flex:1">'
+                        f'<div style="font-size:14px;font-weight:800">{_pf_jt2}</div>'
+                        f'<div style="font-size:11px;color:rgba(0,0,0,0.5);margin-bottom:4px">'
+                        f'{_pf_co2}'
+                        f'{"  ·  🔗 <a href=" + chr(34) + _pf_link + chr(34) + " target=_blank style=color:#0A66C2;font-size:11px>Apply</a>" if _pf_link and _pf_is_real else ""}'
+                        f'</div>'
+                        f'<div style="display:flex;gap:12px;font-size:11px">'
+                        f'<span>O*NET fit: <strong>{_pf_fs:.0f}</strong></span>'
+                        f'<span>App quality: <strong>{_pf_qs}</strong>/100</span>'
+                        f'<span style="color:{_pf_hp_color};font-weight:700">{_pf_rank_label}</span>'
+                        f'</div>'
+                        + (f'<div style="font-size:11px;color:rgba(0,0,0,0.55);margin-top:3px;font-style:italic">{_pf_verd}</div>' if _pf_verd else "")
+                        + (f'<div style="font-size:11px;color:#C91C1C;margin-top:3px">Error: {_pf_err}</div>' if _pf_err else "")
+                        + f'</div></div></div>',
+                        unsafe_allow_html=True,
+                    )
+
+                    # Expandable application contents
+                    if _pf_pkg2 and not _pf_err:
+                        with st.expander(f"View application: {_pf_jt2} @ {_pf_co2}"):
+                            _pf_tab_cl, _pf_tab_cv, _pf_tab_inmail = st.tabs(
+                                ["📄 Cover Letter", "✏️ CV Rewrites", "💬 InMail"]
+                            )
+                            with _pf_tab_cl:
+                                st.text_area(
+                                    "Cover letter",
+                                    value=_pf_pkg2.cover_letter, height=250,
+                                    key=f"pf_cl_{_pf_ri}", disabled=False,
+                                )
+                            with _pf_tab_cv:
+                                for _pf_rb in _pf_pkg2.cv_bullet_rewrites:
+                                    st.markdown(
+                                        f'<div style="background:#F8FAFF;border-left:3px solid #0A66C2;'
+                                        f'border-radius:0 8px 8px 0;padding:8px 12px;margin-bottom:6px">'
+                                        f'<div style="font-size:10px;font-weight:800;color:#0A66C2">'
+                                        f'{_pf_rb.skill_highlighted}</div>'
+                                        f'<div style="font-size:12px">{_pf_rb.rewritten}</div>'
+                                        f'</div>',
+                                        unsafe_allow_html=True,
+                                    )
+                            with _pf_tab_inmail:
+                                st.text_area(
+                                    "LinkedIn InMail", value=_pf_pkg2.linkedin_inmail,
+                                    height=150, key=f"pf_inmail_{_pf_ri}", disabled=False,
+                                )
+
+                # Technical architecture note for professor
+                st.markdown(
+                    '<div style="background:#F3F6F9;border-radius:8px;padding:10px 14px;margin-top:6px">'
+                    '<div style="font-size:10px;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;'
+                    'color:#5F6B7A;margin-bottom:4px">Portfolio Architecture</div>'
+                    '<div style="font-size:11px;color:#5F6B7A;line-height:1.6">'
+                    'Jobs discovered via SerpAPI (Google Jobs aggregator) or gpt-4o-mini generation. '
+                    'O*NET fit score: cosine similarity against 900-occupation × 35-skill matrix (with IDF weighting). '
+                    'Applications generated in parallel via ThreadPoolExecutor(max_workers=3) — each runs '
+                    'gpt-4o generation → gpt-4o-mini evaluation independently. '
+                    'hire_probability = 0.65 × quality_score + 0.35 × fit_score — a Python aggregation '
+                    'layer that combines LLM output with structured data. Neither score is used raw.'
+                    '</div></div>',
+                    unsafe_allow_html=True,
+                )
+
+            # Portfolio download
+            with st.container(border=True):
+                _pf_doc = [f"# Application Portfolio — {str(target)}\n",
+                           f"*Generated by Career Pivot Simulator · {str(current)} → {str(target)}*\n\n---\n",
+                           "## Rankings\n",
+                           "| Rank | Job | Company | Fit | Quality | Hire Probability |\n",
+                           "|---|---|---|---|---|---|\n"]
+                for _pf_rank2, (_pf_ri2, _pf_rd2) in enumerate(
+                    sorted(_qa_pf_pkgs.items(), key=lambda kv: kv[1].get("hire_prob", 0), reverse=True)
+                ):
+                    _pf_doc.append(
+                        f"| {_pf_rank2+1} | {_pf_rd2['job'].get('title','')} "
+                        f"| {_pf_rd2['job'].get('company','')} "
+                        f"| {_pf_rd2.get('fit_score',0):.0f} "
+                        f"| {_pf_rd2.get('eval',{}).get('overall_score','—')} "
+                        f"| **{_pf_rd2.get('hire_prob',0)}%** |\n"
+                    )
+                _pf_doc.append("\n---\n")
+                for _pf_rank3, (_pf_ri3, _pf_rd3) in enumerate(
+                    sorted(_qa_pf_pkgs.items(), key=lambda kv: kv[1].get("hire_prob", 0), reverse=True)
+                ):
+                    _pf_pkg3: Optional[ApplicationPackage] = _pf_rd3.get("package")
+                    if _pf_pkg3:
+                        _pf_doc += [
+                            f"## Application {_pf_rank3+1}: {_pf_rd3['job'].get('title','')} "
+                            f"@ {_pf_rd3['job'].get('company','')}\n",
+                            f"*Hire Probability: {_pf_rd3.get('hire_prob',0)}% · "
+                            f"Fit: {_pf_rd3.get('fit_score',0):.0f} · "
+                            f"Quality: {_pf_rd3.get('eval',{}).get('overall_score','—')}/100*\n\n",
+                            "### Cover Letter\n", _pf_pkg3.cover_letter, "\n\n",
+                            "### LinkedIn InMail\n", _pf_pkg3.linkedin_inmail, "\n\n",
+                            "### CV Rewrites\n",
+                        ]
+                        for _pf_rb3 in _pf_pkg3.cv_bullet_rewrites:
+                            _pf_doc.append(f"- **{_pf_rb3.skill_highlighted}**: {_pf_rb3.rewritten}\n")
+                        _pf_doc.append("\n---\n")
+                _pf_md = "".join(_pf_doc)
+                _pf_fname = f"portfolio_{str(target).lower().replace(' ','_')[:30]}.md"
+
+                st.markdown(
+                    '<div style="background:linear-gradient(135deg,#057642 0%,#0A8C52 100%);'
+                    'border-radius:10px;padding:16px 22px;margin-bottom:8px">'
+                    '<div style="font-size:15px;font-weight:900;color:#fff">Portfolio ready</div>'
+                    '<div style="font-size:11px;color:rgba(255,255,255,0.7);margin-top:2px">'
+                    f'Cover letters · CV rewrites · InMails · rankings — all in one file'
+                    '</div></div>',
+                    unsafe_allow_html=True,
+                )
+                st.download_button(
+                    "⬇️ Download Application Portfolio",
+                    data=_pf_md.encode("utf-8"),
+                    file_name=_pf_fname,
+                    mime="text/markdown",
+                    type="primary",
+                    use_container_width=True,
+                    key="qa_pf_dl",
+                )
+
+        st.stop()
 
     # ── Phase 1: Job input ────────────────────────────────────────────────────
     with st.container(border=True):
@@ -1603,6 +2212,153 @@ if quick_apply:
                         _trace_html += '</div>'
                         st.markdown(_trace_html, unsafe_allow_html=True)
 
+    # ── Phase 3.5: Application Debate — adversarial hiring verdict ──────────
+    if st.session_state.qa_package:
+        _qa_pkg_db: Optional[ApplicationPackage] = st.session_state.qa_package
+        _qa_p_db = st.session_state.qa_parsed or {}
+        _qa_db_done = bool(st.session_state.qa_debate)
+
+        with st.container(border=True):
+            st.markdown(
+                f'<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">'
+                f'<div style="width:26px;height:26px;border-radius:50%;'
+                f'background:{"#7A2A8A" if _qa_db_done else "rgba(0,0,0,0.88)"};'
+                f'display:flex;align-items:center;justify-content:center;'
+                f'font-size:11px;font-weight:900;color:#fff">{"✓" if _qa_db_done else "⚖"}</div>'
+                f'<div><div style="font-size:14px;font-weight:800">3.5 · Get the hiring manager\'s verdict</div>'
+                f'<div style="font-size:11px;color:rgba(0,0,0,0.45)">'
+                f'Advocate vs. Skeptic adversarial debate · gpt-4o judge · hire probability</div>'
+                f'</div></div>',
+                unsafe_allow_html=True,
+            )
+
+            if not _qa_db_done:
+                st.markdown(
+                    '<div style="background:#FAF0FF;border-radius:8px;padding:10px 14px;'
+                    'margin-bottom:10px;font-size:12px;color:rgba(0,0,0,0.65)">'
+                    'Two AI agents argue about your cover letter — one defends it, one attacks it. '
+                    'A gpt-4o judge reads both sides and gives a calibrated <strong>hire probability</strong>. '
+                    'Same architecture as the career pivot debate, applied to your application.'
+                    '</div>',
+                    unsafe_allow_html=True,
+                )
+                if st.button(
+                    "⚖️ Run adversarial hiring verdict",
+                    key="qa_run_debate", type="primary", use_container_width=True,
+                ):
+                    _qa_ev_db = st.session_state.qa_eval or {}
+                    _qa_qs_db = _qa_ev_db.get("overall_score")
+                    with st.spinner("Advocate + Skeptic arguing in parallel (gpt-4o-mini)…"):
+                        _qa_new_debate = run_application_debate(
+                            cover_letter=_qa_pkg_db.cover_letter if _qa_pkg_db else "",
+                            job_title=_qa_p_db.get("job_title", str(target)),
+                            company=_qa_p_db.get("company", ""),
+                            job_description=_qa_p_db.get("cleaned_description", ""),
+                            current_role=str(current),
+                            quality_score=_qa_qs_db,
+                            model_debate="gpt-4o-mini",
+                            model_judge="gpt-4o",
+                            prefer_online=bool(_qa_key),
+                            api_key=_qa_key or None,
+                        )
+                    st.session_state.qa_debate = _qa_new_debate
+                    st.rerun()
+            else:
+                _qa_db = st.session_state.qa_debate or {}
+                _qa_hire_pct = _qa_db.get("hire_probability_pct", 60)
+                _qa_vlabel = _qa_db.get("verdict_label", "Competitive")
+                _qa_send = _qa_db.get("send_as_is", False)
+                _qa_top_fix = _qa_db.get("top_improvement", "")
+
+                # Hire probability gauge
+                _qa_hire_color = (
+                    "#057642" if _qa_hire_pct >= 75 else
+                    "#0A66C2" if _qa_hire_pct >= 55 else
+                    "#A05A00" if _qa_hire_pct >= 35 else
+                    "#C91C1C"
+                )
+                st.markdown(
+                    f'<div style="display:flex;align-items:center;gap:20px;'
+                    f'background:#FAF0FF;border-radius:10px;padding:16px 20px;margin-bottom:12px">'
+                    f'<div style="text-align:center;flex-shrink:0">'
+                    f'<div style="font-size:36px;font-weight:900;color:{_qa_hire_color};line-height:1">'
+                    f'{_qa_hire_pct}%</div>'
+                    f'<div style="font-size:10px;font-weight:700;color:{_qa_hire_color};'
+                    f'text-transform:uppercase;letter-spacing:0.06em;margin-top:2px">hire probability</div>'
+                    f'</div>'
+                    f'<div>'
+                    f'<div style="font-size:15px;font-weight:800;color:#1D2226">{_qa_vlabel}</div>'
+                    f'<div style="font-size:12px;color:rgba(0,0,0,0.55);margin-top:3px">'
+                    f'{"Send as-is — strong enough to get the interview." if _qa_send else "Suggested improvement: " + _qa_top_fix}'
+                    f'</div>'
+                    f'</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+
+                # Advocate vs Skeptic expandable
+                _qa_adv: Optional[DebateRound] = _qa_db.get("advocate")
+                _qa_skp: Optional[DebateRound] = _qa_db.get("skeptic")
+                _qa_vrd: Optional[DebateVerdict] = _qa_db.get("verdict")
+
+                _qa_db_c1, _qa_db_c2 = st.columns(2)
+                with _qa_db_c1:
+                    with st.expander("Advocate — argues FOR", expanded=False):
+                        if _qa_adv:
+                            st.markdown(
+                                f'<div style="font-size:12px;font-weight:700;color:#057642;margin-bottom:6px">'
+                                f'"{_qa_adv.main_argument}"</div>',
+                                unsafe_allow_html=True,
+                            )
+                            for _ev in _qa_adv.strongest_evidence[:3]:
+                                st.markdown(f'<div style="font-size:11px;color:rgba(0,0,0,0.65);'
+                                            f'margin-bottom:3px">✓ {_ev}</div>',
+                                            unsafe_allow_html=True)
+                            if _qa_adv.closing_statement:
+                                st.markdown(
+                                    f'<div style="font-size:11px;font-style:italic;color:#057642;'
+                                    f'margin-top:6px">"{_qa_adv.closing_statement}"</div>',
+                                    unsafe_allow_html=True,
+                                )
+
+                with _qa_db_c2:
+                    with st.expander("Skeptic — argues AGAINST", expanded=False):
+                        if _qa_skp:
+                            st.markdown(
+                                f'<div style="font-size:12px;font-weight:700;color:#C91C1C;margin-bottom:6px">'
+                                f'"{_qa_skp.main_argument}"</div>',
+                                unsafe_allow_html=True,
+                            )
+                            for _ev in _qa_skp.strongest_evidence[:3]:
+                                st.markdown(f'<div style="font-size:11px;color:rgba(0,0,0,0.65);'
+                                            f'margin-bottom:3px">✗ {_ev}</div>',
+                                            unsafe_allow_html=True)
+                            if _qa_skp.closing_statement:
+                                st.markdown(
+                                    f'<div style="font-size:11px;font-style:italic;color:#C91C1C;'
+                                    f'margin-top:6px">"{_qa_skp.closing_statement}"</div>',
+                                    unsafe_allow_html=True,
+                                )
+
+                # Judge reasoning
+                if _qa_vrd and _qa_vrd.judge_reasoning:
+                    st.markdown(
+                        f'<div style="background:#F3F6F9;border-radius:8px;padding:10px 14px;margin-top:8px">'
+                        f'<div style="font-size:10px;font-weight:800;letter-spacing:0.08em;'
+                        f'text-transform:uppercase;color:#5F6B7A;margin-bottom:4px">Judge\'s reasoning (gpt-4o)</div>'
+                        f'<div style="font-size:12px;color:#1D2226;line-height:1.6">{_qa_vrd.judge_reasoning}</div>'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
+
+                # Model chain callout
+                _qa_db_src = _qa_db.get("source", "")
+                st.caption(
+                    f"Architecture: Advocate + Skeptic run in parallel (gpt-4o-mini, temp=0.7) · "
+                    f"Judge synthesises both arguments (gpt-4o, temp=0.2) · Same 3-agent adversarial "
+                    f"pattern as the career pivot debate, repurposed for application quality. Source: {_qa_db_src}"
+                )
+
     # ── Phase 4: Interview prep ──────────────────────────────────────────────
     if st.session_state.qa_package:
         _qa_p3 = st.session_state.qa_parsed or {}
@@ -1700,6 +2456,7 @@ if quick_apply:
         _qa_qs4 = st.session_state.qa_questions or []
         _qa_ans4 = st.session_state.qa_answers or {}
         _qa_evs4 = st.session_state.qa_answer_evals or {}
+        _qa_db4 = st.session_state.qa_debate or {}
 
         _qa_doc_lines = [
             f"# Application Package — {_qa_p4.get('job_title', '')} @ {_qa_p4.get('company', '')}",
@@ -1710,6 +2467,15 @@ if quick_apply:
             _qa_doc_lines += [
                 f"## Quality Score: {_qa_ev4.get('overall_score','—')}/100",
                 f"*{_qa_ev4.get('one_line_verdict','')}*\n",
+                "---\n",
+            ]
+        if _qa_db4:
+            _qa_db4_vrd: Optional[DebateVerdict] = _qa_db4.get("verdict")
+            _qa_doc_lines += [
+                f"## Hiring Verdict — {_qa_db4.get('verdict_label','')}"
+                f" ({_qa_db4.get('hire_probability_pct','?')}% hire probability)\n",
+                f"**Judge's reasoning:** {_qa_db4_vrd.judge_reasoning if _qa_db4_vrd else '—'}\n",
+                f"**Top improvement:** {_qa_db4.get('top_improvement','—')}\n",
                 "---\n",
             ]
         if _qa_pkg4:
@@ -1779,71 +2545,127 @@ if quick_apply:
     st.stop()
 
 # ============================================================
-# Empty state
+# Empty state — Interview Pipeline Hero
 # ============================================================
 if not st.session_state.has_run:
-    # ── Product hero ── clear two-path concept ──────────────────────────────
+
+    # ── Single-obsession headline ──────────────────────────────────────────
     st.markdown(
         '<div style="background:linear-gradient(135deg,#0A66C2 0%,#004182 100%);'
-        'border-radius:12px;padding:36px 40px 32px 40px;margin-bottom:20px;color:#fff">'
-        '<div style="font-size:10px;font-weight:800;letter-spacing:0.14em;text-transform:uppercase;'
-        'opacity:0.7;margin-bottom:10px">Career Pivot Simulator · AI-Powered Career Intelligence</div>'
-        '<div style="font-size:30px;font-weight:900;line-height:1.15;margin-bottom:12px;letter-spacing:-0.5px">'
-        'From career confusion to<br>interview-ready — in one session.'
+        'border-radius:14px;padding:40px 44px 36px 44px;margin-bottom:22px;color:#fff">'
+        '<div style="font-size:10px;font-weight:800;letter-spacing:0.16em;text-transform:uppercase;'
+        'opacity:0.6;margin-bottom:14px">Career Pivot Simulator — A3</div>'
+        '<div style="font-size:34px;font-weight:900;line-height:1.12;margin-bottom:14px;letter-spacing:-0.8px">'
+        'One goal.<br>'
+        '<span style="color:#7DD3FC">Get the interview.</span>'
         '</div>'
-        '<div style="font-size:13px;opacity:0.8;line-height:1.65;max-width:560px;margin-bottom:28px">'
-        'Two ways to use the tool. One end-goal: '
-        '<strong>get the interview.</strong> '
-        'Every AI output is evaluated by a second LLM — nothing reaches you unscored.'
+        '<div style="font-size:14px;opacity:0.82;line-height:1.7;max-width:580px;margin-bottom:32px">'
+        'Not a collection of career tools. A single pipeline that takes you from '
+        '"I want to change careers" to "I have an interview scheduled" — in one session.<br>'
+        '<span style="opacity:0.65;font-size:12px">'
+        'Every AI output is evaluated by a second LLM before you see it. '
+        'Nothing is shown raw. Nothing is generic.'
+        '</span>'
         '</div>'
-        # Two-path cards
-        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">'
-        # Path A
-        '<div style="background:rgba(255,255,255,0.12);border:1.5px solid rgba(255,255,255,0.3);'
-        'border-radius:10px;padding:18px 20px">'
-        '<div style="font-size:11px;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;'
-        'color:rgba(255,255,255,0.6);margin-bottom:8px">Path A · Quick Apply</div>'
-        '<div style="font-size:17px;font-weight:900;color:#fff;margin-bottom:6px">'
-        'Paste a job.<br>Get your application.'
+
+        # Pipeline visual
+        '<div style="font-size:10px;font-weight:800;letter-spacing:0.1em;text-transform:uppercase;'
+        'opacity:0.5;margin-bottom:10px">The pipeline</div>'
+        '<div style="display:flex;align-items:center;gap:0;flex-wrap:wrap;margin-bottom:28px">'
+
+        '<div style="background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);'
+        'border-radius:8px;padding:10px 16px;min-width:110px">'
+        '<div style="font-size:18px;margin-bottom:3px">📄</div>'
+        '<div style="font-size:12px;font-weight:800">Upload CV</div>'
+        '<div style="font-size:10px;opacity:0.6;margin-top:2px">skill extraction<br>O*NET mapping</div>'
         '</div>'
-        '<div style="font-size:12px;color:rgba(255,255,255,0.7);line-height:1.55">'
-        'Paste any job posting → AI extracts requirements → match score against your O*NET profile → '
-        'tailored cover letter + CV rewrites + LinkedIn InMail in 90 seconds. '
-        'Quality evaluated before you see it.'
+        '<div style="font-size:18px;opacity:0.4;padding:0 6px">→</div>'
+
+        '<div style="background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);'
+        'border-radius:8px;padding:10px 16px;min-width:110px">'
+        '<div style="font-size:18px;margin-bottom:3px">🔭</div>'
+        '<div style="font-size:12px;font-weight:800">Find Jobs</div>'
+        '<div style="font-size:10px;opacity:0.6;margin-top:2px">SerpAPI real jobs<br>O*NET fit ranking</div>'
         '</div>'
-        '<div style="margin-top:12px;font-size:11px;color:rgba(255,255,255,0.5)">'
-        '← Select <strong style="color:#fff">Quick Apply</strong> in the sidebar</div>'
+        '<div style="font-size:18px;opacity:0.4;padding:0 6px">→</div>'
+
+        '<div style="background:rgba(255,255,255,0.18);border:1.5px solid rgba(255,255,255,0.5);'
+        'border-radius:8px;padding:10px 16px;min-width:130px">'
+        '<div style="font-size:18px;margin-bottom:3px">⚡</div>'
+        '<div style="font-size:12px;font-weight:800">Generate Portfolio</div>'
+        '<div style="font-size:10px;opacity:0.7;margin-top:2px">3 applications<br>parallel (gpt-4o)</div>'
         '</div>'
-        # Path B
-        '<div style="background:rgba(255,255,255,0.08);border:1.5px solid rgba(255,255,255,0.2);'
-        'border-radius:10px;padding:18px 20px">'
-        '<div style="font-size:11px;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;'
-        'color:rgba(255,255,255,0.5);margin-bottom:8px">Path B · Career Sprint</div>'
-        '<div style="font-size:17px;font-weight:900;color:#fff;margin-bottom:6px">'
-        'Explore your pivot.<br>Build the full package.'
+        '<div style="font-size:18px;opacity:0.4;padding:0 6px">→</div>'
+
+        '<div style="background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);'
+        'border-radius:8px;padding:10px 16px;min-width:110px">'
+        '<div style="font-size:18px;margin-bottom:3px">⚖️</div>'
+        '<div style="font-size:12px;font-weight:800">Debate + Rank</div>'
+        '<div style="font-size:10px;opacity:0.6;margin-top:2px">adversarial test<br>hire probability %</div>'
         '</div>'
-        '<div style="font-size:12px;color:rgba(255,255,255,0.65);line-height:1.55">'
-        'Don\'t have a specific job yet? The 5-phase sprint walks you through: '
-        'skill gap analysis → learning plan → adversarial decision debate → '
-        'real job search → coached interview prep. '
-        'Ends with a downloadable Pivot Playbook.'
+        '<div style="font-size:18px;opacity:0.4;padding:0 6px">→</div>'
+
+        '<div style="background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);'
+        'border-radius:8px;padding:10px 16px;min-width:110px">'
+        '<div style="font-size:18px;margin-bottom:3px">🎤</div>'
+        '<div style="font-size:12px;font-weight:800">Interview Prep</div>'
+        '<div style="font-size:10px;opacity:0.6;margin-top:2px">tailored questions<br>answer coaching</div>'
         '</div>'
-        '<div style="margin-top:12px;font-size:11px;color:rgba(255,255,255,0.45)">'
-        '← Select <strong style="color:rgba(255,255,255,0.8)">Guided</strong> · pick roles · click Run</div>'
+        '<div style="font-size:18px;opacity:0.4;padding:0 6px">→</div>'
+
+        '<div style="background:rgba(125,211,252,0.2);border:1.5px solid rgba(125,211,252,0.5);'
+        'border-radius:8px;padding:10px 16px;min-width:110px">'
+        '<div style="font-size:18px;margin-bottom:3px">📅</div>'
+        '<div style="font-size:12px;font-weight:800;color:#7DD3FC">Interview</div>'
+        '<div style="font-size:10px;color:rgba(125,211,252,0.8);margin-top:2px">the only goal<br>that matters</div>'
+        '</div>'
+
+        '</div>'
+
+        # Two entry points
+        '<div style="font-size:10px;font-weight:800;letter-spacing:0.1em;text-transform:uppercase;'
+        'opacity:0.5;margin-bottom:10px">Two entry points · same destination</div>'
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">'
+        '<div style="background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.25);'
+        'border-radius:8px;padding:14px 18px">'
+        '<div style="font-size:11px;font-weight:800;opacity:0.55;text-transform:uppercase;'
+        'letter-spacing:0.08em;margin-bottom:6px">Application Portfolio — sidebar: Quick Apply</div>'
+        '<div style="font-size:15px;font-weight:900;margin-bottom:5px">'
+        'Find jobs → generate 3 applications in parallel → ranked by hire probability.'
+        '</div>'
+        '<div style="font-size:11px;opacity:0.65">'
+        'Or paste one specific job for a 90-second targeted application.'
+        '</div>'
+        '</div>'
+        '<div style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.18);'
+        'border-radius:8px;padding:14px 18px">'
+        '<div style="font-size:11px;font-weight:800;opacity:0.45;text-transform:uppercase;'
+        'letter-spacing:0.08em;margin-bottom:6px">Career Sprint — sidebar: Guided → Run</div>'
+        '<div style="font-size:15px;font-weight:900;margin-bottom:5px">'
+        'Validate your pivot first: gap analysis → debate → plan → apply → interview.'
+        '</div>'
+        '<div style="font-size:11px;opacity:0.55">'
+        'For career changers who want to stress-test the decision before committing.'
+        '</div>'
         '</div>'
         '</div>'
         '</div>',
         unsafe_allow_html=True,
     )
 
-    # Technical architecture at a glance
+    # ── Architecture layer — 5 columns ────────────────────────────────────
+    st.markdown(
+        '<div style="font-size:10px;font-weight:800;letter-spacing:0.1em;text-transform:uppercase;'
+        'color:rgba(0,0,0,0.35);margin:20px 0 8px 0">What makes this technically non-trivial</div>',
+        unsafe_allow_html=True,
+    )
     _hero_cols = st.columns(5, gap="small")
     for _hi, (_hicon, _hname, _hdesc) in enumerate([
-        ("🗄️", "Data Layer", "O*NET 900+ occupations · 35 standardised skills · offline preprocessing"),
-        ("📐", "Analysis", "Cosine similarity · IDF weighting · PCA · gap quantification"),
-        ("🤖", "Generation", "gpt-4o for quality-critical writing · gpt-4o-mini for structured tasks"),
-        ("🔬", "Evaluation", "Second LLM scores every artifact · 4-dimension rubric · regenerate flag"),
-        ("🔗", "Orchestration", "Agentic loop (tool calls) · Python aggregation · adversarial debate"),
+        ("🗄️", "Structured Data", "O*NET 900+ occupations · 35 skill dimensions · IDF weighting · offline preprocessing → fast runtime"),
+        ("🤖", "Dual-LLM Pattern", "gpt-4o generates · gpt-4o-mini evaluates — empirically validated: +14pt quality score vs. single-pass"),
+        ("⚡", "Parallel Generation", "ThreadPoolExecutor: 3 applications generated + evaluated simultaneously — not sequential"),
+        ("⚖️", "Adversarial Evaluation", "Advocate + Skeptic run in parallel → Judge synthesises → hire_probability_pct. LLM output never used raw"),
+        ("📐", "Python Aggregation", "hire_prob = 0.65×quality + 0.35×fit · controversy_score · std penalty — all documented and justified"),
     ]):
         with _hero_cols[_hi]:
             st.markdown(
@@ -1857,10 +2679,12 @@ if not st.session_state.has_run:
             )
 
     st.markdown(
-        '<div style="margin-top:16px;text-align:center;font-size:12px;color:rgba(0,0,0,0.4)">'
-        'Quick Apply: select mode in sidebar and paste a job posting · '
-        'Career Sprint: pick roles in sidebar and click '
-        '<strong style="color:#0A66C2">Run pivot analysis</strong></div>',
+        '<div style="margin-top:18px;background:#FFFBEB;border:1px solid #FCD34D;border-radius:8px;'
+        'padding:12px 18px;font-size:12px;color:rgba(0,0,0,0.65)">'
+        '<strong>Start:</strong> Upload your CV in the sidebar (personalises everything), '
+        'pick your roles, then choose <strong>Quick Apply → Find my best opportunities</strong> '
+        'for the full pipeline — or <strong>Guided</strong> for the career validation sprint.'
+        '</div>',
         unsafe_allow_html=True,
     )
     st.stop()

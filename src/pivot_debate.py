@@ -286,6 +286,245 @@ verdict_label options: "Strong Case" (>75%) | "Viable with Conditions" (50-75%) 
     }
 
 
+def run_application_debate(
+    cover_letter: str,
+    job_title: str,
+    company: str,
+    job_description: str,
+    current_role: str,
+    quality_score: Optional[int] = None,
+    model_debate: str = "gpt-4o-mini",
+    model_judge: str = "gpt-4o",
+    prefer_online: bool = True,
+    api_key: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Adversarial debate specifically about a cover letter's interview-getting power.
+
+    Advocate argues the letter IS strong enough to get the interview.
+    Skeptic argues the letter will NOT stand out.
+    Judge (gpt-4o) delivers a hire_probability_pct (0-100) verdict.
+
+    Returns a dict with: advocate, skeptic, verdict, source.
+    The verdict uses hire_probability_pct instead of pivot_viability_pct.
+    """
+    if not prefer_online:
+        return _offline_application_debate(job_title, company, quality_score or 70)
+
+    try:
+        from openai import OpenAI
+        client = OpenAI(api_key=api_key) if api_key else OpenAI()
+    except Exception:
+        return _offline_application_debate(job_title, company, quality_score or 70)
+
+    cl_snippet = cover_letter[:800] if cover_letter else "No cover letter provided."
+    jd_snippet = job_description[:400] if job_description else "No job description provided."
+    score_line = f"Automated quality score: {quality_score}/100" if quality_score else ""
+
+    context = f"""ROLE: {job_title} at {company}
+CANDIDATE BACKGROUND: {current_role}
+{score_line}
+
+JOB DESCRIPTION (excerpt):
+{jd_snippet}
+
+COVER LETTER:
+{cl_snippet}"""
+
+    advocate_prompt = f"""You are the Advocate in a structured cover letter review debate.
+Your mission: make the STRONGEST POSSIBLE CASE that this cover letter will get the candidate an interview.
+Be specific — cite actual phrases from the letter. Do NOT be balanced. You are arguing FOR.
+
+EVIDENCE:
+{context}
+
+Respond ONLY with valid JSON:
+{{
+  "main_argument": "2-3 sentences — the strongest reason this letter will stand out to a hiring manager",
+  "strongest_evidence": [
+    "3 specific quotes or elements from the letter that work in its favour"
+  ],
+  "key_risks_acknowledged": [
+    "1-2 weaknesses you admit exist but argue are minor or outweighed"
+  ],
+  "closing_statement": "1 sentence — the single most compelling reason to send this letter"
+}}"""
+
+    skeptic_prompt = f"""You are the Skeptic in a structured cover letter review debate.
+Your mission: make the STRONGEST POSSIBLE CASE that this cover letter will NOT get the candidate an interview.
+Be specific — cite actual phrases that are weak. Do NOT be balanced. You are arguing AGAINST.
+
+EVIDENCE:
+{context}
+
+Respond ONLY with valid JSON:
+{{
+  "main_argument": "2-3 sentences — the strongest reason this letter will be overlooked",
+  "strongest_evidence": [
+    "3 specific quotes or weaknesses in the letter that hurt its chances"
+  ],
+  "key_risks_acknowledged": [
+    "1-2 strengths you admit exist but argue are insufficient"
+  ],
+  "closing_statement": "1 sentence — the single most important reason to rewrite before sending"
+}}"""
+
+    try:
+        import concurrent.futures
+
+        def _call(prompt: str, mdl: str) -> Dict:
+            r = client.chat.completions.create(
+                model=mdl,
+                messages=[{"role": "user", "content": prompt}],
+                response_format={"type": "json_object"},
+                temperature=0.7,
+                max_tokens=700,
+            )
+            return json.loads(r.choices[0].message.content or "{}")
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as ex:
+            f_adv = ex.submit(_call, advocate_prompt, model_debate)
+            f_skp = ex.submit(_call, skeptic_prompt, model_debate)
+            adv_raw = f_adv.result()
+            skp_raw = f_skp.result()
+    except Exception as e:
+        return {**_offline_application_debate(job_title, company, quality_score or 70), "error": repr(e)}
+
+    advocate = DebateRound(
+        side="advocate",
+        main_argument=adv_raw.get("main_argument", ""),
+        strongest_evidence=adv_raw.get("strongest_evidence", []),
+        key_risks_acknowledged=adv_raw.get("key_risks_acknowledged", []),
+        closing_statement=adv_raw.get("closing_statement", ""),
+    )
+    skeptic = DebateRound(
+        side="skeptic",
+        main_argument=skp_raw.get("main_argument", ""),
+        strongest_evidence=skp_raw.get("strongest_evidence", []),
+        key_risks_acknowledged=skp_raw.get("key_risks_acknowledged", []),
+        closing_statement=skp_raw.get("closing_statement", ""),
+    )
+
+    judge_prompt = f"""You are a senior hiring manager acting as Judge in a cover letter debate.
+An Advocate argues this letter WILL get an interview. A Skeptic argues it WILL NOT.
+Your job: read both sides, weigh the evidence, and deliver a calibrated hire_probability_pct.
+
+EVIDENCE:
+{context}
+
+ADVOCATE:
+{json.dumps(adv_raw, indent=2)}
+
+SKEPTIC:
+{json.dumps(skp_raw, indent=2)}
+
+Respond ONLY with valid JSON:
+{{
+  "hire_probability_pct": 65,
+  "verdict_label": "Strong Candidate",
+  "decisive_factor": "The single element that most influenced your probability estimate",
+  "strongest_pro_argument": "The advocate's strongest point and why you weighted it",
+  "strongest_con_argument": "The skeptic's strongest point and why you weighted it",
+  "judge_reasoning": "3 sentences: how you reached the hire_probability_pct",
+  "top_improvement": "The ONE change that would most increase the probability",
+  "send_as_is": false
+}}
+
+verdict_label options: "Strong Candidate" (>75%) | "Competitive" (55-75%) | "Needs Work" (35-55%) | "Rewrite Recommended" (<35%)
+send_as_is = true only when hire_probability_pct >= 72
+one_line_verdict ≤100 chars"""
+
+    try:
+        judge_resp = client.chat.completions.create(
+            model=model_judge,
+            messages=[{"role": "user", "content": judge_prompt}],
+            response_format={"type": "json_object"},
+            temperature=0.2,
+            max_tokens=700,
+        )
+        judge_raw = json.loads(judge_resp.choices[0].message.content or "{}")
+    except Exception as e:
+        judge_raw = {
+            "hire_probability_pct": 60,
+            "verdict_label": "Competitive",
+            "decisive_factor": "Analysis incomplete due to API error.",
+            "strongest_pro_argument": advocate.main_argument,
+            "strongest_con_argument": skeptic.main_argument,
+            "judge_reasoning": f"Judge API call failed: {repr(e)}",
+            "top_improvement": "Address specificity of the opening paragraph.",
+            "send_as_is": False,
+        }
+
+    # Reuse DebateVerdict dataclass, mapping hire_probability to viability
+    verdict = DebateVerdict(
+        pivot_viability_pct=int(judge_raw.get("hire_probability_pct", 60)),
+        verdict_label=str(judge_raw.get("verdict_label", "Competitive")),
+        decisive_factor=str(judge_raw.get("decisive_factor", "")),
+        strongest_pro_argument=str(judge_raw.get("strongest_pro_argument", "")),
+        strongest_con_argument=str(judge_raw.get("strongest_con_argument", "")),
+        judge_reasoning=str(judge_raw.get("judge_reasoning", "")),
+        conditions_for_success=[str(judge_raw.get("top_improvement", ""))],
+        conditions_for_failure=[],
+        recommended_next_action=str(judge_raw.get("top_improvement", "")),
+        source=f"online (debate: {model_debate}, judge: {model_judge})",
+    )
+
+    return {
+        "advocate": advocate,
+        "skeptic": skeptic,
+        "verdict": verdict,
+        "hire_probability_pct": int(judge_raw.get("hire_probability_pct", 60)),
+        "verdict_label": str(judge_raw.get("verdict_label", "Competitive")),
+        "top_improvement": str(judge_raw.get("top_improvement", "")),
+        "send_as_is": bool(judge_raw.get("send_as_is", False)),
+        "source": "online",
+        "model_debate": model_debate,
+        "model_judge": model_judge,
+    }
+
+
+def _offline_application_debate(
+    job_title: str,
+    company: str,
+    quality_score: int,
+) -> Dict[str, Any]:
+    prob = min(80, quality_score + 5)
+    label = "Strong Candidate" if prob >= 75 else ("Competitive" if prob >= 55 else "Needs Work")
+    return {
+        "advocate": DebateRound(
+            side="advocate",
+            main_argument=f"The cover letter scores {quality_score}/100 on automated quality metrics and clearly addresses the {job_title} role.",
+            strongest_evidence=["Tailored to the specific job requirements", "Clear narrative connecting background to target role", "Professional tone throughout"],
+            key_risks_acknowledged=["Could include more quantified achievements"],
+            closing_statement="This letter provides a strong foundation for a {job_title} application.",
+        ),
+        "skeptic": DebateRound(
+            side="skeptic",
+            main_argument=f"At {quality_score}/100, the letter may lack the specificity needed to stand out for {job_title} at {company}.",
+            strongest_evidence=["Generic phrases may fail to differentiate", "Hiring managers receive many similar applications", "Without API access, content cannot be fully assessed"],
+            key_risks_acknowledged=["Quality score shows real effort"],
+            closing_statement="Add one concrete achievement with a number to lift this to interview-worthy.",
+        ),
+        "verdict": DebateVerdict(
+            pivot_viability_pct=prob,
+            verdict_label=label,
+            decisive_factor="Automated quality score as proxy for specificity",
+            strongest_pro_argument="Clear role alignment and professional tone",
+            strongest_con_argument="Possible lack of quantified evidence",
+            judge_reasoning=f"Offline estimate based on quality score {quality_score}/100.",
+            conditions_for_success=["Add one specific achievement with a metric"],
+            conditions_for_failure=["Generic phrasing that doesn't reference the company"],
+            recommended_next_action="Add one specific achievement with a metric",
+            source="offline",
+        ),
+        "hire_probability_pct": prob,
+        "verdict_label": label,
+        "top_improvement": "Add one specific achievement with a measurable result.",
+        "send_as_is": prob >= 72,
+        "source": "offline",
+    }
+
+
 def _offline_debate(
     current_role: str,
     target_role: str,
