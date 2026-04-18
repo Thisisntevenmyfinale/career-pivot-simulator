@@ -1496,7 +1496,7 @@ with st.sidebar:
         unsafe_allow_html=True,
     )
 
-    mode = st.radio("Mode", options=["Guided", "Quick Apply", "Research"], key="mode_radio", horizontal=True)
+    mode = st.radio("Mode", options=["Guided", "Quick Apply", "Advanced"], key="mode_radio", horizontal=True)
     guided = mode == "Guided"
     quick_apply = mode == "Quick Apply"
 
@@ -2635,10 +2635,53 @@ if quick_apply:
                     .sort_values("gap", ascending=False).head(4)["skill"].tolist()
                 )
                 _qa_mc1, _qa_mc2, _qa_mc3 = st.columns(3)
-                _qa_mc1.metric("Match score", f"{_qa_match_pct:.0f}/100")
-                _qa_mc2.metric("Skill gaps", str(_qa_n_gaps))
+                _qa_pct_label = f"top {100 - int(_qa_match_pct):.0f}% of all pivots" if _qa_match_pct else None
+                _qa_mc1.metric("Match score", f"{_qa_match_pct:.0f}/100", delta=_qa_pct_label,
+                               help="IDF-weighted cosine similarity (O*NET 35-dimension skill space)")
+                _qa_mc2.metric("Skill gaps", str(_qa_n_gaps), delta="to close" if _qa_n_gaps > 0 else "none",
+                               delta_color="inverse", help="Skills where target importance exceeds yours")
                 _qa_mc3.metric("Salary range", _qa_p.get("salary_range","") or "Not listed")
-                if _qa_top_gaps:
+
+                # ── Radar chart: you vs. this job's O*NET profile ────────
+                if not _qa_gap_df_local.empty and str(current) in mat.index and _qa_occ_pick in mat.index:
+                    try:
+                        _qr_cur = mat.loc[str(current)].astype(float)
+                        _qr_tgt = mat.loc[_qa_occ_pick].astype(float)
+                        _qr_top = ((_qr_cur + _qr_tgt) / 2).nlargest(9).index.tolist()
+                        _qr_theta = _qr_top + [_qr_top[0]]
+                        _qr_fig = go.Figure()
+                        _qr_fig.add_trace(go.Scatterpolar(
+                            r=[float(_qr_tgt.get(s, 0)) for s in _qr_top] + [float(_qr_tgt.get(_qr_top[0], 0))],
+                            theta=_qr_theta, fill="toself", name="Job requirement",
+                            line=dict(color="#057642", width=2), fillcolor="rgba(5,118,66,0.12)",
+                        ))
+                        _qr_fig.add_trace(go.Scatterpolar(
+                            r=[float(_qr_cur.get(s, 0)) for s in _qr_top] + [float(_qr_cur.get(_qr_top[0], 0))],
+                            theta=_qr_theta, fill="toself", name="Your profile",
+                            line=dict(color="#0A66C2", width=2), fillcolor="rgba(10,102,194,0.18)",
+                        ))
+                        _qr_fig.update_layout(
+                            polar=dict(
+                                radialaxis=dict(visible=True, range=[0, 5], tickfont=dict(size=8)),
+                                angularaxis=dict(tickfont=dict(size=9)),
+                                bgcolor="rgba(248,250,255,0.8)",
+                            ),
+                            legend=dict(orientation="h", yanchor="bottom", y=-0.18, xanchor="center", x=0.5,
+                                        font=dict(size=10)),
+                            height=280, margin=dict(l=20, r=20, t=12, b=30),
+                            paper_bgcolor="rgba(0,0,0,0)",
+                        )
+                        st.markdown(
+                            '<div style="font-size:10px;font-weight:800;text-transform:uppercase;'
+                            'letter-spacing:0.08em;color:rgba(0,0,0,0.4);margin:8px 0 2px 0">'
+                            'Skill fit: your profile vs. job requirement (O*NET top 9 dimensions)</div>',
+                            unsafe_allow_html=True,
+                        )
+                        st.plotly_chart(_qr_fig, use_container_width=True, config={"displayModeBar": False})
+                    except Exception:
+                        if _qa_top_gaps:
+                            st.caption(f"Biggest gaps vs. this role: {' · '.join(_qa_top_gaps)}")
+                elif _qa_top_gaps:
                     st.caption(f"Biggest gaps vs. this role: {' · '.join(_qa_top_gaps)}")
 
     # ── Phase 3: Generate application ────────────────────────────────────────
@@ -3848,7 +3891,7 @@ st.markdown(
 
 # ══════════════════════════════════════════════════════════════════════════════
 # SPRINT MODE — Guided linear flow (one active step at a time)
-# The research mode (tabs) is below under `if not guided:`
+# The advanced mode (tabs) is below under `if not guided:`
 # ══════════════════════════════════════════════════════════════════════════════
 if guided:
 
@@ -3945,14 +3988,119 @@ if guided:
         )
         # Always show assess summary
         _s1c1, _s1c2, _s1c3, _s1c4 = st.columns(4)
-        _s1c1.metric("Match", f"{match_score_display:.0f}/100")
-        _s1c2.metric("Skill gaps", str(_n_gaps))
-        _s1c3.metric("Confidence", f"{int(conf['confidence_score'])}/100")
-        _s1c4.metric("Timeline", f"~{_weeks}w")
-        if _n_gaps > 0 and not gap_df.empty:
-            _top3_gaps = (gap_df[gap_df["gap"] > 0]
-                         .sort_values("gap", ascending=False).head(3)["skill"].tolist())
-            st.caption(f"Top 3 gaps to close: {' · '.join(_top3_gaps)}")
+        _match_pct_label = f"top {100 - int(pct_target):.0f}%" if pct_target > 0 else None
+        _s1c1.metric(
+            "Match score",
+            f"{match_score_display:.0f}/100",
+            delta=_match_pct_label,
+            delta_color="normal",
+            help="O*NET IDF-weighted cosine similarity · delta = percentile among all 900+ occupation pairs from your role",
+        )
+        _gap_delta = ("critical — many gaps" if _n_gaps > 25 else
+                      "manageable" if _n_gaps <= 12 else "significant")
+        _s1c2.metric(
+            "Skill gaps",
+            str(_n_gaps),
+            delta=_gap_delta,
+            delta_color="inverse",
+            help="Skills where target importance exceeds current. Ranked by investment_priority = gap × target_importance.",
+        )
+        _s1c3.metric(
+            "Confidence",
+            f"{int(conf['confidence_score'])}/100",
+            help="Pair-specific: Jaccard profile overlap (50%) + co-rated skill density (30%) + PCA 2D EVR (20%). Not a probability.",
+        )
+        _s1c4.metric("Timeline", f"~{_weeks}w", help="Estimate: n_gaps × 3.5w × (1 − match/200). Actual varies by skill learnability.")
+
+        # ── Radar chart: current vs target skill profile ─────────────────
+        if not gap_df.empty and str(current) in mat.index and str(target) in mat.index:
+            try:
+                _rc_cur = mat.loc[str(current)].astype(float)
+                _rc_tgt = mat.loc[str(target)].astype(float)
+                # Select top 10 skills by combined importance — these tell the biggest story
+                _rc_combined = (_rc_cur + _rc_tgt) / 2
+                _rc_skills = _rc_combined.nlargest(10).index.tolist()
+                _rc_cur_vals = [float(_rc_cur.get(s, 0)) for s in _rc_skills]
+                _rc_tgt_vals = [float(_rc_tgt.get(s, 0)) for s in _rc_skills]
+                # Close the polygon
+                _rc_theta = _rc_skills + [_rc_skills[0]]
+                _rc_cur_r = _rc_cur_vals + [_rc_cur_vals[0]]
+                _rc_tgt_r = _rc_tgt_vals + [_rc_tgt_vals[0]]
+
+                _rc_fig = go.Figure()
+                _rc_fig.add_trace(go.Scatterpolar(
+                    r=_rc_tgt_r, theta=_rc_theta, fill="toself",
+                    name=str(target)[:28],
+                    line=dict(color="#057642", width=2),
+                    fillcolor="rgba(5, 118, 66, 0.12)",
+                ))
+                _rc_fig.add_trace(go.Scatterpolar(
+                    r=_rc_cur_r, theta=_rc_theta, fill="toself",
+                    name=str(current)[:28],
+                    line=dict(color="#0A66C2", width=2),
+                    fillcolor="rgba(10, 102, 194, 0.18)",
+                ))
+                _rc_fig.update_layout(
+                    polar=dict(
+                        radialaxis=dict(visible=True, range=[0, 5], tickfont=dict(size=8)),
+                        angularaxis=dict(tickfont=dict(size=9)),
+                        bgcolor="rgba(248,250,255,0.8)",
+                    ),
+                    legend=dict(orientation="h", yanchor="bottom", y=-0.15, xanchor="center", x=0.5,
+                                font=dict(size=10)),
+                    height=310,
+                    margin=dict(l=20, r=20, t=18, b=30),
+                    paper_bgcolor="rgba(0,0,0,0)",
+                )
+                _rc_col1, _rc_col2 = st.columns([3, 2])
+                with _rc_col1:
+                    st.markdown(
+                        '<div style="font-size:10px;font-weight:800;text-transform:uppercase;'
+                        'letter-spacing:0.08em;color:rgba(0,0,0,0.4);margin-bottom:2px">'
+                        'Skill Profile — current vs. target (top 10 shared dimensions)</div>',
+                        unsafe_allow_html=True,
+                    )
+                    st.plotly_chart(_rc_fig, use_container_width=True, config={"displayModeBar": False})
+
+                # ── Gap bar chart (investment priority) ───────────────────
+                with _rc_col2:
+                    _gap_top = (
+                        gap_df[gap_df["gap"] > 0]
+                        .sort_values("investment_priority", ascending=False)
+                        .head(8)
+                    )
+                    if not _gap_top.empty:
+                        _gap_colors = [
+                            "#C91C1C" if g > 2.0 else
+                            "#A05A00" if g > 1.0 else "#0A66C2"
+                            for g in _gap_top["gap"]
+                        ]
+                        _gap_fig = go.Figure(go.Bar(
+                            x=_gap_top["investment_priority"],
+                            y=[s[:22] for s in _gap_top["skill"]],
+                            orientation="h",
+                            marker_color=_gap_colors,
+                            text=[f"{g:.1f}" for g in _gap_top["gap"]],
+                            textposition="outside",
+                            hovertemplate="<b>%{y}</b><br>Gap: %{text}<br>Priority: %{x:.1f}<extra></extra>",
+                        ))
+                        _gap_fig.update_layout(
+                            title=dict(text="Gap priority (gap × target importance)",
+                                       font=dict(size=10), x=0, pad=dict(b=0)),
+                            height=310,
+                            margin=dict(l=5, r=50, t=30, b=5),
+                            xaxis=dict(title="", showticklabels=False, showgrid=False),
+                            yaxis=dict(autorange="reversed", tickfont=dict(size=9)),
+                            paper_bgcolor="rgba(0,0,0,0)",
+                            plot_bgcolor="rgba(248,250,255,0.5)",
+                        )
+                        st.plotly_chart(_gap_fig, use_container_width=True, config={"displayModeBar": False})
+            except Exception:
+                # Visualisation is non-critical; fall back to text
+                if _n_gaps > 0 and not gap_df.empty:
+                    _top3_gaps = (gap_df[gap_df["gap"] > 0]
+                                  .sort_values("gap", ascending=False).head(3)["skill"].tolist())
+                    st.caption(f"Top 3 gaps to close: {' · '.join(_top3_gaps)}")
 
     # ── AI AGENT DEEP DIVE — between Step 1 and Step 2 ────────────────────
     # The Career Intelligence Agent is a gpt-4o orchestrator that selects tools,
@@ -4531,6 +4679,41 @@ if guided:
             unsafe_allow_html=True,
         )
 
+        # ── Sprint scorecard chart ────────────────────────────────────────
+        _sc_labels = ["O*NET Match", "Learning Plan", "Pivot Viability", "Application", "Interview"]
+        _sc_values = [
+            int(match_score_display),
+            _fin_plan_score or 0,
+            _fin_viab or 0,
+            _fin_pkg_score or 0,
+            _fin_itv_avg or 0,
+        ]
+        _sc_colors = [
+            "#057642" if v >= 75 else "#A05A00" if v >= 55 else "#B71C1C"
+            for v in _sc_values
+        ]
+        _sc_fig = go.Figure(go.Bar(
+            x=_sc_values,
+            y=_sc_labels,
+            orientation="h",
+            marker_color=_sc_colors,
+            text=[f"{v}/100" if v else "—" for v in _sc_values],
+            textposition="outside",
+            cliponaxis=False,
+        ))
+        _sc_fig.add_vline(x=75, line_dash="dot", line_color="rgba(0,0,0,0.25)", line_width=1.5)
+        _sc_fig.update_layout(
+            xaxis=dict(range=[0, 115], showticklabels=False, showgrid=False, zeroline=False),
+            yaxis=dict(tickfont=dict(size=11, color="#1D2226"), autorange="reversed"),
+            height=200,
+            margin=dict(l=0, r=60, t=8, b=8),
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(248,250,255,0.6)",
+            annotations=[dict(x=75, y=-0.6, text="interview-ready threshold", showarrow=False,
+                              font=dict(size=9, color="rgba(0,0,0,0.35)"), xanchor="center")],
+        )
+        st.plotly_chart(_sc_fig, use_container_width=True, config={"displayModeBar": False})
+
         # Build downloadable Pivot Playbook markdown
         _playbook_lines = [
             f"# Career Pivot Playbook",
@@ -4652,7 +4835,7 @@ if guided:
 
     st.markdown(
         '<div style="font-size:11px;color:rgba(0,0,0,0.35);text-align:right;margin-top:8px">'
-        'Switch to <strong>Research</strong> mode in the sidebar for advanced tools</div>',
+        'Switch to <strong>Advanced</strong> mode in the sidebar for power-user tools</div>',
         unsafe_allow_html=True,
     )
 
@@ -4760,7 +4943,7 @@ with _tab_assess:
                         if st.button("Reset", use_container_width=True, key="reset_route_guided", type="secondary"):
                             st.session_state.route_result = None
                 else:
-                    st.caption("Research mode: custom graph settings from the sidebar.")
+                    st.caption("Advanced mode: custom graph settings from the sidebar.")
                     col_a, col_b = st.columns([1, 1])
                     with col_a:
                         if st.button("Find route", use_container_width=True):
