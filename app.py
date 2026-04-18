@@ -1491,6 +1491,249 @@ if quick_apply:
         _qa_pf_jobs = st.session_state.qa_portfolio_jobs
         _qa_pf_pkgs = st.session_state.qa_portfolio_packages or {}
 
+        # ── AUTO PIPELINE ────────────────────────────────────────────────────
+        # One button. Entire pipeline runs automatically.
+        # CV → find jobs → generate 3 applications in parallel → adversarial
+        # verdict → interview prep. Live progress via st.status().
+        # ─────────────────────────────────────────────────────────────────────
+        _auto_pipeline_done = (
+            bool(_qa_pf_pkgs) and
+            bool(st.session_state.qa_debate) and
+            bool(st.session_state.qa_questions)
+        )
+
+        if not _auto_pipeline_done:
+            st.markdown(
+                '<div style="background:linear-gradient(135deg,#004182,#0A66C2);'
+                'border-radius:12px;padding:22px 26px;margin-bottom:12px;color:#fff">'
+                '<div style="font-size:11px;font-weight:800;opacity:0.6;text-transform:uppercase;'
+                'letter-spacing:0.1em;margin-bottom:8px">Auto Pipeline — recommended</div>'
+                '<div style="font-size:18px;font-weight:900;margin-bottom:6px">'
+                'One click. Full pipeline.'
+                '</div>'
+                '<div style="font-size:12px;opacity:0.75;line-height:1.6">'
+                'Find jobs → score all by O*NET fit → generate 3 tailored applications in parallel → '
+                'adversarial debate → hire probability ranking → interview prep. '
+                'Every output evaluated before shown. ~60 seconds.'
+                '</div>'
+                '</div>',
+                unsafe_allow_html=True,
+            )
+            _auto_cv_ok = bool((st.session_state.cv_text or "").strip())
+            if not _auto_cv_ok:
+                st.warning("Upload your CV in the sidebar first — it personalises every application.")
+
+            _auto_loc = st.text_input(
+                "Location", value="United States", key="qa_auto_loc",
+                placeholder="New York · Remote · Germany",
+                label_visibility="visible",
+                help="Used for job search",
+            )
+
+            if st.button(
+                "⚡ Launch Interview Pipeline",
+                key="qa_launch_pipeline",
+                type="primary",
+                use_container_width=True,
+                disabled=not _auto_cv_ok,
+            ):
+                # ── FULL AUTO PIPELINE ────────────────────────────────────
+                with st.status("Running your Interview Pipeline…", expanded=True) as _auto_status:
+
+                    # STEP 1: Job Discovery
+                    st.write(f"🔭 **Step 1/5** — Finding {str(target)} jobs…")
+                    _auto_jobs: List[Dict] = []
+                    if _qa_serp_key:
+                        _rj2 = search_real_jobs(
+                            str(target), location=_auto_loc or "United States",
+                            n_jobs=5, serp_api_key=_qa_serp_key,
+                        )
+                        if _rj2 and not _rj2[0].get("error"):
+                            _auto_jobs = _rj2
+                    if not _auto_jobs:
+                        _ai_ls2 = generate_job_listings(
+                            str(current), str(target), n=5,
+                            prefer_online=bool(_qa_key), api_key=_qa_key or None,
+                        )
+                        _auto_jobs = [
+                            {"title": j.title, "company": j.company, "location": j.location,
+                             "description": j.description, "apply_link": j.apply_link,
+                             "salary": getattr(j, "salary_range", ""), "is_real": False}
+                            for j in _ai_ls2
+                        ]
+                    st.session_state.qa_portfolio_jobs = _auto_jobs
+                    _auto_src = "live (SerpAPI)" if _qa_serp_key and _auto_jobs and _auto_jobs[0].get("is_real") else "AI-generated"
+                    st.write(f"✓ Found **{len(_auto_jobs)} jobs** ({_auto_src})")
+
+                    # STEP 2: Score + select top 3
+                    st.write("📐 **Step 2/5** — Scoring all jobs by O*NET fit…")
+                    _auto_scored = []
+                    for _aj in _auto_jobs:
+                        _aj_title = _aj.get("title", "")
+                        _aj_occ = (_find_closest_occupation(_aj_title, list(occupations)) or [str(target)])[0]
+                        _aj_ci = OCC_TO_IDX.get(str(current), -1)
+                        _aj_ti = OCC_TO_IDX.get(_aj_occ, -1)
+                        _aj_fit = 50.0
+                        if _aj_ci >= 0 and _aj_ti >= 0:
+                            try:
+                                _aj_core = build_cosine_core(bool(use_idf))
+                                _aj_fit = round(float(np.dot(_aj_core["Xn"][_aj_ci], _aj_core["Xn"][_aj_ti])) * 100, 1)
+                            except Exception:
+                                pass
+                        _auto_scored.append((_aj_fit, _aj))
+                    _auto_scored.sort(reverse=True, key=lambda x: x[0])
+                    _auto_top3 = [j for _, j in _auto_scored[:3]]
+                    st.write(
+                        f"✓ Top 3 selected by fit: "
+                        + " · ".join(
+                            f'**{j.get("title","")}** @ {j.get("company","")} ({round(sc)}%)'
+                            for sc, j in _auto_scored[:3]
+                        )
+                    )
+
+                    # STEP 3: Parallel application generation
+                    st.write(f"⚡ **Step 3/5** — Generating 3 applications in parallel (gpt-4o × 3)…")
+                    import concurrent.futures as _auto_cf
+
+                    def _auto_worker(idx_job2):
+                        _ai2, _aj2 = idx_job2
+                        return _ai2, _portfolio_item_worker(
+                            job_dict=_aj2,
+                            current_occ=str(current),
+                            cv_profile=st.session_state.cv_profile,
+                            cv_text=st.session_state.cv_text or "",
+                            api_key=_qa_key,
+                            mat=mat,
+                            use_idf=bool(use_idf),
+                            occ_to_idx=OCC_TO_IDX,
+                            occupations_list=list(occupations),
+                        )
+
+                    _auto_pkgs: Dict[int, Any] = {}
+                    with _auto_cf.ThreadPoolExecutor(max_workers=3) as _auto_ex:
+                        for _ai3, _ares in _auto_ex.map(
+                            _auto_worker,
+                            [(i, _auto_top3[i]) for i in range(len(_auto_top3))],
+                        ):
+                            _auto_pkgs[_ai3] = _ares
+                    st.session_state.qa_portfolio_packages = _auto_pkgs
+
+                    # Show results with hire probability
+                    _auto_ranked = sorted(_auto_pkgs.items(), key=lambda kv: kv[1].get("hire_prob", 0), reverse=True)
+                    for _rank_i, (_ri, _rd) in enumerate(_auto_ranked):
+                        _rhp = _rd.get("hire_prob", 60)
+                        _rjt = _rd.get("job", {}).get("title", "")
+                        _rco = _rd.get("job", {}).get("company", "")
+                        _rq = _rd.get("eval", {}).get("overall_score", "—")
+                        _rft = _rd.get("fit_score", 0)
+                        _medal = "🥇" if _rank_i == 0 else ("🥈" if _rank_i == 1 else "🥉")
+                        st.write(f"{_medal} **{_rjt}** @ {_rco} — hire prob: **{_rhp}%** (quality: {_rq}/100 · fit: {_rft:.0f})")
+
+                    # STEP 4: Adversarial verdict on best application
+                    st.write("⚖️ **Step 4/5** — Running adversarial verdict on top application (gpt-4o Judge)…")
+                    _best_pkg_data = _auto_ranked[0][1] if _auto_ranked else {}
+                    _best_pkg: Optional[ApplicationPackage] = _best_pkg_data.get("package")
+                    _best_job = _best_pkg_data.get("job", {})
+                    _auto_debate = run_application_debate(
+                        cover_letter=_best_pkg.cover_letter if _best_pkg else "",
+                        job_title=_best_job.get("title", str(target)),
+                        company=_best_job.get("company", ""),
+                        job_description=_best_job.get("description", ""),
+                        current_role=str(current),
+                        quality_score=_best_pkg_data.get("eval", {}).get("overall_score"),
+                        model_debate="gpt-4o-mini",
+                        model_judge="gpt-4o",
+                        prefer_online=bool(_qa_key),
+                        api_key=_qa_key or None,
+                    )
+                    st.session_state.qa_debate = _auto_debate
+                    _auto_hire_pct = _auto_debate.get("hire_probability_pct", 60)
+                    _auto_vlabel = _auto_debate.get("verdict_label", "Competitive")
+                    st.write(f"✓ Adversarial verdict: **{_auto_hire_pct}% hire probability** — {_auto_vlabel}")
+
+                    # STEP 5: Interview prep for top job
+                    st.write("🎤 **Step 5/5** — Generating tailored interview questions…")
+                    _auto_qs = generate_interview_questions(
+                        target_role=_best_job.get("title", str(target)),
+                        job_description=_best_job.get("description", ""),
+                        cv_text=st.session_state.cv_text or "",
+                        n=5,
+                        api_key=_qa_key or None,
+                        prefer_online=bool(_qa_key),
+                    )
+                    st.session_state.qa_questions = _auto_qs
+                    st.session_state.qa_answers = {}
+                    st.session_state.qa_answer_evals = {}
+                    # Also set qa_parsed so the paste flow doesn't conflict
+                    st.session_state.qa_parsed = {
+                        "job_title": _best_job.get("title", str(target)),
+                        "company": _best_job.get("company", ""),
+                        "cleaned_description": _best_job.get("description", ""),
+                        "key_requirements": [],
+                    }
+                    st.write(f"✓ {len(_auto_qs)} interview questions generated")
+
+                    _auto_best_title = _best_job.get("title", str(target))
+                    _auto_best_co = _best_job.get("company", "")
+                    _auto_status.update(
+                        label=f"Pipeline complete — Focus on {_auto_best_co} ({_auto_hire_pct}% hire probability)",
+                        state="complete",
+                    )
+
+                st.rerun()
+
+            st.markdown(
+                '<div style="text-align:center;font-size:11px;color:rgba(0,0,0,0.35);margin:6px 0 14px 0">'
+                'or use the manual steps below to control each stage individually'
+                '</div>',
+                unsafe_allow_html=True,
+            )
+        else:
+            # Pipeline already run — show summary banner
+            _auto_ranked2 = sorted(
+                (st.session_state.qa_portfolio_packages or {}).items(),
+                key=lambda kv: kv[1].get("hire_prob", 0), reverse=True
+            )
+            _auto_best2 = _auto_ranked2[0][1] if _auto_ranked2 else {}
+            _auto_hp2 = _auto_best2.get("hire_prob", 60)
+            _auto_jt2 = _auto_best2.get("job", {}).get("title", str(target))
+            _auto_co2 = _auto_best2.get("job", {}).get("company", "")
+            _auto_db2 = st.session_state.qa_debate or {}
+            _auto_verdict2 = _auto_db2.get("verdict_label", "")
+            st.markdown(
+                f'<div style="background:linear-gradient(135deg,#057642,#0A8C52);'
+                f'border-radius:12px;padding:20px 26px;margin-bottom:14px;color:#fff;'
+                f'display:flex;align-items:center;gap:20px">'
+                f'<div style="text-align:center;flex-shrink:0">'
+                f'<div style="font-size:38px;font-weight:900;line-height:1">{_auto_hp2}%</div>'
+                f'<div style="font-size:10px;font-weight:700;opacity:0.7;text-transform:uppercase;'
+                f'letter-spacing:0.08em">hire probability</div>'
+                f'</div>'
+                f'<div>'
+                f'<div style="font-size:17px;font-weight:900">Pipeline complete</div>'
+                f'<div style="font-size:13px;opacity:0.85;margin-top:3px">'
+                f'Focus on: <strong>{_auto_jt2}</strong> @ {_auto_co2}'
+                f'{(" — " + _auto_verdict2) if _auto_verdict2 else ""}'
+                f'</div>'
+                f'<div style="font-size:11px;opacity:0.65;margin-top:4px">'
+                f'Applications generated · Adversarial verdict complete · Interview prep ready'
+                f'</div>'
+                f'</div>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+            if st.button("↩ Run pipeline again", key="qa_pipeline_reset", type="secondary"):
+                st.session_state.qa_portfolio_jobs = None
+                st.session_state.qa_portfolio_packages = {}
+                st.session_state.qa_debate = None
+                st.session_state.qa_questions = None
+                st.session_state.qa_answers = {}
+                st.session_state.qa_answer_evals = {}
+                st.session_state.qa_parsed = None
+                st.rerun()
+
+        st.divider()
+
         # Step F1: Job Discovery ─────────────────────────────────────────────
         with st.container(border=True):
             _f1_done = bool(_qa_pf_jobs)
