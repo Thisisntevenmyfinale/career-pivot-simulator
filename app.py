@@ -1592,7 +1592,7 @@ with st.sidebar:
             help="Upload or paste your CV first",
         ):
             if _cv_ready:
-                with st.spinner("Mapping your skills to O*NET…"):
+                with st.spinner("Mapping your skills to O*NET (2-pass: extract → validate against taxonomy)…"):
                     api_key_for_cv = ""
                     try:
                         api_key_for_cv = str(st.secrets.get("OPENAI_API_KEY", "")).strip()
