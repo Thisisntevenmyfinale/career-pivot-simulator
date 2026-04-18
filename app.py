@@ -1628,16 +1628,17 @@ with st.sidebar:
         )
 
     st.divider()
-    st.markdown(
-        '<div style="font-size:11px;font-weight:800;letter-spacing:0.06em;text-transform:uppercase;color:rgba(0,0,0,0.45);margin-bottom:6px">Run Analysis</div>',
-        unsafe_allow_html=True,
-    )
-    _run_btn_label = (
-        "🧭 Start Career Sprint →" if guided else
-        "🔬 Open Advanced Analysis →"
-    )
-    if st.button(_run_btn_label, use_container_width=True, type="primary"):
-        st.session_state.has_run = True
+    if not quick_apply:
+        st.markdown(
+            '<div style="font-size:11px;font-weight:800;letter-spacing:0.06em;text-transform:uppercase;color:rgba(0,0,0,0.45);margin-bottom:6px">Run Analysis</div>',
+            unsafe_allow_html=True,
+        )
+        _run_btn_label = (
+            "🧭 Start Career Sprint →" if guided else
+            "🔬 Open Advanced Analysis →"
+        )
+        if st.button(_run_btn_label, use_container_width=True, type="primary"):
+            st.session_state.has_run = True
 
     st.caption(f"Dataset · {mat.shape[0]} occupations · {mat.shape[1]} skills")
 
