@@ -1533,12 +1533,15 @@ with st.sidebar:
         use_idf = True       # IDF-weighted is always the better default for non-expert users
         score_mode = "Percentile"
 
-    if not guided:
+    if not guided and not quick_apply:
         st.divider()
         st.markdown("**Research knobs**")
         k_neighbors = st.slider("kNN neighbors", 2, 20, int(st.session_state.route_config["k_neighbors"]), 1)
         max_steps = st.slider("Max steps", 2, 10, int(st.session_state.route_config["max_steps"]), 1)
         st.session_state.route_config = {"k_neighbors": int(k_neighbors), "max_steps": int(max_steps)}
+    else:
+        k_neighbors = int(st.session_state.route_config["k_neighbors"])
+        max_steps = int(st.session_state.route_config["max_steps"])
 
     st.divider()
     # ── CV Upload — drag & drop ────────────────────────────────
@@ -3159,7 +3162,7 @@ if quick_apply:
                                 st.session_state.qa_ab_test = None
                                 st.rerun()
 
-    # ── Phase 3.5: Application Debate — adversarial hiring verdict ──────────
+    # ── Phase 4: Application Debate — adversarial hiring verdict ───────────
     if st.session_state.qa_package:
         _qa_pkg_db: Optional[ApplicationPackage] = st.session_state.qa_package
         _qa_p_db = st.session_state.qa_parsed or {}
@@ -3172,7 +3175,7 @@ if quick_apply:
                 f'background:{"#7A2A8A" if _qa_db_done else "rgba(0,0,0,0.88)"};'
                 f'display:flex;align-items:center;justify-content:center;'
                 f'font-size:11px;font-weight:900;color:#fff">{"✓" if _qa_db_done else "⚖"}</div>'
-                f'<div><div style="font-size:14px;font-weight:800">3.5 · Get the hiring manager\'s verdict</div>'
+                f'<div><div style="font-size:14px;font-weight:800">4 · Get the hiring manager\'s verdict</div>'
                 f'<div style="font-size:11px;color:rgba(0,0,0,0.45)">'
                 f'Advocate vs. Skeptic adversarial debate · gpt-4o judge · hire probability</div>'
                 f'</div></div>',
@@ -3306,7 +3309,7 @@ if quick_apply:
                     f"pattern as the career pivot debate, repurposed for application quality. Source: {_qa_db_src}"
                 )
 
-    # ── Phase 4: Interview prep ──────────────────────────────────────────────
+    # ── Phase 5: Interview prep ──────────────────────────────────────────────
     if st.session_state.qa_package:
         _qa_p3 = st.session_state.qa_parsed or {}
         _qa_itv_done = bool(st.session_state.qa_questions)
@@ -3318,7 +3321,7 @@ if quick_apply:
                 f'background:{"#0A66C2" if _qa_itv_done else "rgba(0,0,0,0.88)"};'
                 f'display:flex;align-items:center;justify-content:center;'
                 f'font-size:11px;font-weight:900;color:#fff">{"✓" if _qa_itv_done else "→"}</div>'
-                f'<div><div style="font-size:14px;font-weight:800">4 · Prepare for the interview</div>'
+                f'<div><div style="font-size:14px;font-weight:800">5 · Prepare for the interview</div>'
                 f'<div style="font-size:11px;color:rgba(0,0,0,0.45)">'
                 f'Role-specific questions · answer scoring · coached rewrites</div>'
                 f'</div></div>',
@@ -3342,7 +3345,7 @@ if quick_apply:
                 _qa_qs = st.session_state.qa_questions or []
                 _qa_ans = st.session_state.qa_answers or {}
                 _qa_evs = st.session_state.qa_answer_evals or {}
-                for _qa_qi, _qa_q in enumerate(_qa_qs[:4]):
+                for _qa_qi, _qa_q in enumerate(_qa_qs[:5]):
                     _qa_ev_q = _qa_evs.get(_qa_qi)
                     _qa_q_bg = "#F0FAF4" if _qa_ev_q else "#F8FAFF"
                     _qa_q_border = "#057642" if _qa_ev_q else "#A0C3F0"
@@ -3395,7 +3398,7 @@ if quick_apply:
                         with st.expander("✨ Coached answer"):
                             st.markdown(_qa_ev_q["coached_answer"])
 
-    # ── Phase 5: Download everything ────────────────────────────────────────
+    # ── Phase 6: Download everything ────────────────────────────────────────
     if st.session_state.qa_package:
         _qa_p4 = st.session_state.qa_parsed or {}
         _qa_pkg4: Optional[ApplicationPackage] = st.session_state.qa_package
