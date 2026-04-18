@@ -3444,7 +3444,7 @@ if quick_apply:
             _qa_doc_lines.append("\n---\n")
         if _qa_qs4:
             _qa_doc_lines.append("## Interview Preparation\n")
-            for _qi4, _qq4 in enumerate(_qa_qs4[:4]):
+            for _qi4, _qq4 in enumerate(_qa_qs4[:5]):
                 _qa_doc_lines.append(f"### Q{_qi4+1}: {_qq4.get('question','')}")
                 _qa_doc_lines.append(f"*{_qq4.get('type','')} · {_qq4.get('difficulty','')}*\n")
                 if _qa_ans4.get(_qi4):
