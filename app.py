@@ -1987,7 +1987,7 @@ if quick_apply:
                 '<div style="font-size:12px;opacity:0.75;line-height:1.6">'
                 'Find jobs → score all by O*NET fit → generate 3 tailored applications in parallel → '
                 'adversarial debate → hire probability ranking → interview prep. '
-                'Every output evaluated before shown. ~60 seconds.'
+                'Each application scored before ranking. ~60 seconds.'
                 '</div>'
                 '</div>',
                 unsafe_allow_html=True,
@@ -3630,7 +3630,7 @@ if not st.session_state.has_run:
     _arch_cards = [
         ("🗄️", "Structured Data", "O*NET 894 occupations × 119 skill dimensions · IDF weighting · cosine similarity offline → O(1) runtime"),
         ("🤖", "Dual-LLM Pattern", "gpt-4o generates quality-critical artifacts → gpt-4o-mini evaluates each. Validated: +14pt on cover letters vs. single-pass (n=3 zero-shot)"),
-        ("⚡", "Parallel Generation", "ThreadPoolExecutor: 3 applications generated + evaluated simultaneously — never sequential"),
+        ("⚡", "Parallel Generation", "Find mode: ThreadPoolExecutor generates + evaluates 3 applications simultaneously. Advocate + Skeptic also run in parallel."),
         ("🔁", "Agentic Loop", "gpt-4o orchestrator selects tools, chains steps, detects conflicts — multi-step reasoning, not prompt chaining"),
         ("⚖️", "Adversarial Evaluation", "Advocate + Skeptic (parallel) → Judge synthesises → hire_prob %. LLM output never shown raw"),
         ("📐", "Python Aggregation", "Two layers: (1) hire_prob = 0.65×quality + 0.35×fit for portfolio ranking · (2) controversy score + std penalty for multi-reviewer consensus — neither formula used raw"),
