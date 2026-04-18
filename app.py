@@ -1285,6 +1285,7 @@ OCC_TO_IDX: dict[str, int] = {o: i for i, o in enumerate(OCCS)}
 # ============================================================
 DEFAULT_STATE = {
     "has_run": False,
+    "mode_radio": "Guided",   # controls sidebar mode selector — writable from landing page CTA
     "target_override": None,
     "route_result": None,
     "route_config": {"k_neighbors": 10, "max_steps": 6},
@@ -1495,7 +1496,7 @@ with st.sidebar:
         unsafe_allow_html=True,
     )
 
-    mode = st.radio("Mode", options=["Guided", "Quick Apply", "Research"], index=0, horizontal=True)
+    mode = st.radio("Mode", options=["Guided", "Quick Apply", "Research"], key="mode_radio", horizontal=True)
     guided = mode == "Guided"
     quick_apply = mode == "Quick Apply"
 
@@ -3444,54 +3445,73 @@ if not st.session_state.has_run:
 
         '</div>'
 
-        # Two entry points
-        '<div style="font-size:10px;font-weight:800;letter-spacing:0.1em;text-transform:uppercase;'
-        'opacity:0.5;margin-bottom:10px">Two entry points · same destination</div>'
-        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">'
-        '<div style="background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.25);'
-        'border-radius:8px;padding:14px 18px">'
-        '<div style="font-size:11px;font-weight:800;opacity:0.55;text-transform:uppercase;'
-        'letter-spacing:0.08em;margin-bottom:6px">Application Portfolio — sidebar: Quick Apply</div>'
-        '<div style="font-size:15px;font-weight:900;margin-bottom:5px">'
-        'Find jobs → generate 3 applications in parallel → ranked by hire probability.'
-        '</div>'
-        '<div style="font-size:11px;opacity:0.65">'
-        'Or paste one specific job for a 90-second targeted application.'
-        '</div>'
-        '</div>'
-        '<div style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.18);'
-        'border-radius:8px;padding:14px 18px">'
-        '<div style="font-size:11px;font-weight:800;opacity:0.45;text-transform:uppercase;'
-        'letter-spacing:0.08em;margin-bottom:6px">Career Sprint — sidebar: Guided → Run</div>'
-        '<div style="font-size:15px;font-weight:900;margin-bottom:5px">'
-        'Validate your pivot first: gap analysis → debate → plan → apply → interview.'
-        '</div>'
-        '<div style="font-size:11px;opacity:0.55">'
-        'For career changers who want to stress-test the decision before committing.'
-        '</div>'
-        '</div>'
-        '</div>'
         '</div>',
         unsafe_allow_html=True,
     )
 
-    # ── Architecture layer — 5 columns ────────────────────────────────────
+    # ── CTA buttons — direct entry, no sidebar required ───────────────────
+    _cta_c1, _cta_c2 = st.columns(2, gap="large")
+    with _cta_c1:
+        st.markdown(
+            '<div style="background:#fff;border:1px solid rgba(0,0,0,0.1);border-radius:10px;'
+            'padding:16px 20px;margin-bottom:12px">'
+            '<div style="font-size:11px;font-weight:800;text-transform:uppercase;'
+            'letter-spacing:0.08em;color:#0A66C2;margin-bottom:6px">⚡ Quick Apply Mode</div>'
+            '<div style="font-size:14px;font-weight:700;color:#1D2226;margin-bottom:6px">'
+            'Find jobs → 3 applications in parallel → ranked by hire probability'
+            '</div>'
+            '<div style="font-size:11px;color:rgba(0,0,0,0.5)">'
+            '~60 seconds · gpt-4o generation · adversarial verdict · download portfolio'
+            '</div>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+        if st.button("⚡ Start Quick Apply →", use_container_width=True, type="primary", key="_hero_qa_btn"):
+            st.session_state["mode_radio"] = "Quick Apply"
+            st.rerun()
+    with _cta_c2:
+        st.markdown(
+            '<div style="background:#fff;border:1px solid rgba(0,0,0,0.1);border-radius:10px;'
+            'padding:16px 20px;margin-bottom:12px">'
+            '<div style="font-size:11px;font-weight:800;text-transform:uppercase;'
+            'letter-spacing:0.08em;color:rgba(0,0,0,0.5);margin-bottom:6px">🧭 Career Sprint Mode</div>'
+            '<div style="font-size:14px;font-weight:700;color:#1D2226;margin-bottom:6px">'
+            'Validate the pivot first: gap → debate → plan → apply → interview'
+            '</div>'
+            '<div style="font-size:11px;color:rgba(0,0,0,0.5)">'
+            '~45 min guided · AI agent orchestrates each step · Pivot Playbook download'
+            '</div>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+        if st.button("🧭 Start Career Sprint →", use_container_width=True, key="_hero_gs_btn"):
+            st.session_state["mode_radio"] = "Guided"
+            st.session_state["has_run"] = True
+            st.rerun()
+
+    # ── Architecture layer — 6 cards (3×2) ───────────────────────────────
     st.markdown(
         '<div style="font-size:10px;font-weight:800;letter-spacing:0.1em;text-transform:uppercase;'
-        'color:rgba(0,0,0,0.35);margin:20px 0 8px 0">What makes this technically non-trivial</div>',
+        'color:rgba(0,0,0,0.35);margin:22px 0 8px 0">What makes this technically non-trivial</div>',
         unsafe_allow_html=True,
     )
-    _hero_cols = st.columns(5, gap="small")
-    for _hi, (_hicon, _hname, _hdesc) in enumerate([
-        ("🗄️", "Structured Data", "O*NET 900+ occupations · 35 skill dimensions · IDF weighting · offline preprocessing → fast runtime"),
-        ("🤖", "Dual-LLM Pattern", "gpt-4o generates · gpt-4o-mini evaluates — empirically validated: +14pt quality score vs. single-pass"),
-        ("⚡", "Parallel Generation", "ThreadPoolExecutor: 3 applications generated + evaluated simultaneously — not sequential"),
-        ("⚖️", "Adversarial Evaluation", "Advocate + Skeptic run in parallel → Judge synthesises → hire_probability_pct. LLM output never used raw"),
-        ("📐", "Python Aggregation", "hire_prob = 0.65×quality + 0.35×fit · controversy_score · std penalty — all documented and justified"),
-    ]):
-        with _hero_cols[_hi]:
+    _arch_cards = [
+        ("🗄️", "Structured Data", "O*NET 900+ occupations · 35 skill dimensions · IDF weighting · cosine similarity offline → O(1) runtime"),
+        ("🤖", "Dual-LLM Pattern", "gpt-4o generates → gpt-4o-mini evaluates every artifact. Empirically validated: +14pt vs. single-pass (n=3 zero-shot)"),
+        ("⚡", "Parallel Generation", "ThreadPoolExecutor: 3 applications generated + evaluated simultaneously — never sequential"),
+        ("🔁", "Agentic Loop", "gpt-4o orchestrator selects tools, chains steps, detects conflicts — multi-step reasoning, not prompt chaining"),
+        ("⚖️", "Adversarial Evaluation", "Advocate + Skeptic (parallel) → Judge synthesises → hire_prob %. LLM output never shown raw"),
+        ("📐", "Python Aggregation", "hire_prob = 0.65×quality + 0.35×fit · controversy score · std penalty · all formulas documented"),
+    ]
+    _arch_r1 = st.columns(3, gap="small")
+    _arch_r2 = st.columns(3, gap="small")
+    for _hi, (_hicon, _hname, _hdesc) in enumerate(_arch_cards):
+        _arch_col = (_arch_r1 if _hi < 3 else _arch_r2)[_hi % 3]
+        with _arch_col:
+            _hborder = "#0A66C2" if _hname == "Agentic Loop" else "#C7D8F0"
+            _hbg = "#EEF3FB" if _hname == "Agentic Loop" else "#F8FAFF"
             st.markdown(
-                f'<div style="background:#F8FAFF;border:1px solid #C7D8F0;border-radius:8px;'
+                f'<div style="background:{_hbg};border:1.5px solid {_hborder};border-radius:8px;'
                 f'padding:14px 12px;height:100%">'
                 f'<div style="font-size:18px;margin-bottom:6px">{_hicon}</div>'
                 f'<div style="font-size:12px;font-weight:800;color:#0A66C2;margin-bottom:5px">{_hname}</div>'
@@ -3500,15 +3520,7 @@ if not st.session_state.has_run:
                 unsafe_allow_html=True,
             )
 
-    st.markdown(
-        '<div style="margin-top:18px;background:#FFFBEB;border:1px solid #FCD34D;border-radius:8px;'
-        'padding:12px 18px;font-size:12px;color:rgba(0,0,0,0.65)">'
-        '<strong>Start:</strong> Upload your CV in the sidebar (personalises everything), '
-        'pick your roles, then choose <strong>Quick Apply → Find my best opportunities</strong> '
-        'for the full pipeline — or <strong>Guided</strong> for the career validation sprint.'
-        '</div>',
-        unsafe_allow_html=True,
-    )
+    st.caption("Upload your CV in the sidebar to personalise the pipeline · Pick current & target occupation · Then choose a mode above.")
     st.stop()
 
 
@@ -3892,7 +3904,12 @@ if guided:
         f'padding:18px 24px 14px 24px;margin-bottom:16px;box-shadow:0 1px 4px rgba(0,0,0,0.05)">'
         f'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">'
         f'<div>'
+        f'<div style="display:flex;align-items:center;gap:8px">'
         f'<div style="font-size:12px;font-weight:900;color:#0A66C2;letter-spacing:-0.2px">Career Pivot Sprint</div>'
+        f'<div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.06em;'
+        f'background:#EEF3FB;border:1px solid #0A66C2;color:#0A66C2;border-radius:12px;'
+        f'padding:2px 8px;white-space:nowrap">🔁 gpt-4o Agent</div>'
+        f'</div>'
         f'<div style="font-size:11px;color:rgba(0,0,0,0.4);margin-top:1px">'
         f'~{_sp_time_total} min total · {sum(_sp_done)}/5 steps complete</div>'
         f'</div>'
@@ -3936,6 +3953,95 @@ if guided:
             _top3_gaps = (gap_df[gap_df["gap"] > 0]
                          .sort_values("gap", ascending=False).head(3)["skill"].tolist())
             st.caption(f"Top 3 gaps to close: {' · '.join(_top3_gaps)}")
+
+    # ── AI AGENT DEEP DIVE — between Step 1 and Step 2 ────────────────────
+    # The Career Intelligence Agent is a gpt-4o orchestrator that selects tools,
+    # chains multi-step reasoning, and synthesises a nuanced pivot assessment —
+    # going beyond the deterministic O*NET scores above.
+    with st.container(border=True):
+        _ag_key = ""
+        try:
+            _ag_key = str(st.secrets.get("OPENAI_API_KEY", "")).strip()
+        except Exception:
+            pass
+        _ag_result = st.session_state.get("agent_result")
+        _ag_hdr_col, _ag_btn_col = st.columns([5, 2])
+        with _ag_hdr_col:
+            st.markdown(
+                '<div style="display:flex;align-items:center;gap:8px">'
+                '<div style="font-size:14px;font-weight:800;color:rgba(0,0,0,0.88)">🔁 AI Agent Analysis</div>'
+                '<div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.06em;'
+                'background:#EEF3FB;border:1px solid #0A66C2;color:#0A66C2;border-radius:10px;padding:2px 7px">'
+                'gpt-4o · tool calls · multi-step</div>'
+                '</div>'
+                '<div style="font-size:11px;color:rgba(0,0,0,0.45);margin-top:3px">'
+                'The agent autonomously selects and chains O*NET tools to build a deeper pivot assessment than any single prompt could.'
+                '</div>',
+                unsafe_allow_html=True,
+            )
+        with _ag_btn_col:
+            _ag_disabled = not bool(_ag_key) or st.session_state.get("agent_running", False)
+            _ag_btn_label = "🔁 Re-run Agent" if _ag_result else "🔁 Run Agent Analysis"
+            if st.button(_ag_btn_label, key="sp_run_agent_inline", use_container_width=True,
+                         type="primary", disabled=_ag_disabled):
+                st.session_state["agent_running"] = True
+                st.session_state["agent_result"] = None
+                st.session_state["agent_steps"] = []
+                _ag_cv_ctx: Optional[str] = None
+                if st.session_state.cv_profile:
+                    _p = st.session_state.cv_profile
+                    _ag_cv_ctx = (
+                        f"Role: {_p.get('extracted_role','Unknown')}. "
+                        f"Experience: {_p.get('years_experience',0):.0f} years. "
+                        f"Top skills: {', '.join(_p.get('top_skills',[])[:6])}."
+                    )
+                with st.spinner("Agent is reasoning — making tool calls across your O*NET profile…"):
+                    _ag_gen = run_career_agent(
+                        current_role=str(current), target_role=str(target),
+                        matrix=mat, coords=art.coords,
+                        model="gpt-4o", max_iterations=10,
+                        prefer_online=True, cv_context=_ag_cv_ctx,
+                    )
+                    _ag_collected: List[AgentStep] = []
+                    _ag_final = None
+                    try:
+                        while True:
+                            _ag_step = next(_ag_gen)
+                            _ag_collected.append(_ag_step)
+                    except StopIteration as _ag_e:
+                        _ag_final = _ag_e.value
+                    except Exception:
+                        pass
+                    st.session_state["agent_result"] = _ag_final
+                    st.session_state["agent_steps"] = _ag_collected
+                    st.session_state["agent_running"] = False
+                st.rerun()
+            if not _ag_key:
+                st.caption("Add OPENAI_API_KEY to secrets to enable.")
+
+        if _ag_result:
+            _ag_summary = _ag_result.executive_summary if hasattr(_ag_result, "executive_summary") else ""
+            _ag_strategy = _ag_result.recommended_strategy if hasattr(_ag_result, "recommended_strategy") else ""
+            _ag_verdict = _ag_result.verdict if hasattr(_ag_result, "verdict") else ""
+            _ag_vcolor = "#117A37" if _ag_verdict in ("Pursue", "Strongly Pursue") else ("#A05A00" if _ag_verdict else "#1D2226")
+            if _ag_summary:
+                st.markdown(
+                    f'<div style="background:#EEF3FB;border-left:3px solid #0A66C2;border-radius:0 8px 8px 0;'
+                    f'padding:10px 14px;margin-top:10px;font-size:12px;color:rgba(0,0,0,0.8)">'
+                    f'<strong style="color:{_ag_vcolor}">{_ag_verdict}</strong>'
+                    + (f' · <em>{_ag_strategy}</em>' if _ag_strategy else "")
+                    + f'<br><span style="color:rgba(0,0,0,0.6)">{_ag_summary}</span>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+            _ag_steps_stored = st.session_state.get("agent_steps", [])
+            if _ag_steps_stored:
+                with st.expander(f"View agent reasoning trace ({len(_ag_steps_stored)} steps)"):
+                    for _ag_s in _ag_steps_stored[:12]:
+                        if hasattr(_ag_s, "tool_name") and _ag_s.tool_name:
+                            st.markdown(f"**→ {_ag_s.tool_name}**: {getattr(_ag_s, 'thinking', '')[:120]}")
+                        elif hasattr(_ag_s, "kind") and _ag_s.kind == "answer":
+                            st.success(f"Final answer: {getattr(_ag_s, 'thinking', '')[:200]}")
 
     # ── STEP 2: PLAN ─────────────────────────────────────────────────────
     with st.container(border=True):

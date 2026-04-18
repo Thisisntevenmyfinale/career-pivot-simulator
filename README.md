@@ -218,6 +218,43 @@ The score drives the "Next Action" banner — always one clear recommendation.
 
 ---
 
+## Offline vs. Online Architecture
+
+The app has a hard separation between preprocessing (runs once, ships with app) and runtime (no training at startup).
+
+### Ships offline — no API key needed
+| Component | What it does | Where |
+|---|---|---|
+| O*NET skill matrix | 900+ occupations × 35 skill dimensions, loaded from parquet | `artifacts/occupation_skill_matrix.parquet` |
+| IDF weighting | Downweights universal skills (communication, critical thinking) | `build_cosine_core()` in `app.py` |
+| Cosine similarity | IDF-weighted L2-normalised dot product, precomputed per query | `get_score_distribution()` in `app.py` |
+| PCA coordinates | 2D embedding for map proximity scoring | `artifacts/pca_coords.parquet` |
+| kNN graph | Dijkstra stepping-stone routing on cosine-similarity graph | `find_pivot_path()` in `src/model_logic.py` |
+| Skill gap computation | `target − current` per dimension, deterministic | `compute_gap_df()` in `src/model_logic.py` |
+| CV parsing fallback | Regex-based heuristic when OpenAI unavailable | `src/cv_parser.py` |
+
+### Requires OPENAI_API_KEY
+| Component | Model | Purpose |
+|---|---|---|
+| CV skill extraction | gpt-4o-mini | Map free-text CV to O*NET skill dimensions |
+| Cover letter generation | gpt-4o | Open-ended writing (+14pt vs mini zero-shot) |
+| Application evaluation | gpt-4o-mini | 4-dimension rubric scoring |
+| Adversarial debate | gpt-4o-mini + gpt-4o | Advocate + Skeptic → Judge viability % |
+| Learning plan | gpt-4o-mini | Gap-specific roadmap generation |
+| Career agent | gpt-4o | Multi-step tool-calling pivot assessment |
+| LinkedIn profile | gpt-4o-mini | Constrained character-limit generation |
+| Interview Q&A coaching | gpt-4o-mini | Role + JD-specific question generation |
+
+### Requires SERP_API_KEY (optional)
+| Component | Fallback |
+|---|---|
+| Real job search (SerpAPI → Google Jobs) | Generates realistic simulated listings with `generate_job_listings()` |
+
+### Graceful degradation
+Every LLM call has a deterministic fallback. The app runs fully offline (heuristic mode) — no API key is required to explore gap analysis, stepping-stone routing, or skill investment simulation.
+
+---
+
 ## Technical Stack
 
 - **Data:** O*NET occupational database (US Dept. of Labor) — 900+ occupations × 35 skills
