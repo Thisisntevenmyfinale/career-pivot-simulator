@@ -1649,7 +1649,8 @@ if quick_apply:
         _cv = bool((st.session_state.cv_text or "").strip())
         _mode = st.session_state.qa_portfolio_mode
         if not _cv:
-            return {"step": "0 / 6", "label": "Upload your CV first",
+            _max_steps = "6" if _mode == "find" else "5"
+            return {"step": f"0 / {_max_steps}", "label": "Upload your CV first",
                     "detail": "The CV personalises every application — skills are extracted and mapped to O*NET.",
                     "color": "#7A2A8A"}
         if _mode == "find":
@@ -1802,6 +1803,77 @@ if quick_apply:
         + f'</div></div>',
         unsafe_allow_html=True,
     )
+
+    # Readiness score breakdown expander — show exactly how points accumulate
+    with st.expander("How is this score calculated?", expanded=False):
+        _rdy_cv_ok = bool((st.session_state.cv_text or "").strip())
+        _rdy_jobs_ok = bool(st.session_state.qa_portfolio_jobs or st.session_state.qa_parsed)
+        _rdy_pkg_ok = bool(st.session_state.qa_portfolio_packages or st.session_state.qa_package)
+        _rdy_debate_ok = bool(st.session_state.qa_debate)
+        _rdy_itv_ok = bool(st.session_state.qa_questions)
+        _rdy_ans_ok = bool(st.session_state.qa_answer_evals)
+
+        if _rdy_pkg_ok:
+            if st.session_state.qa_portfolio_packages:
+                _rdy_best_ev = max(
+                    (r.get("eval", {}) for r in st.session_state.qa_portfolio_packages.values()),
+                    key=lambda e: e.get("overall_score", 0), default={}
+                )
+                _rdy_q = _rdy_best_ev.get("overall_score", 0) if _rdy_best_ev else 0
+            else:
+                _rdy_q = (st.session_state.qa_eval or {}).get("overall_score", 0)
+            _rdy_quality_bonus = int(min(15, max(0, (_rdy_q - 55) * 15 / 35))) if _rdy_q >= 55 else 0
+        else:
+            _rdy_q = 0
+            _rdy_quality_bonus = 0
+
+        if _rdy_debate_ok:
+            _rdy_hp = (st.session_state.qa_debate or {}).get("hire_probability_pct", 60)
+            _rdy_hp_bonus = int(min(15, max(0, (_rdy_hp - 40) * 15 / 40)))
+        else:
+            _rdy_hp = 0
+            _rdy_hp_bonus = 0
+
+        _breakdown_rows = [
+            ("CV uploaded + O*NET skill mapping", 15, 15 if _rdy_cv_ok else 0, _rdy_cv_ok),
+            ("Job found / analyzed", 10, 10 if _rdy_jobs_ok else 0, _rdy_jobs_ok),
+            ("Application generated", 20, 20 if _rdy_pkg_ok else 0, _rdy_pkg_ok),
+            (f"Application quality bonus (score {_rdy_q}/100 → {_rdy_quality_bonus} pts, prorated 55→70=0→15)", 15, _rdy_quality_bonus, _rdy_pkg_ok and _rdy_quality_bonus > 0),
+            (f"Adversarial verdict (hire_prob {_rdy_hp}% → {_rdy_hp_bonus} pts, prorated 40→80=0→15)", 15, _rdy_hp_bonus, _rdy_debate_ok),
+            ("Interview questions generated", 10, 10 if _rdy_itv_ok else 0, _rdy_itv_ok),
+            ("At least one answer evaluated", 10, 10 if _rdy_ans_ok else 0, _rdy_ans_ok),
+        ]
+        _total_max = sum(r[1] for r in _breakdown_rows)
+        _total_earned = sum(r[2] for r in _breakdown_rows)
+
+        _bk_rows_html = ""
+        for _bk_label, _bk_max, _bk_earned, _bk_done in _breakdown_rows:
+            _bk_icon = "✓" if _bk_done else "○"
+            _bk_color = "#057642" if _bk_done else "rgba(0,0,0,0.35)"
+            _bk_pts_color = "#057642" if _bk_done else "rgba(0,0,0,0.35)"
+            _bk_rows_html += (
+                f'<div style="display:flex;align-items:center;justify-content:space-between;'
+                f'padding:5px 0;border-bottom:1px solid rgba(0,0,0,0.05);gap:8px">'
+                f'<div style="display:flex;align-items:center;gap:8px;font-size:12px;color:{_bk_color}">'
+                f'<span style="font-size:11px;font-weight:700;width:14px;text-align:center">{_bk_icon}</span>'
+                f'{_bk_label}</div>'
+                f'<div style="font-size:12px;font-weight:700;color:{_bk_pts_color};white-space:nowrap">'
+                f'{_bk_earned} / {_bk_max} pts</div>'
+                f'</div>'
+            )
+
+        st.markdown(
+            f'<div style="font-size:11px;color:rgba(0,0,0,0.5);margin-bottom:8px">'
+            f'The Interview Readiness Score is a deterministic Python aggregation — no LLM involved. '
+            f'Each milestone unlocks additional points. Quality bonuses are prorated (not binary).</div>'
+            f'<div style="border:1px solid rgba(0,0,0,0.08);border-radius:8px;padding:12px 14px">'
+            + _bk_rows_html +
+            f'<div style="display:flex;justify-content:flex-end;padding-top:8px;'
+            f'font-size:13px;font-weight:800;color:{_rdy_color}">'
+            f'Total: {_total_earned} / {_total_max}</div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
 
     _na = _qa_next_action()
     st.markdown(
@@ -4102,6 +4174,49 @@ if guided:
                                   .sort_values("gap", ascending=False).head(3)["skill"].tolist())
                     st.caption(f"Top 3 gaps to close: {' · '.join(_top3_gaps)}")
 
+        # ── Stepping-stone route (Dijkstra kNN graph) ─────────────────────
+        # Auto-computed once: finds the sequence of intermediate roles that make
+        # the pivot reachable in short hops rather than one giant leap.
+        if str(current) in mat.index and str(target) in mat.index and current != target:
+            try:
+                if not st.session_state.get("route_result"):
+                    st.session_state["route_result"] = find_pivot_path(
+                        mat, start_occ=str(current), target_occ=str(target),
+                        k_neighbors=12, max_steps=6,
+                    )
+                _sp_route = st.session_state.get("route_result", {})
+                _sp_path = _sp_route.get("path", []) if _sp_route else []
+                if _sp_path and len(_sp_path) >= 2:
+                    st.markdown(
+                        '<div style="font-size:10px;font-weight:800;text-transform:uppercase;'
+                        'letter-spacing:0.08em;color:rgba(0,0,0,0.4);margin:10px 0 4px 0">'
+                        'Stepping-stone route (Dijkstra · cosine kNN graph · k=12)</div>',
+                        unsafe_allow_html=True,
+                    )
+                    _route_parts = []
+                    for _ri, _rp in enumerate(_sp_path):
+                        _is_start = _ri == 0
+                        _is_end = _ri == len(_sp_path) - 1
+                        _rbg = "#0A66C2" if _is_start else ("#057642" if _is_end else "#F3F6F9")
+                        _rfg = "#fff" if (_is_start or _is_end) else "#1D2226"
+                        _route_parts.append(
+                            f'<span style="background:{_rbg};color:{_rfg};border-radius:16px;'
+                            f'padding:4px 12px;font-size:11px;font-weight:700;white-space:nowrap">{_rp}</span>'
+                        )
+                    _route_html = ' <span style="color:rgba(0,0,0,0.3);font-size:14px">→</span> '.join(_route_parts)
+                    _rc_steps = len(_sp_path) - 1
+                    st.markdown(
+                        f'<div style="background:#F8FAFF;border:1px solid #C7D8F0;border-radius:8px;'
+                        f'padding:10px 14px;display:flex;flex-wrap:wrap;gap:6px;align-items:center">'
+                        f'{_route_html}'
+                        f'<span style="font-size:10px;color:rgba(0,0,0,0.35);margin-left:8px">'
+                        f'{_rc_steps} hop{"s" if _rc_steps != 1 else ""}</span>'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
+            except Exception:
+                pass
+
     # ── AI AGENT DEEP DIVE — between Step 1 and Step 2 ────────────────────
     # The Career Intelligence Agent is a gpt-4o orchestrator that selects tools,
     # chains multi-step reasoning, and synthesises a nuanced pivot assessment —
@@ -4222,6 +4337,75 @@ if guided:
             )
             with st.expander("View learning plan"):
                 st.markdown(st.session_state.learning_plan_md)
+
+            # ── Skill Investment Simulator ─────────────────────────────────
+            # Counterfactual: how much does the match score improve if you
+            # close the top gaps identified in this plan?
+            # Uses simulate_skill_investment() — O*NET-based, deterministic, instant.
+            if not gap_df.empty:
+                try:
+                    _sim_skills = (
+                        gap_df[gap_df["gap"] > 0]
+                        .sort_values("investment_priority", ascending=False)
+                        .head(5)["skill"].tolist()
+                    )
+                    if _sim_skills:
+                        _before_score = float(mat.loc[str(current)].astype(float).values @ mat.loc[str(target)].astype(float).values /
+                                              (np.linalg.norm(mat.loc[str(current)].astype(float).values) *
+                                               np.linalg.norm(mat.loc[str(target)].astype(float).values) + 1e-9)) * 100
+                        _sim_results = []
+                        for _nsk in range(1, len(_sim_skills) + 1):
+                            _sr = simulate_skill_investment(
+                                mat, current_role=str(current), target_role=str(target),
+                                selected_skills=_sim_skills[:_nsk], uplift_ratio=0.5,
+                            )
+                            _sim_results.append((_nsk, _sr.get("after_score", _before_score)))
+                        _sim_fig = go.Figure()
+                        _sim_fig.add_hline(y=_before_score, line_dash="dot",
+                                           line_color="rgba(0,0,0,0.3)", line_width=1.5)
+                        _sim_fig.add_trace(go.Scatter(
+                            x=[r[0] for r in _sim_results],
+                            y=[r[1] for r in _sim_results],
+                            mode="lines+markers",
+                            line=dict(color="#0A66C2", width=2),
+                            marker=dict(size=8, color="#0A66C2"),
+                            fill="tozeroy",
+                            fillcolor="rgba(10,102,194,0.08)",
+                            text=[f"+{r[1]-_before_score:.1f}pt" for r in _sim_results],
+                            hovertemplate="Invest in %{x} skill(s)<br>Match: %{y:.0f}/100 (%{text})<extra></extra>",
+                        ))
+                        _sim_fig.update_layout(
+                            title=dict(
+                                text=f"Skill investment simulation (50% gap closure) — baseline: {_before_score:.0f}/100",
+                                font=dict(size=10), x=0,
+                            ),
+                            xaxis=dict(title="Number of skills invested in (ranked by priority)",
+                                       tickmode="linear", dtick=1, tickfont=dict(size=9)),
+                            yaxis=dict(title="Match score /100", tickfont=dict(size=9)),
+                            height=200,
+                            margin=dict(l=5, r=10, t=30, b=30),
+                            paper_bgcolor="rgba(0,0,0,0)",
+                            plot_bgcolor="rgba(248,250,255,0.5)",
+                            annotations=[dict(
+                                x=0.01, y=_before_score + 1.5, xref="paper", yref="y",
+                                text="current", showarrow=False,
+                                font=dict(size=9, color="rgba(0,0,0,0.4)"), xanchor="left",
+                            )],
+                        )
+                        st.markdown(
+                            '<div style="font-size:10px;font-weight:800;text-transform:uppercase;'
+                            'letter-spacing:0.08em;color:rgba(0,0,0,0.4);margin:8px 0 2px 0">'
+                            'What-if: skill investment impact on match score</div>',
+                            unsafe_allow_html=True,
+                        )
+                        st.plotly_chart(_sim_fig, use_container_width=True, config={"displayModeBar": False})
+                        st.caption(
+                            f"Skills simulated (top priority): {' → '.join(_sim_skills[:5])}. "
+                            f"Uplift assumption: 50% of each gap closed. Actual improvement depends on learning depth."
+                        )
+                except Exception:
+                    pass
+
         elif _s2_active:
             if st.button("📋 Generate my learning plan", key="sp_gen_plan", use_container_width=True, type="primary"):
                 _lp_key_sp = ""
