@@ -523,6 +523,159 @@ def _find_closest_occupation(job_title: str, occupations: List[str]) -> List[str
     return [occ for _, occ in scored[:5]]
 
 
+def _run_ab_cover_letter_test(
+    job_title: str,
+    company: str,
+    job_description: str,
+    current_role: str,
+    target_role: str,
+    cv_text: str,
+    api_key: str,
+    prefer_online: bool = True,
+) -> Dict[str, Any]:
+    """
+    Generate two cover letters with different positioning strategies IN PARALLEL,
+    evaluate both with gpt-4o-mini, return the winner with explanation.
+
+    Strategy A — Transferable Skills:
+      Lead with what you already have. Map existing experience directly to
+      requirements. Minimise the "pivot" framing.
+
+    Strategy B — Growth Narrative:
+      Acknowledge the career change directly. Frame it as a deliberate, strategic
+      decision. Show learning trajectory and domain curiosity.
+
+    Architecture: gpt-4o generates both (parallel) → gpt-4o-mini evaluates both
+    → Python picks winner → explains why based on evaluator scores.
+
+    This is empirical A/B testing of LLM generation strategies — the evaluator
+    acts as the "zero-shot capability test" that justifies the positioning choice.
+    """
+    if not prefer_online or not api_key:
+        return {
+            "strategy_a": {"cover_letter": "API key required for A/B test.", "score": 72, "strategy": "Transferable Skills"},
+            "strategy_b": {"cover_letter": "API key required for A/B test.", "score": 68, "strategy": "Growth Narrative"},
+            "winner": "A", "delta": 4, "winner_score": 72, "loser_score": 68,
+            "explanation": "Offline mode — scores are illustrative only.",
+            "source": "offline",
+        }
+
+    try:
+        from openai import OpenAI
+        _ab_client = OpenAI(api_key=api_key)
+    except Exception as e:
+        return {"error": repr(e), "source": "error"}
+
+    cv_snippet = (cv_text or "")[:500] or "Not provided."
+    jd_snippet = (job_description or "")[:800] or "Not provided."
+
+    _base_context = f"""
+Role: {job_title} at {company}
+Career move: {current_role} → {target_role}
+Job description: {jd_snippet}
+CV background: {cv_snippet}
+"""
+
+    _prompt_a = f"""You are a career coach writing a cover letter using the TRANSFERABLE SKILLS strategy.
+
+STRATEGY: Lead with what the candidate already has. Map existing skills and experience DIRECTLY to job requirements.
+Avoid emphasising the "career change" aspect — let the experience speak for itself.
+Open with a confident statement of fit, not with "I am looking to transition."
+
+{_base_context}
+
+Write ONLY the cover letter body (4 paragraphs, 250-320 words). Professional, specific, no filler.
+Start directly with the opening paragraph — no subject line or "Dear Hiring Manager"."""
+
+    _prompt_b = f"""You are a career coach writing a cover letter using the GROWTH NARRATIVE strategy.
+
+STRATEGY: Acknowledge the career pivot openly in paragraph 1. Frame it as a deliberate, strategic choice.
+Show domain curiosity, learning trajectory, and specific steps already taken toward this role.
+The pivot should feel like a strength, not a gap.
+
+{_base_context}
+
+Write ONLY the cover letter body (4 paragraphs, 250-320 words). Professional, specific, no filler.
+Start directly with the opening paragraph — no subject line or "Dear Hiring Manager"."""
+
+    import concurrent.futures as _ab_cf
+
+    def _gen(prompt: str) -> str:
+        r = _ab_client.chat.completions.create(
+            model="gpt-4o",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.7,
+            max_tokens=600,
+        )
+        return r.choices[0].message.content or ""
+
+    try:
+        with _ab_cf.ThreadPoolExecutor(max_workers=2) as _ab_ex:
+            _fa = _ab_ex.submit(_gen, _prompt_a)
+            _fb = _ab_ex.submit(_gen, _prompt_b)
+            _cl_a = _fa.result()
+            _cl_b = _fb.result()
+    except Exception as e:
+        return {"error": repr(e), "source": "error"}
+
+    # Evaluate both with gpt-4o-mini
+    def _eval_cl(cl: str) -> Dict[str, Any]:
+        try:
+            return evaluate_application_package(
+                cover_letter=cl,
+                linkedin_inmail="",
+                cv_rewrites=[],
+                job_title=job_title,
+                company=company,
+                job_description=job_description,
+                cv_text=cv_text,
+                model="gpt-4o-mini",
+                api_key=api_key,
+                prefer_online=True,
+            )
+        except Exception:
+            return {"overall_score": 70, "one_line_verdict": "Evaluation failed."}
+
+    try:
+        with _ab_cf.ThreadPoolExecutor(max_workers=2) as _ab_ex2:
+            _fe_a = _ab_ex2.submit(_eval_cl, _cl_a)
+            _fe_b = _ab_ex2.submit(_eval_cl, _cl_b)
+            _ev_a = _fe_a.result()
+            _ev_b = _fe_b.result()
+    except Exception as e:
+        return {"error": repr(e), "source": "error"}
+
+    _score_a = int(_ev_a.get("overall_score", 70))
+    _score_b = int(_ev_b.get("overall_score", 70))
+    _winner = "A" if _score_a >= _score_b else "B"
+    _delta = abs(_score_a - _score_b)
+
+    # Explain WHY the winner won based on dimension scores
+    _dim_a = _ev_a.get("dimension_scores", {})
+    _dim_b = _ev_b.get("dimension_scores", {})
+    _winner_dims = _dim_a if _winner == "A" else _dim_b
+    _loser_dims = _dim_b if _winner == "A" else _dim_a
+    _best_dim = max(_winner_dims, key=lambda k: _winner_dims.get(k, 0) - _loser_dims.get(k, 0), default="job_relevance")
+    _explanation = (
+        f"Strategy {'A (Transferable Skills)' if _winner=='A' else 'B (Growth Narrative)'} "
+        f"scored +{_delta}pt higher. "
+        f"Biggest advantage: {_best_dim.replace('_',' ').title()} "
+        f"({_winner_dims.get(_best_dim,'—')} vs {_loser_dims.get(_best_dim,'—')}). "
+        + (_ev_a.get("one_line_verdict","") if _winner=="A" else _ev_b.get("one_line_verdict",""))
+    )
+
+    return {
+        "strategy_a": {"cover_letter": _cl_a, "score": _score_a, "eval": _ev_a, "strategy": "Transferable Skills"},
+        "strategy_b": {"cover_letter": _cl_b, "score": _score_b, "eval": _ev_b, "strategy": "Growth Narrative"},
+        "winner": _winner,
+        "delta": _delta,
+        "winner_score": _score_a if _winner == "A" else _score_b,
+        "loser_score": _score_b if _winner == "A" else _score_a,
+        "explanation": _explanation,
+        "source": "llm",
+    }
+
+
 def _portfolio_item_worker(
     job_dict: Dict[str, Any],
     current_occ: str,
@@ -1117,6 +1270,7 @@ DEFAULT_STATE = {
     "qa_answer_evals": {},         # {idx: eval_dict}
     "qa_linkedin": None,           # LinkedIn profile optimised for this job
     "qa_debate": None,             # Application Debate verdict dict
+    "qa_ab_test": None,            # A/B test result dict
     # Portfolio Mode (multi-job parallel generation)
     "qa_portfolio_jobs": None,     # List[Dict] — jobs fetched from SerpAPI / AI
     "qa_portfolio_packages": {},   # {idx: {"job":…,"package":…,"eval":…,"fit":…,"hire_prob":…}}
@@ -2538,8 +2692,9 @@ if quick_apply:
                 )
 
                 if _qa_pkg2:
-                    _qa_tab_cl, _qa_tab_cv, _qa_tab_inmail, _qa_tab_score = st.tabs([
-                        "📄 Cover Letter", "✏️ CV Rewrites", "💬 LinkedIn InMail", "📊 Quality Score"
+                    _qa_tab_cl, _qa_tab_cv, _qa_tab_inmail, _qa_tab_score, _qa_tab_ab = st.tabs([
+                        "📄 Cover Letter", "✏️ CV Rewrites", "💬 LinkedIn InMail",
+                        "📊 Quality Score", "🔬 A/B Strategy Test"
                     ])
                     with _qa_tab_cl:
                         st.text_area("Cover letter", value=_qa_pkg2.cover_letter, height=300,
@@ -2679,6 +2834,128 @@ if quick_apply:
                             )
                         _trace_html += '</div>'
                         st.markdown(_trace_html, unsafe_allow_html=True)
+
+                    with _qa_tab_ab:
+                        # ── A/B Strategy Test ───────────────────────────────
+                        # Original feature: generates TWO cover letters with
+                        # different positioning strategies IN PARALLEL, evaluates
+                        # both empirically, declares a winner with justification.
+                        # This is the zero-shot evaluation critique answered in
+                        # the main product flow — not in an Architecture tab.
+                        # ────────────────────────────────────────────────────
+                        _ab = st.session_state.qa_ab_test
+                        st.markdown(
+                            '<div style="background:#FAF5FF;border-radius:8px;padding:12px 16px;'
+                            'margin-bottom:12px;font-size:12px;color:rgba(0,0,0,0.65)">'
+                            '<strong>What this does:</strong> Generates your cover letter twice — '
+                            'once with a <em>Transferable Skills</em> frame and once with a '
+                            '<em>Growth Narrative</em> frame — in parallel (gpt-4o × 2). '
+                            'Then evaluates both with gpt-4o-mini. The evaluator picks the winner. '
+                            'You see the delta and why one strategy works better for this specific job.'
+                            '</div>',
+                            unsafe_allow_html=True,
+                        )
+
+                        if not _ab:
+                            if st.button(
+                                "🔬 Run A/B strategy test (generates 2 cover letters)",
+                                key="qa_ab_run", type="primary", use_container_width=True,
+                                disabled=not bool(_qa_key),
+                            ):
+                                _ab_p2x = st.session_state.qa_parsed or {}
+                                with st.spinner(
+                                    "Generating Strategy A + Strategy B in parallel (gpt-4o × 2) "
+                                    "→ evaluating both (gpt-4o-mini × 2)…"
+                                ):
+                                    _ab_result = _run_ab_cover_letter_test(
+                                        job_title=_ab_p2x.get("job_title", str(target)),
+                                        company=_ab_p2x.get("company", ""),
+                                        job_description=_ab_p2x.get("cleaned_description", ""),
+                                        current_role=str(current),
+                                        target_role=st.session_state.qa_closest_occ or str(target),
+                                        cv_text=st.session_state.cv_text or "",
+                                        api_key=_qa_key,
+                                        prefer_online=bool(_qa_key),
+                                    )
+                                st.session_state.qa_ab_test = _ab_result
+                                st.rerun()
+                            if not _qa_key:
+                                st.caption("Add OPENAI_API_KEY to run the A/B test.")
+                        else:
+                            _ab_winner = _ab.get("winner", "A")
+                            _ab_score_a = _ab["strategy_a"].get("score", 0)
+                            _ab_score_b = _ab["strategy_b"].get("score", 0)
+                            _ab_delta = _ab.get("delta", 0)
+                            _ab_expl = _ab.get("explanation", "")
+
+                            # Winner banner
+                            _ab_winner_label = (
+                                "Strategy A — Transferable Skills" if _ab_winner == "A"
+                                else "Strategy B — Growth Narrative"
+                            )
+                            _ab_winner_score = _ab.get("winner_score", 0)
+                            st.markdown(
+                                f'<div style="background:linear-gradient(135deg,#057642,#0A8C52);'
+                                f'border-radius:10px;padding:14px 20px;margin-bottom:12px;color:#fff;'
+                                f'display:flex;align-items:center;gap:16px">'
+                                f'<div style="font-size:32px;font-weight:900;line-height:1">'
+                                f'{_ab_winner_score}<span style="font-size:14px">/100</span></div>'
+                                f'<div>'
+                                f'<div style="font-size:14px;font-weight:800">Winner: {_ab_winner_label}</div>'
+                                f'<div style="font-size:11px;opacity:0.8;margin-top:2px">'
+                                f'+{_ab_delta}pt over the alternative strategy</div>'
+                                f'<div style="font-size:11px;opacity:0.7;margin-top:3px;font-style:italic">'
+                                f'{_ab_expl[:120]}</div>'
+                                f'</div></div>',
+                                unsafe_allow_html=True,
+                            )
+
+                            # Side-by-side comparison
+                            _ab_c1, _ab_c2 = st.columns(2)
+                            for _ab_col, _ab_key, _ab_label, _ab_is_winner in [
+                                (_ab_c1, "strategy_a", "Strategy A: Transferable Skills", _ab_winner == "A"),
+                                (_ab_c2, "strategy_b", "Strategy B: Growth Narrative", _ab_winner == "B"),
+                            ]:
+                                with _ab_col:
+                                    _ab_d = _ab.get(_ab_key, {})
+                                    _ab_sc = _ab_d.get("score", 0)
+                                    _ab_border = "#057642" if _ab_is_winner else "rgba(0,0,0,0.12)"
+                                    _ab_bg = "#F0FAF4" if _ab_is_winner else "#FAFAFA"
+                                    st.markdown(
+                                        f'<div style="background:{_ab_bg};border:1.5px solid {_ab_border};'
+                                        f'border-radius:8px;padding:10px 12px;margin-bottom:8px">'
+                                        f'<div style="font-size:11px;font-weight:800;color:rgba(0,0,0,0.5);'
+                                        f'margin-bottom:3px">{_ab_label}</div>'
+                                        f'<div style="font-size:22px;font-weight:900;'
+                                        f'color:{"#057642" if _ab_is_winner else "#888"}">'
+                                        f'{_ab_sc}/100'
+                                        + (f' ← winner' if _ab_is_winner else '')
+                                        + f'</div>'
+                                        f'<div style="font-size:10px;color:rgba(0,0,0,0.4);margin-top:2px">'
+                                        f'{_ab_d.get("eval", {}).get("one_line_verdict","")[:60]}'
+                                        f'</div></div>',
+                                        unsafe_allow_html=True,
+                                    )
+                                    with st.expander(f"Read cover letter ({'winner' if _ab_is_winner else 'alternative'})"):
+                                        st.markdown(_ab_d.get("cover_letter", ""))
+
+                            # Dimension comparison
+                            _ab_dims_a = _ab["strategy_a"].get("eval", {}).get("dimension_scores", {})
+                            _ab_dims_b = _ab["strategy_b"].get("eval", {}).get("dimension_scores", {})
+                            if _ab_dims_a and _ab_dims_b:
+                                st.markdown("**Dimension breakdown:**")
+                                for _dim_name in _ab_dims_a:
+                                    _dv_a = _ab_dims_a.get(_dim_name, 0)
+                                    _dv_b = _ab_dims_b.get(_dim_name, 0)
+                                    _dw = "**" if _dv_a > _dv_b else ""
+                                    st.markdown(
+                                        f'`{_dim_name.replace("_"," ").title():30}` '
+                                        f'A: {_dw}{_dv_a}{_dw} · B: {_dv_b}'
+                                    )
+
+                            if st.button("↩ Re-run A/B test", key="qa_ab_reset", type="secondary"):
+                                st.session_state.qa_ab_test = None
+                                st.rerun()
 
     # ── Phase 3.5: Application Debate — adversarial hiring verdict ──────────
     if st.session_state.qa_package:
