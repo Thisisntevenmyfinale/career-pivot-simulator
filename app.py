@@ -8008,7 +8008,7 @@ with _tab_execute:
                  "Over-reported skills from vague CV phrasing; confused job titles with skills in single-word CVs",
                  "2-pass extraction: pass 1 extracts raw, pass 2 validates against O*NET taxonomy; confidence threshold = 0.6",
                  "gpt-4o-mini"),
-                ("Application Package Evaluation", "gpt-4o-mini", 82, "94%",
+                ("Application Package Evaluation", "gpt-4o-mini", 74, "92%",
                  "Initially scored everything 70-75 regardless of quality (anchoring); failed to cite specific text",
                  "Added explicit rubric weights to prompt; required quoting specific evidence for each strength/weakness",
                  "gpt-4o-mini"),
