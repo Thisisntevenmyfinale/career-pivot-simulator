@@ -25,15 +25,19 @@ mapping       + fit score     in parallel           Skeptic → Judge    questio
 
 ## What makes this technically non-trivial
 
-### 1. Dual-LLM Generate → Evaluate Pattern (every artifact)
+### 1. Dual-LLM Generate → Evaluate Pattern
 
-Nothing reaches the user unscored. For every output:
+No generated artifact reaches the user without a quality score. For every generative output:
 
 ```
-gpt-4o generates  →  gpt-4o-mini evaluates  →  score shown  →  regenerate if below threshold
+gpt-4o/mini generates  →  gpt-4o-mini evaluates (rubric)  →  score shown
+                                    ↓
+                         score < threshold → auto-regenerate once (cover letters, learning plans, LinkedIn profiles)
+                         interview answers → flagged; user rewrites their own answer
 ```
 
-This pattern runs for: cover letters, learning plans, LinkedIn profiles, interview answers.  
+Auto-regeneration is implemented for: **cover letters** (threshold 70), **learning plans** (threshold 60), **LinkedIn profiles** (below acceptable).  
+Interview answers are evaluated and flagged — the user rewrites, not the model (intentional: answer coaching, not answer replacement).  
 Empirically validated: gpt-4o scores +14pt higher than gpt-4o-mini on cover letters (82 vs 68 avg, n=3 zero-shot runs).
 
 ### 2. Parallel Application Portfolio Generation
@@ -135,7 +139,8 @@ Pivot Readiness Score (0–100) updates after each step. Ends with a downloadabl
 
 ## Zero-Shot Capability Evaluation
 
-Every model choice was tested empirically before being shipped:
+Every model choice was tested empirically before being shipped.  
+**Methodology:** Each task run 3 times zero-shot, same evaluation rubric, avg reported. Evaluator: gpt-4o-mini 4-dimension rubric. Same 3 JD / CV test inputs per task. n=3 is small — scores are directional, not statistically precise (no CI reported). The purpose is model *selection*, not model *characterisation*.
 
 | Task | Model Used | Zero-shot avg | Alt model avg | Delta | Key failure (alt) |
 |---|---|---|---|---|---|
@@ -150,7 +155,7 @@ Benchmark data stored as `ZERO_SHOT_BENCHMARK` constant in `app.py` and surfaced
 
 ---
 
-## LLM Architecture (15 components)
+## LLM Architecture (15 user-facing pipeline components)
 
 | Layer | Component | Model | Justification |
 |---|---|---|---|
@@ -170,7 +175,7 @@ Benchmark data stored as `ZERO_SHOT_BENCHMARK` constant in `app.py` and surfaced
 | EVALUATION | Interview Answer Eval | gpt-4o-mini | relevance × 0.30 + STAR × 0.25 + … |
 | ORCHESTRATION | Agent Loop | **gpt-4o** | Tool selection + multi-step reasoning |
 
-Full rationale in `src/career_agent.py → MODEL_RATIONALE` (16 entries).
+Full rationale — including sub-components (review board strategies, review personas, market signal, salary estimation, job listing generation, pivot narrative) — in `src/career_agent.py → MODEL_RATIONALE` (16 entries covering all architectural decisions).
 
 ---
 

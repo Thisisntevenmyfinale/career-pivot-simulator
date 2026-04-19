@@ -3518,8 +3518,9 @@ if not st.session_state.has_run:
         'Not a collection of career tools. A single pipeline that takes you from '
         '"I want to change careers" to "I have an interview scheduled" — in one session.<br>'
         '<span style="opacity:0.65;font-size:12px">'
-        'Every generative output (applications, plans, profiles, answers) is scored by a second LLM before you see it. '
-        'Below-threshold outputs are automatically regenerated. Nothing generic reaches you.'
+        'Every generative output is scored by a second LLM. '
+        'Applications, learning plans, and profiles are auto-regenerated if below threshold. '
+        'Interview answers are coached and rewritten by you — not replaced by the model.'
         '</span>'
         '</div>'
 
@@ -3539,8 +3540,8 @@ if not st.session_state.has_run:
         '<div style="background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);'
         'border-radius:8px;padding:10px 16px;min-width:110px">'
         '<div style="font-size:18px;margin-bottom:3px">🔭</div>'
-        '<div style="font-size:12px;font-weight:800">Find Jobs</div>'
-        '<div style="font-size:10px;opacity:0.6;margin-top:2px">SerpAPI real jobs<br>O*NET fit ranking</div>'
+        '<div style="font-size:12px;font-weight:800">Find / Paste Job</div>'
+        '<div style="font-size:10px;opacity:0.6;margin-top:2px">SerpAPI real jobs<br>or paste one JD</div>'
         '</div>'
         '<div style="font-size:18px;opacity:0.4;padding:0 6px">→</div>'
 
@@ -3548,7 +3549,7 @@ if not st.session_state.has_run:
         'border-radius:8px;padding:10px 16px;min-width:130px">'
         '<div style="font-size:18px;margin-bottom:3px">⚡</div>'
         '<div style="font-size:12px;font-weight:800">Generate Portfolio</div>'
-        '<div style="font-size:10px;opacity:0.7;margin-top:2px">3 applications<br>parallel (gpt-4o)</div>'
+        '<div style="font-size:10px;opacity:0.7;margin-top:2px">1–3 applications<br>parallel (gpt-4o)</div>'
         '</div>'
         '<div style="font-size:18px;opacity:0.4;padding:0 6px">→</div>'
 
@@ -4568,13 +4569,31 @@ if guided:
                     st.session_state.learning_plan_md = _sp_md
                     st.session_state.learning_plan_source = _learning_plan_source_label(_sp_md)
                     st.session_state.plan_quality_eval = None
+                _gap_names_sp = (gap_df[gap_df["gap"] > 0].sort_values("gap", ascending=False)["skill"].head(8).tolist())
                 with st.spinner("Evaluating plan quality…"):
-                    _gap_names_sp = (gap_df[gap_df["gap"] > 0].sort_values("gap", ascending=False)["skill"].head(8).tolist())
                     st.session_state.plan_quality_eval = evaluate_learning_plan(
                         plan_markdown=_sp_md, skill_gaps=_gap_names_sp,
                         target_role=str(target), model="gpt-4o-mini",
                         api_key=_lp_key_sp or None, prefer_online=bool(_lp_key_sp),
                     )
+                # Auto-regen if quality below threshold (score < 60 or regenerate_recommended flag)
+                _sp_plan_eval_check = st.session_state.plan_quality_eval or {}
+                if _sp_plan_eval_check.get("regenerate_recommended") and _lp_key_sp:
+                    with st.spinner("Quality below threshold — regenerating with expanded skill coverage…"):
+                        _sp_md_v2 = generate_learning_plan_markdown(
+                            current_role=str(current), target_role=str(target),
+                            gap_df=gap_df, language="en", model="gpt-4o-mini",
+                            max_missing=8, prefer_online=True,
+                        )
+                        _sp_eval_v2 = evaluate_learning_plan(
+                            plan_markdown=_sp_md_v2, skill_gaps=_gap_names_sp,
+                            target_role=str(target), model="gpt-4o-mini",
+                            api_key=_lp_key_sp or None, prefer_online=bool(_lp_key_sp),
+                        )
+                        if _sp_eval_v2.get("overall_score", 0) >= _sp_plan_eval_check.get("overall_score", 0):
+                            st.session_state.learning_plan_md = _sp_md_v2
+                            st.session_state.plan_quality_eval = _sp_eval_v2
+                            st.session_state.plan_quality_eval["regenerate_recommended"] = False
                 st.rerun()
         else:
             st.markdown('<div style="height:4px"></div>', unsafe_allow_html=True)
@@ -5563,11 +5582,11 @@ with _tab_plan:
                     st.session_state.learning_plan_md = md
                     st.session_state.learning_plan_source = _learning_plan_source_label(md)
                     st.session_state.plan_quality_eval = None
+                _gap_names = (
+                    gap_df[gap_df["gap"] > 0].sort_values("gap", ascending=False)["skill"]
+                    .head(8).tolist()
+                )
                 with st.spinner("Evaluating plan quality…"):
-                    _gap_names = (
-                        gap_df[gap_df["gap"] > 0].sort_values("gap", ascending=False)["skill"]
-                        .head(8).tolist()
-                    )
                     st.session_state.plan_quality_eval = evaluate_learning_plan(
                         plan_markdown=md,
                         skill_gaps=_gap_names,
@@ -5576,6 +5595,24 @@ with _tab_plan:
                         api_key=_lp_key or None,
                         prefer_online=_has_openai_secret(),
                     )
+                # Auto-regen if quality below threshold
+                _adv_plan_eval_check = st.session_state.plan_quality_eval or {}
+                if _adv_plan_eval_check.get("regenerate_recommended") and _lp_key:
+                    with st.spinner("Quality below threshold — regenerating with expanded coverage…"):
+                        _md_v2 = generate_learning_plan_markdown(
+                            current_role=str(current), target_role=str(target),
+                            gap_df=gap_df, language="en", model="gpt-4o-mini",
+                            max_missing=8, prefer_online=True,
+                        )
+                        _eval_v2 = evaluate_learning_plan(
+                            plan_markdown=_md_v2, skill_gaps=_gap_names,
+                            target_role=str(target), model="gpt-4o-mini",
+                            api_key=_lp_key or None, prefer_online=_has_openai_secret(),
+                        )
+                        if _eval_v2.get("overall_score", 0) >= _adv_plan_eval_check.get("overall_score", 0):
+                            st.session_state.learning_plan_md = _md_v2
+                            st.session_state.plan_quality_eval = _eval_v2
+                            st.session_state.plan_quality_eval["regenerate_recommended"] = False
 
         with lp2:
             if st.button("Clear", use_container_width=True, key="clear_learning_plan", type="secondary"):
@@ -7355,6 +7392,30 @@ with _tab_execute:
                     prefer_online=bool(_oai_key_li),
                 )
             st.session_state.linkedin_profile["_eval"] = _li_eval
+            # Auto-regen if quality below threshold
+            if _li_eval.get("regenerate_recommended") and _oai_key_li:
+                with st.spinner("Profile quality below threshold — regenerating with refined pivot framing…"):
+                    _li_profile_v2 = generate_linkedin_profile(
+                        current_role=str(current),
+                        target_role=str(target),
+                        cv_text=st.session_state.cv_text or "",
+                        top_transferable_skills=_li_xfer_skills,
+                        top_gap_skills=_li_gap_skills,
+                        salary_delta_pct=_li_salary_delta,
+                        api_key=_oai_key_li,
+                        prefer_online=bool(_oai_key_li),
+                    )
+                    _li_eval_v2 = evaluate_linkedin_profile(
+                        profile=_li_profile_v2,
+                        current_role=str(current),
+                        target_role=str(target),
+                        api_key=_oai_key_li,
+                        prefer_online=bool(_oai_key_li),
+                    )
+                    if _li_eval_v2.get("overall_score", 0) >= _li_eval.get("overall_score", 0):
+                        _li_profile_v2["_eval"] = _li_eval_v2
+                        _li_profile_v2["_eval"]["regenerate_recommended"] = False
+                        st.session_state.linkedin_profile = _li_profile_v2
             st.rerun()
 
         if st.session_state.linkedin_profile:
@@ -7917,10 +7978,12 @@ with _tab_execute:
                     "layer": "EVALUATION",
                     "color": "#B24020",
                     "bg": "#FFF4F0",
-                    "desc": "Second-pass LLM scoring — LLM outputs are never used raw",
+                    "desc": "Second-pass LLM scoring — generated outputs are never shown unscored",
                     "components": [
                         ("Application Evaluation", "gpt-4o-mini", "orange", "4 dimensions: job relevance · specificity · InMail impact · CV rewrite quality"),
                         ("Learning Plan Evaluation", "gpt-4o-mini", "orange", "4 dimensions: gap coverage · resource specificity · timeline · actionability"),
+                        ("LinkedIn Profile Evaluation", "gpt-4o-mini", "orange", "pivot_clarity × 0.30 + keyword_density × 0.30 + authenticity × 0.20 + CTA × 0.20"),
+                        ("Interview Answer Evaluation", "gpt-4o-mini", "orange", "relevance × 0.30 + specificity × 0.30 + STAR structure × 0.25 + keywords × 0.15"),
                         ("Review Personas × 5", "gpt-4o-mini", "orange", "5 reviewer archetypes score strategies on 5 axes each"),
                     ],
                 },
@@ -7975,9 +8038,8 @@ with _tab_execute:
                 'text-transform:uppercase;color:#B24020;margin-bottom:6px">'
                 '🔬 Zero-Shot Capability Evaluation — empirical findings from development</div>'
                 '<div style="font-size:12px;color:rgba(0,0,0,0.55);margin-bottom:12px;line-height:1.6">'
-                'Each LLM task was tested in zero-shot mode during development. '
-                'Results informed model selection and prompt engineering choices. '
-                'Scores are averages across 10 representative test inputs; '
+                'Each LLM task was run 3 times zero-shot on the same JD/CV inputs; scores averaged. '
+                'Evaluator: gpt-4o-mini 4-dimension rubric. n=3 is directional (model selection), not a precision benchmark. '
                 'JSON compliance = % of calls that returned a parseable schema.</div>',
                 unsafe_allow_html=True,
             )
