@@ -93,6 +93,10 @@ from src.hiring_window import analyze_hiring_window, timing_score_color, timing_
 from src.writing_memory import (
     add_to_memory, get_relevant_phrases, format_memory_injection, get_memory_stats,
 )
+from src.demo_profile import (
+    load_demo_profile, DEMO_CURRENT_OCC, DEMO_TARGET_OCC,
+    DEMO_CV_TEXT,
+)
 import plotly.graph_objects as go
 import plotly.express as px
 
@@ -1440,6 +1444,10 @@ DEFAULT_STATE = {
     # Quality Shield — live evaluation log
     "quality_log": [],                  # [log_quality_event(...)] — every evaluation gate event
     "full_pipeline_triggered": False,   # True when user clicks "Run Full Pipeline"
+    # Demo Mode — pre-baked profile for testers
+    "demo_mode": False,                 # True when demo profile is loaded
+    "demo_current_occ": "",             # pre-select current occupation after demo load
+    "demo_target_occ": "",              # pre-select target occupation after demo load
     # Offer Probability Score (OPS) — live northstar metric
     "ops_previous": None,               # int — OPS from previous session for delta computation
     # Ghost-Writer Memory — compound writing quality over time
@@ -1700,10 +1708,14 @@ with st.sidebar:
         'color:rgba(0,0,0,0.45);margin-bottom:6px">Your Pivot</div>',
         unsafe_allow_html=True,
     )
-    current = st.selectbox("Current occupation", options=occupations, index=0, label_visibility="collapsed")
+    # Demo mode: pre-select Alex Müller's occupations
+    _demo_cur = st.session_state.get("demo_current_occ", "")
+    _demo_tgt = st.session_state.get("demo_target_occ", "")
+    _cur_idx = occupations.index(_demo_cur) if _demo_cur and _demo_cur in occupations else 0
+    _tgt_default = occupations.index(_demo_tgt) if _demo_tgt and _demo_tgt in occupations else (1 if len(occupations) > 1 else 0)
+    current = st.selectbox("Current occupation", options=occupations, index=_cur_idx, label_visibility="collapsed")
     st.caption("↑ Current occupation")
-    default_target_idx = 1 if len(occupations) > 1 else 0
-    selected_target = st.selectbox("Target occupation", options=occupations, index=default_target_idx, label_visibility="collapsed")
+    selected_target = st.selectbox("Target occupation", options=occupations, index=_tgt_default, label_visibility="collapsed")
     st.caption("↑ Target occupation")
 
     target = st.session_state.target_override or selected_target
@@ -1744,6 +1756,39 @@ with st.sidebar:
         'Your Profile (optional)</div>',
         unsafe_allow_html=True,
     )
+
+    # ── Demo Profile loader ───────────────────────────────────
+    if st.session_state.get("demo_mode"):
+        st.markdown(
+            f'<div style="background:#FFF8E7;border:1px solid #F3D7A5;border-radius:6px;'
+            f'padding:7px 10px;margin-bottom:8px;font-size:11px;color:#A05A00">'
+            f'{warn_icon(11)} <strong>Demo Mode</strong> — Alex Müller profile loaded. '
+            f'All features are fully functional with this sample data.</div>',
+            unsafe_allow_html=True,
+        )
+        if st.button("Exit Demo Mode", key="demo_exit", use_container_width=True, type="secondary"):
+            st.session_state.demo_mode = False
+            st.session_state.demo_current_occ = ""
+            st.session_state.demo_target_occ = ""
+            st.session_state.cv_text = ""
+            st.session_state.cv_profile = None
+            st.session_state.pivot_dna = None
+            st.session_state.pipeline_jobs = []
+            st.session_state.outcome_log = []
+            st.session_state.mock_interview_report = None
+            st.session_state.cohort_intelligence = None
+            st.session_state.calibration_data = {}
+            st.rerun()
+    else:
+        if st.button(
+            "Load Demo Profile",
+            key="demo_load_btn",
+            use_container_width=True,
+            help="Pre-fills a complete example profile — Alex Müller, Senior Marketing Manager → Product Manager. All features work immediately, no CV upload needed.",
+        ):
+            load_demo_profile(st.session_state)
+            st.rerun()
+        st.caption("No CV? Use the demo profile to explore all features instantly.")
 
     # File uploader (drag & drop PDF / DOCX)
     cv_uploaded_file = st.file_uploader(
@@ -6434,12 +6479,22 @@ if not st.session_state.has_run:
             '</div>',
             unsafe_allow_html=True,
         )
-        if st.button("Run Full Pipeline", use_container_width=True, key="_hero_full_btn",
-                     help="Chains CV analysis → job search → application generation → adversarial ranking → interview prep automatically"):
+        _fp_demo_active = st.session_state.get("demo_mode")
+        if st.button(
+            "Run Full Pipeline" if not _fp_demo_active else "Run Full Pipeline (Demo Active)",
+            use_container_width=True,
+            key="_hero_full_btn",
+            type="primary" if _fp_demo_active else "secondary",
+            help="Chains CV analysis → job search → application generation → adversarial ranking → interview prep automatically",
+        ):
+            if not st.session_state.get("cv_text"):
+                load_demo_profile(st.session_state)
             st.session_state["_pending_mode"] = "Advanced"
             st.session_state["has_run"] = True
             st.session_state["full_pipeline_triggered"] = True
             st.rerun()
+        if not st.session_state.get("cv_text"):
+            st.caption("No CV? Demo profile auto-loads.")
 
     # ── Architecture layer — 6 cards (3×2 CSS Grid — guaranteed equal height) ──
     _arch_cards = [
@@ -6721,6 +6776,22 @@ for _sico, _sname, _scap, _sdone in _pipeline_stages:
 _stage_html += '</div></div>'
 st.markdown(_stage_html, unsafe_allow_html=True)
 
+# ── Demo Mode banner (visible in active session) ──────────────────────────
+if st.session_state.get("demo_mode"):
+    st.markdown(
+        f'<div style="background:linear-gradient(90deg,#FFF8E7,#FFF3CC);'
+        f'border:1px solid #F3D7A5;border-radius:8px;padding:10px 16px;margin-bottom:12px;'
+        f'display:flex;align-items:center;justify-content:space-between">'
+        f'<div style="font-size:12px;color:#A05A00">'
+        f'{warn_icon(12)} <strong>Demo Mode</strong> — '
+        f'Viewing as <strong>Alex Müller</strong> (Senior Marketing Manager → Product Manager) · '
+        f'All features fully active · Use sidebar to exit demo or load your own CV'
+        f'</div>'
+        f'<div style="font-size:10px;font-weight:700;color:#A05A00;white-space:nowrap;margin-left:12px">'
+        f'SAMPLE DATA</div>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
 
 # ============================================================
 # OPS — Offer Probability Score (live northstar widget)
@@ -6807,7 +6878,30 @@ if st.session_state.get("full_pipeline_triggered"):
         unsafe_allow_html=True,
     )
     if not _cv_ready:
-        st.warning("Upload your CV in the sidebar first — the pipeline needs your skills to personalise applications.")
+        st.markdown(
+            '<div style="background:#FFF8E7;border:1px solid #F3D7A5;border-radius:10px;'
+            'padding:16px 18px;margin-bottom:12px">'
+            '<div style="font-size:13px;font-weight:800;color:#A05A00;margin-bottom:6px">'
+            'No CV uploaded — use the demo profile to test the full pipeline instantly</div>'
+            '<div style="font-size:12px;color:rgba(0,0,0,0.65);line-height:1.6;margin-bottom:12px">'
+            '<strong>Alex Müller</strong> — Senior Marketing Manager → Product Manager (SaaS) · '
+            '7 years experience · 8 applications in pipeline · Mock interview score 68/100<br>'
+            '<span style="font-size:11px;color:rgba(0,0,0,0.45)">'
+            'All features produce real, specific output with this profile. No upload required.'
+            '</span></div>',
+            unsafe_allow_html=True,
+        )
+        if st.button(
+            "Load Demo Profile + Run Full Pipeline",
+            key="fp_demo_load",
+            type="primary",
+            use_container_width=True,
+        ):
+            load_demo_profile(st.session_state)
+            st.session_state.full_pipeline_triggered = True
+            st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
+        st.caption("Or upload your own CV in the sidebar.")
     elif not _oai_key_fp:
         st.warning("Add your OpenAI API key in the sidebar — the pipeline requires LLM generation.")
     else:
