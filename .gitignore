@@ -4,3 +4,8 @@ __pycache__/
 *.pyc
 .DS_Store
 .streamlit/secrets.toml
+pivot_os.db
+pivot_os.db-wal
+pivot_os.db-shm
+pivot_profile.json
+pivot_profile.json.bak

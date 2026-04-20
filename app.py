@@ -74,7 +74,13 @@ from src.interview_coach import (
     generate_mock_interview_report,
 )
 from src.linkedin_optimizer import generate_linkedin_profile, evaluate_linkedin_profile
-from src.persistence import save_profile, load_profile, profile_exists, delete_profile, get_profile_meta
+from src.persistence_sqlite import (
+    save_profile, load_profile, profile_exists, delete_profile, get_profile_meta,
+    query_pipeline, get_rejection_funnel,
+)
+from src.rag_engine import (
+    build_index, retrieve, format_retrieved_context, index_ready, index_size,
+)
 from src.outcome_tracker import (
     create_outcome_entry, compute_calibration, diagnose_rejection_pattern,
     get_funnel_stats, OUTCOME_STAGES, STAGE_LABELS, STAGE_COLORS,
@@ -1450,6 +1456,10 @@ DEFAULT_STATE = {
     "demo_target_occ": "",              # pre-select target occupation after demo load
     # Offer Probability Score (OPS) — live northstar metric
     "ops_previous": None,               # int — OPS from previous session for delta computation
+    # RAG Engine — Retrieval-Augmented Generation for Pivot-Zwilling
+    "rag_docs": [],                     # [{"text","source","label"}] — indexed chunks
+    "rag_embeddings": [],               # list of lists (float32) — embedding matrix
+    "rag_corpus_hash": "",              # hash for change detection
     # Ghost-Writer Memory — compound writing quality over time
     "writing_memory": [],               # [phrase dicts] — extracted from quality-approved applications
     # Hiring Window Intelligence — per-company timing analysis
@@ -1941,9 +1951,12 @@ with st.sidebar:
     _pm = get_profile_meta()
     if _pm:
         _saved_at_str = _pm.get("saved_at", "")[:10]
+        _storage_type = _pm.get("storage", "SQLite (WAL)")
+        _storage_col = "#057642" if "SQLite" in _storage_type else "#A05A00"
         st.markdown(
             f'<div style="font-size:10px;color:rgba(0,0,0,0.4);margin-bottom:6px">'
-            f'Profile saved · {_saved_at_str} · {_pm.get("size_kb",0)} KB · '
+            f'<span style="color:{_storage_col};font-weight:700">{_storage_type}</span> · '
+            f'{_saved_at_str} · {_pm.get("size_kb",0)} KB · '
             f'{_pm.get("pipeline_count",0)} applications · {_pm.get("outcome_count",0)} outcomes'
             f'</div>',
             unsafe_allow_html=True,
@@ -13203,6 +13216,38 @@ with _tab_interview:
             unsafe_allow_html=True,
         )
 
+    # ── RAG index status ──────────────────────────────────────────────────
+    _zw_rag_ready = index_ready(st.session_state)
+    _zw_rag_size  = index_size(st.session_state)
+    if _zw_oai_key and (st.session_state.cv_profile or st.session_state.cv_text):
+        _zw_rag_col1, _zw_rag_col2 = st.columns([3, 1])
+        with _zw_rag_col1:
+            if _zw_rag_ready:
+                st.markdown(
+                    f'<div style="font-size:10px;color:#057642;font-weight:600">'
+                    f'{check_icon(10)} RAG index active — {_zw_rag_size} career document chunks indexed · '
+                    f'Responses grounded in your actual data</div>',
+                    unsafe_allow_html=True,
+                )
+            else:
+                st.markdown(
+                    '<div style="font-size:10px;color:#A05A00">'
+                    f'{warn_icon(10)} RAG index not built — click "Build RAG Index" for context-aware responses</div>',
+                    unsafe_allow_html=True,
+                )
+        with _zw_rag_col2:
+            if st.button("Build RAG Index", key="zw_rag_build", use_container_width=True,
+                         help="Embeds your CV, jobs, gaps, and outcomes — enables fact-grounded answers"):
+                with st.spinner(f"Embedding {len(st.session_state.get('pipeline_jobs') or [])+3} career documents…"):
+                    _zw_rag_ok = build_index(st.session_state, _zw_oai_key, force=True)
+                    if _zw_rag_ok:
+                        # Reset Zwilling so system context is refreshed
+                        st.session_state.zwilling_initialized = False
+                        st.session_state.zwilling_messages = []
+                        st.rerun()
+                    else:
+                        st.error("Index build failed — check API key.")
+
     # Chat input
     if _zw_oai_key:
         _zw_user_input = st.chat_input(
@@ -13215,19 +13260,43 @@ with _tab_interview:
                 _sys_ctx = _build_zwilling_context()
                 st.session_state.zwilling_messages = [{"role": "system", "content": _sys_ctx}]
                 st.session_state.zwilling_initialized = True
+
+            # ── RAG retrieval — inject relevant chunks before the query ──
+            _zw_messages_to_send = list(st.session_state.zwilling_messages)
+            if _zw_rag_ready:
+                _retrieved = retrieve(_zw_user_input, st.session_state, _zw_oai_key, k=4)
+                if _retrieved:
+                    _rag_ctx = format_retrieved_context(_retrieved)
+                    # Inject as a system-level context message (not stored in history)
+                    _zw_messages_to_send = (
+                        [_zw_messages_to_send[0]]          # keep system prompt first
+                        + [{"role": "system", "content": _rag_ctx}]  # inject RAG context
+                        + _zw_messages_to_send[1:]         # remaining conversation
+                        + [{"role": "user", "content": _zw_user_input}]
+                    )
+                else:
+                    _zw_messages_to_send.append({"role": "user", "content": _zw_user_input})
+            else:
+                _zw_messages_to_send.append({"role": "user", "content": _zw_user_input})
+
+            # Store user message in history (without RAG context — clean history)
             st.session_state.zwilling_messages.append({"role": "user", "content": _zw_user_input})
-            with st.spinner("Pivot-Zwilling thinking…"):
+
+            with st.spinner("Pivot-Zwilling searching your documents…" if _zw_rag_ready else "Pivot-Zwilling thinking…"):
                 try:
                     from openai import OpenAI as _ZOAIClient
                     _zw_client = _ZOAIClient(api_key=_zw_oai_key)
                     _zw_resp = _zw_client.chat.completions.create(
                         model="gpt-4o",
-                        messages=st.session_state.zwilling_messages,
+                        messages=_zw_messages_to_send,
                         temperature=0.6,
-                        max_tokens=500,
+                        max_tokens=600,
                     )
                     _zw_reply = (_zw_resp.choices[0].message.content or "").strip()
                     st.session_state.zwilling_messages.append({"role": "assistant", "content": _zw_reply})
+                    # Auto-rebuild index if corpus changed since last build
+                    if _zw_rag_ready:
+                        build_index(st.session_state, _zw_oai_key, force=False)
                 except Exception as _ze:
                     st.session_state.zwilling_messages.append({
                         "role": "assistant",
