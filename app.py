@@ -85,6 +85,14 @@ from src.quality_shield import (
     log_quality_event, get_shield_stats,
     MODEL_DECISIONS, AGGREGATION_FORMULAS,
 )
+from src.offer_probability import (
+    compute_ops, ops_color, ops_label, ops_description,
+)
+from src.rejection_interpreter import interpret_rejection, REJECTION_TYPES
+from src.hiring_window import analyze_hiring_window, timing_score_color, timing_score_label
+from src.writing_memory import (
+    add_to_memory, get_relevant_phrases, format_memory_injection, get_memory_stats,
+)
 import plotly.graph_objects as go
 import plotly.express as px
 
@@ -393,10 +401,40 @@ st.markdown("""
       <span class="li-nav-me-label">Me ▾</span>
     </div>
     <div class="li-nav-vdivider"></div>
+    <div id="ops-nav-badge" style="display:flex;flex-direction:column;align-items:center;gap:1px;cursor:pointer">
+      <div style="font-size:10px;font-weight:800;letter-spacing:0.06em;color:rgba(0,0,0,0.45)">OFFER PROB.</div>
+      <div id="ops-nav-val" style="font-size:17px;font-weight:900;line-height:1;color:#5F6B7A">—%</div>
+    </div>
+    <div class="li-nav-vdivider"></div>
     <span class="li-nav-premium">✦ Try Premium</span>
   </div>
 </nav>
 """, unsafe_allow_html=True)
+
+# ── Compute OPS right after navbar so delta is always fresh ──────────────
+_ops_result = compute_ops(st.session_state)
+_ops_val    = _ops_result["ops"]
+_ops_color  = ops_color(_ops_val)
+_ops_delta  = _ops_result["delta"]
+
+# Inject OPS into the navbar badge via JS
+_ops_delta_str = f"+{_ops_delta}" if _ops_delta > 0 else str(_ops_delta)
+_ops_delta_col = "#057642" if _ops_delta > 0 else ("#B71C1C" if _ops_delta < 0 else "#5F6B7A")
+st.markdown(
+    f"""<script>
+    (function() {{
+        var el = document.getElementById('ops-nav-val');
+        if (el) {{
+            el.textContent = '{_ops_val}%';
+            el.style.color = '{_ops_color}';
+        }}
+    }})();
+    </script>""",
+    unsafe_allow_html=True,
+)
+# Persist current OPS as previous for next session delta
+if st.session_state.get("ops_previous") is None:
+    st.session_state.ops_previous = _ops_val
 
 # ============================================================
 # Small helpers
@@ -1402,6 +1440,15 @@ DEFAULT_STATE = {
     # Quality Shield — live evaluation log
     "quality_log": [],                  # [log_quality_event(...)] — every evaluation gate event
     "full_pipeline_triggered": False,   # True when user clicks "Run Full Pipeline"
+    # Offer Probability Score (OPS) — live northstar metric
+    "ops_previous": None,               # int — OPS from previous session for delta computation
+    # Ghost-Writer Memory — compound writing quality over time
+    "writing_memory": [],               # [phrase dicts] — extracted from quality-approved applications
+    # Hiring Window Intelligence — per-company timing analysis
+    "hiring_window_result": None,       # analyze_hiring_window() result
+    "hiring_window_company": "",        # last queried company
+    # Rejection Interpreter — per-rejection actionable diagnosis
+    "rejection_interpretations": {},    # {outcome_id: interpret_rejection() result}
     # Outcome Tracker + Calibration Motor
     "outcome_log": [],                  # [create_outcome_entry(...)] — every recorded outcome
     "calibration_data": {},             # compute_calibration() result
@@ -2766,6 +2813,97 @@ if quick_apply:
                     st.markdown(f"→ {_act}")
                 st.markdown("</div>", unsafe_allow_html=True)
 
+            # Rejection Interpreter — instant actionable diagnosis per rejection
+            _rej_log_items = [o for o in _ot_log if not o.get("is_offer")]
+            if _rej_log_items:
+                st.markdown(
+                    f'<div style="font-size:10px;font-weight:800;letter-spacing:0.08em;'
+                    f'text-transform:uppercase;color:rgba(0,0,0,0.38);margin-top:12px;margin-bottom:6px">'
+                    f'Rejection Interpreter</div>',
+                    unsafe_allow_html=True,
+                )
+                _ri_sel_opts = [
+                    f"{o.get('job_title','Role')} @ {o.get('company','?')} — {STAGE_LABELS.get(o.get('actual_stage',''),'')}"
+                    for o in _rej_log_items[-8:]
+                ]
+                _ri_sel = st.selectbox("Select a rejection to interpret", _ri_sel_opts,
+                                       key="ri_select", label_visibility="collapsed")
+                _ri_idx = _ri_sel_opts.index(_ri_sel) if _ri_sel in _ri_sel_opts else 0
+                _ri_entry = _rej_log_items[-(8 - _ri_idx)] if _ri_idx < len(_rej_log_items) else _rej_log_items[-1]
+                _ri_entry_id = _ri_entry.get("id", "") or _ri_entry.get("date","") + _ri_entry.get("company","")
+
+                _ri_feedback = st.text_area(
+                    "Paste feedback (optional — leave blank for pattern-based diagnosis)",
+                    key="ri_feedback", height=55,
+                    placeholder="e.g. 'We decided to go with a candidate with more direct experience in X'",
+                )
+
+                _ri_interp = st.session_state.get("rejection_interpretations", {}).get(_ri_entry_id)
+                if st.button("Interpret this rejection", key="ri_run", use_container_width=True):
+                    with st.spinner("Diagnosing rejection…"):
+                        _ri_result = interpret_rejection(
+                            _qa_key or "",
+                            feedback_text=_ri_feedback or "",
+                            stage=_ri_entry.get("actual_stage", "no_response"),
+                            job_title=_ri_entry.get("job_title", ""),
+                            company=_ri_entry.get("company", ""),
+                            cv_profile=st.session_state.get("cv_profile") or {},
+                            pivot_dna=st.session_state.get("pivot_dna") or {},
+                        )
+                        _ri_interps = st.session_state.get("rejection_interpretations") or {}
+                        _ri_interps[_ri_entry_id] = _ri_result
+                        st.session_state.rejection_interpretations = _ri_interps
+                        _ri_interp = _ri_result
+                        save_profile(st.session_state)
+
+                if _ri_interp:
+                    _ri_meta = _ri_interp.get("type_meta", {})
+                    _ri_col = _ri_meta.get("color", "#5F6B7A")
+                    st.markdown(
+                        f'<div style="background:#F8FAFF;border-left:3px solid {_ri_col};'
+                        f'border-radius:0 10px 10px 0;padding:12px 14px;margin-top:8px">'
+                        f'<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">'
+                        f'{icon_box(_ri_meta.get("icon","help-circle"), bg=_ri_col+"20", color=_ri_col, size=14, box_size=28, radius=6)}'
+                        f'<div><div style="font-size:12px;font-weight:800;color:{_ri_col}">'
+                        f'{_ri_meta.get("label","Rejection")} · {_ri_interp.get("confidence",0)}% confidence</div>'
+                        f'<div style="font-size:11px;color:rgba(0,0,0,0.5)">{_ri_meta.get("summary","")}</div>'
+                        f'</div></div>'
+                        f'<div style="font-size:12px;color:rgba(0,0,0,0.75);margin-bottom:8px;line-height:1.5">'
+                        f'<strong>Root cause:</strong> {_ri_interp.get("root_cause","")}</div>'
+                        f'<div style="background:{_ri_col}15;border-radius:6px;padding:8px 10px;margin-bottom:8px">'
+                        f'<div style="font-size:10px;font-weight:800;color:{_ri_col};margin-bottom:3px">DO THIS TODAY</div>'
+                        f'<div style="font-size:12px;font-weight:600;color:rgba(0,0,0,0.8)">'
+                        f'{_ri_interp.get("immediate_action","")}</div>'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
+                    _ri_plan = _ri_interp.get("week_plan") or []
+                    if _ri_plan:
+                        st.markdown(
+                            '<div style="font-size:10px;font-weight:800;color:rgba(0,0,0,0.38);'
+                            'margin-bottom:4px">THIS WEEK</div>',
+                            unsafe_allow_html=True,
+                        )
+                        for _rp in _ri_plan:
+                            st.markdown(
+                                f'<div style="font-size:11px;color:rgba(0,0,0,0.7);padding:2px 0">'
+                                f'{check_icon(11)} {_rp}</div>',
+                                unsafe_allow_html=True,
+                            )
+                    if _ri_interp.get("reframe"):
+                        st.markdown(
+                            f'<div style="margin-top:8px;font-size:11px;color:rgba(0,0,0,0.55);'
+                            f'font-style:italic;line-height:1.5">{_ri_interp["reframe"]}</div>',
+                            unsafe_allow_html=True,
+                        )
+                    if _ri_interp.get("ops_impact"):
+                        st.markdown(
+                            f'<div style="margin-top:6px;font-size:11px;font-weight:600;color:#0A66C2">'
+                            f'{icon("trending-up",11,"#0A66C2")} {_ri_interp["ops_impact"]}</div>',
+                            unsafe_allow_html=True,
+                        )
+                    st.markdown('</div>', unsafe_allow_html=True)
+
             # Log table
             if st.checkbox(f"Show outcome log ({len(_ot_log)} entries)", key="ot_show_log"):
                 for _oe in reversed(_ot_log[-10:]):
@@ -2936,6 +3074,125 @@ if quick_apply:
                     with _wi_dc2:
                         for _d in _wi_donts[:3]:
                             st.markdown(f'<span style="color:#B71C1C;font-size:11px">{x_icon(11)} {_d}</span>', unsafe_allow_html=True)
+
+    with _mp_col2:
+        with st.expander(
+            f'{icon("clock",14,"#0A66C2")} Hiring Window Intelligence — Company Timing Analysis',
+            expanded=False,
+        ):
+            st.markdown(
+                '<div style="font-size:11px;color:rgba(0,0,0,0.5);margin-bottom:10px;line-height:1.6">'
+                'Timing is the most underrated hiring variable. A strong application to a company with '
+                'a hiring freeze gets the same result as a weak one. This tells you <em>when</em> to apply — '
+                'not just where.'
+                '</div>',
+                unsafe_allow_html=True,
+            )
+            _hw_company = st.text_input(
+                "Target company", key="hw_company",
+                placeholder="e.g. Stripe, Notion, Linear",
+            )
+            _hw_role = st.text_input(
+                "Target role", key="hw_role",
+                placeholder=str(target) if target else "e.g. Product Manager",
+                value=str(target) if target else "",
+            )
+            if st.button("Analyse Hiring Window", key="hw_run", type="primary", use_container_width=True):
+                if _hw_company:
+                    with st.spinner(f"Analysing {_hw_company} hiring signals…"):
+                        st.session_state.hiring_window_result = analyze_hiring_window(
+                            _qa_key or "",
+                            company_name=_hw_company,
+                            target_role=_hw_role or str(target),
+                            cv_profile=st.session_state.get("cv_profile") or {},
+                        )
+                        st.session_state.hiring_window_company = _hw_company
+                else:
+                    st.warning("Enter a company name first.")
+
+            _hw = st.session_state.get("hiring_window_result")
+            if _hw and st.session_state.get("hiring_window_company"):
+                _hw_score = _hw.get("timing_score", 50)
+                _hw_color = timing_score_color(_hw_score)
+                _hw_label = timing_score_label(_hw_score)
+
+                st.markdown(
+                    f'<div style="background:#F3F6F9;border-radius:10px;padding:14px 16px;margin-top:8px">'
+                    f'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">'
+                    f'<div>'
+                    f'<div style="font-size:14px;font-weight:800;color:rgba(0,0,0,0.88)">'
+                    f'{st.session_state.hiring_window_company}</div>'
+                    f'<div style="font-size:11px;color:rgba(0,0,0,0.5);margin-top:1px">{_hw_label}</div>'
+                    f'</div>'
+                    f'<div style="text-align:right">'
+                    f'<div style="font-size:30px;font-weight:900;color:{_hw_color};line-height:1">{_hw_score}</div>'
+                    f'<div style="font-size:10px;color:rgba(0,0,0,0.4)">/ 100 timing score</div>'
+                    f'</div>'
+                    f'</div>'
+                    f'<div style="font-size:12px;color:rgba(0,0,0,0.7);font-style:italic;margin-bottom:10px">'
+                    f'"{_hw.get("window_verdict","")}"'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+
+                # Signals
+                _hw_sigs = _hw.get("signals") or []
+                if _hw_sigs:
+                    st.markdown(
+                        '<div style="font-size:10px;font-weight:800;letter-spacing:0.06em;'
+                        'text-transform:uppercase;color:rgba(0,0,0,0.38);margin-bottom:6px">Signals detected</div>',
+                        unsafe_allow_html=True,
+                    )
+                    for _sig in _hw_sigs[:4]:
+                        _sig_meta = _sig.get("meta", {})
+                        _sig_dir = _sig.get("direction", "neutral")
+                        _sig_col = "#057642" if _sig_dir == "positive" else ("#B71C1C" if _sig_dir == "negative" else "#5F6B7A")
+                        _sig_icon_name = _sig_meta.get("icon", "info")
+                        st.markdown(
+                            f'<div style="display:flex;gap:8px;align-items:flex-start;'
+                            f'padding:5px 0;border-bottom:1px solid rgba(0,0,0,0.05)">'
+                            f'<div style="flex-shrink:0;margin-top:1px">{icon(_sig_icon_name, 12, _sig_col)}</div>'
+                            f'<div style="flex:1">'
+                            f'<div style="font-size:10px;font-weight:700;color:{_sig_col}">'
+                            f'{_sig_meta.get("label","")}</div>'
+                            f'<div style="font-size:11px;color:rgba(0,0,0,0.65)">{_sig.get("description","")}</div>'
+                            f'</div></div>',
+                            unsafe_allow_html=True,
+                        )
+
+                st.markdown(
+                    f'<div style="margin-top:10px;font-size:11px;color:rgba(0,0,0,0.7);line-height:1.6">'
+                    f'<strong>How to approach:</strong> {_hw.get("strategic_approach","")}</div>',
+                    unsafe_allow_html=True,
+                )
+
+                _hw_pts = _hw.get("talking_points") or []
+                if _hw_pts:
+                    st.markdown(
+                        '<div style="margin-top:8px;font-size:10px;font-weight:800;letter-spacing:0.06em;'
+                        'text-transform:uppercase;color:rgba(0,0,0,0.38)">Mention in outreach</div>',
+                        unsafe_allow_html=True,
+                    )
+                    for _pt in _hw_pts:
+                        st.markdown(
+                            f'<div style="font-size:11px;color:#0A66C2;padding:2px 0">'
+                            f'{check_icon(11)} {_pt}</div>',
+                            unsafe_allow_html=True,
+                        )
+
+                if _hw.get("avoid"):
+                    st.markdown(
+                        f'<div style="margin-top:8px;background:#FFF0E5;border-radius:6px;padding:7px 10px;'
+                        f'font-size:11px;color:#A05A00">'
+                        f'{warn_icon(11)} <strong>Avoid:</strong> {_hw["avoid"]}</div>',
+                        unsafe_allow_html=True,
+                    )
+
+                conf_badge = {"high": "🟢 High", "medium": "🟡 Medium", "low": "🔴 Low"}.get(
+                    _hw.get("data_confidence","medium"), "🟡 Medium"
+                )
+                st.caption(f"Data confidence: {conf_badge} · Best channel: {_hw.get('best_channel','').replace('_',' ')}")
+                st.markdown('</div>', unsafe_allow_html=True)
 
     # ── Next Action Engine ────────────────────────────────────────────────────
     # Reads session state → determines single most important next action.
@@ -4394,6 +4651,26 @@ if quick_apply:
                         company=_qa_p2.get("company", ""),
                         job_title=_qa_p2.get("job_title", ""),
                     )
+                    # ── Ghost-Writer Memory: store strong phrases from approved pkg ──
+                    _qa_final_pkg = st.session_state.qa_package
+                    if _qa_final_pkg and _qa_score_final >= 65:
+                        _qa_role_ctx = f"{_qa_p2.get('job_title','')} at {_qa_p2.get('company','')}"
+                        if _qa_final_pkg.cover_letter:
+                            add_to_memory(
+                                st.session_state,
+                                text=_qa_final_pkg.cover_letter,
+                                artifact="Cover Letter",
+                                role_context=_qa_role_ctx,
+                                score=_qa_score_final,
+                            )
+                        if _qa_final_pkg.linkedin_inmail:
+                            add_to_memory(
+                                st.session_state,
+                                text=_qa_final_pkg.linkedin_inmail,
+                                artifact="LinkedIn InMail",
+                                role_context=_qa_role_ctx,
+                                score=_qa_score_final,
+                            )
                     st.rerun()
             else:
                 _qa_pkg2: Optional[ApplicationPackage] = st.session_state.qa_package
@@ -5966,16 +6243,17 @@ if not st.session_state.has_run:
         '<div style="font-size:10px;font-weight:800;letter-spacing:0.16em;text-transform:uppercase;'
         'opacity:0.6;margin-bottom:14px">Career Pivot Simulator — A3</div>'
         '<div style="font-size:34px;font-weight:900;line-height:1.12;margin-bottom:14px;letter-spacing:-0.8px">'
-        'One goal.<br>'
-        '<span style="color:#7DD3FC">Get the interview.</span>'
+        'One number.<br>'
+        '<span style="color:#7DD3FC">Your Offer Probability.</span>'
         '</div>'
         '<div style="font-size:14px;opacity:0.82;line-height:1.7;max-width:580px;margin-bottom:32px">'
-        'Not a collection of career tools. A single pipeline that takes you from '
-        '"I want to change careers" to "I have an interview scheduled" — in one session.<br>'
+        'PivotOS tracks one thing: how likely you are to receive an offer. '
+        'Every action — better application, mock interview, more volume — moves that number. '
+        'The pipeline exists to drive it up.<br>'
         '<span style="opacity:0.65;font-size:12px">'
-        'Every generative output is scored by a second LLM. '
-        'Applications, learning plans, and profiles are auto-regenerated if below threshold. '
-        'Interview answers are coached and rewritten by you — not replaced by the model.'
+        'Every generative output passes a dual-LLM quality gate. '
+        'Rejections are auto-diagnosed. Company timing is analysed. '
+        'Your writing compounds over sessions.'
         '</span>'
         '</div>'
 
@@ -6309,6 +6587,37 @@ if not st.session_state.has_run:
             st.markdown(_qs_log_html, unsafe_allow_html=True)
             st.caption(f"Generation model: gpt-4o · Evaluation model: gpt-4o-mini · Threshold: 65/100 for applications, 60/100 for plans")
 
+    # ── Ghost-Writer Memory panel ──────────────────────────────────────────
+    _wm_stats = get_memory_stats(st.session_state)
+    if _wm_stats.get("total", 0) > 0:
+        with st.expander(
+            f'Ghost-Writer Memory — {_wm_stats["total"]} phrases · avg score {_wm_stats["avg_score"]}/100',
+            expanded=False,
+        ):
+            _wm_c1, _wm_c2, _wm_c3 = st.columns(3)
+            with _wm_c1:
+                st.metric("Phrases stored", _wm_stats["total"])
+            with _wm_c2:
+                st.metric("Avg quality score", f"{_wm_stats['avg_score']}/100")
+            with _wm_c3:
+                st.metric("Times reused", _wm_stats["total_uses"])
+
+            _wm_by_art = _wm_stats.get("artifacts") or {}
+            if _wm_by_art:
+                _wm_art_html = '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px">'
+                for _art, _cnt in _wm_by_art.items():
+                    _wm_art_html += (
+                        f'<span style="background:#EEF3FB;color:#0A66C2;font-size:11px;font-weight:600;'
+                        f'border-radius:12px;padding:2px 10px">{_art}: {_cnt}</span>'
+                    )
+                _wm_art_html += '</div>'
+                st.markdown(_wm_art_html, unsafe_allow_html=True)
+
+            st.caption(
+                "Every approved application (score ≥ 65) seeds this memory. "
+                "The next cover letter is written using your best past language — not from scratch."
+            )
+
     st.caption("Upload your CV in the sidebar to personalise the pipeline · Pick current & target occupation · Then choose a mode above.")
     st.stop()
 
@@ -6353,27 +6662,27 @@ _pipeline_stages = [
     (
         "file-text", "Profile",
         "CV + Pivot DNA",
-        _stage_done([bool(st.session_state.cv_text), bool(st.session_state.pivot_dna)]),
+        _stage_done([bool(st.session_state.get("cv_text")), bool(st.session_state.get("pivot_dna"))]),
     ),
     (
         "bar-chart-2", "Intelligence",
         "O*NET + Market",
-        _stage_done([bool(st.session_state.onet_match or st.session_state.cv_profile)]),
+        _stage_done([bool(st.session_state.get("onet_match") or st.session_state.get("cv_profile"))]),
     ),
     (
         "zap", "Portfolio",
         "Applications + Ranked",
-        _stage_done([bool(st.session_state.smart_apply_package or st.session_state.pivot_narrative)]),
+        _stage_done([bool(st.session_state.get("smart_apply_package") or st.session_state.get("pivot_narrative"))]),
     ),
     (
         "scale", "Validated",
         "Debated + Scored",
-        _stage_done([bool(st.session_state.debate_result or st.session_state.review_board_result)]),
+        _stage_done([bool(st.session_state.get("debate_result") or st.session_state.get("review_board_result"))]),
     ),
     (
         "mic", "Interview",
         "Prep + Mock ready",
-        _stage_done([bool(st.session_state.interview_prep_done or st.session_state.mock_interview_report)]),
+        _stage_done([bool(st.session_state.get("interview_prep_done") or st.session_state.get("mock_interview_report"))]),
     ),
 ]
 _stages_done = sum(1 for *_, done in _pipeline_stages if done)
@@ -6411,6 +6720,71 @@ for _sico, _sname, _scap, _sdone in _pipeline_stages:
     )
 _stage_html += '</div></div>'
 st.markdown(_stage_html, unsafe_allow_html=True)
+
+
+# ============================================================
+# OPS — Offer Probability Score (live northstar widget)
+# The single most important number in PivotOS.
+# ============================================================
+_ops_c1, _ops_c2 = st.columns([1, 2], gap="medium")
+
+with _ops_c1:
+    _ops_grade_bg = {
+        "A": "#F0FAF4", "B": "#EEF3FB", "C": "#FFF8E7",
+        "D": "#FFF0E5", "F": "#FFF0F0",
+    }.get(_ops_result["grade"], "#F8FAFF")
+    _ops_conf_label = {
+        "high": "High confidence · model well-calibrated",
+        "medium": "Medium confidence · more data will sharpen this",
+        "low": "Low confidence · upload CV & run more applications",
+    }.get(_ops_result["confidence"], "")
+    _ops_delta_disp = f'<span style="font-size:13px;font-weight:700;color:{"#057642" if _ops_result["delta"]>0 else ("#B71C1C" if _ops_result["delta"]<0 else "#5F6B7A")}">'
+    _ops_delta_disp += (f'+{_ops_result["delta"]}' if _ops_result["delta"] > 0 else str(_ops_result["delta"])) + "pts vs last session</span>"
+    st.markdown(
+        f'<div style="background:{_ops_grade_bg};border:1.5px solid {_ops_color};border-radius:12px;'
+        f'padding:20px 22px;text-align:center">'
+        f'<div style="font-size:10px;font-weight:800;letter-spacing:0.12em;text-transform:uppercase;'
+        f'color:rgba(0,0,0,0.4);margin-bottom:6px">Offer Probability</div>'
+        f'<div style="font-size:56px;font-weight:900;color:{_ops_color};line-height:1;margin-bottom:4px">'
+        f'{_ops_val}<span style="font-size:28px">%</span></div>'
+        f'<div style="font-size:13px;font-weight:800;color:{_ops_color};margin-bottom:6px">'
+        f'{ops_label(_ops_val)} · Grade {_ops_result["grade"]}</div>'
+        f'{_ops_delta_disp if _ops_result["delta"] != 0 else ""}'
+        f'<div style="font-size:10px;color:rgba(0,0,0,0.38);margin-top:6px">{_ops_conf_label}</div>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+
+with _ops_c2:
+    st.markdown(
+        f'<div style="background:#fff;border:1px solid rgba(0,0,0,0.08);border-radius:12px;padding:16px 18px">'
+        f'<div style="font-size:11px;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;'
+        f'color:rgba(0,0,0,0.38);margin-bottom:10px">What\'s driving your OPS</div>',
+        unsafe_allow_html=True,
+    )
+    for _drv in (_ops_result["drivers"] or [])[:5]:
+        _drv_dir = _drv.get("direction", "~")
+        _drv_col = "#057642" if _drv_dir == "+" else ("#B71C1C" if _drv_dir == "-" else "#A05A00")
+        _drv_icon = check_icon(11) if _drv_dir == "+" else (x_icon(11) if _drv_dir == "-" else warn_icon(11))
+        _drv_impact = _drv.get("impact", 0)
+        _drv_sign = "+" if _drv_impact > 0 else ""
+        st.markdown(
+            f'<div style="display:flex;align-items:center;gap:8px;padding:5px 0;'
+            f'border-bottom:1px solid rgba(0,0,0,0.05)">'
+            f'<div style="flex-shrink:0">{_drv_icon}</div>'
+            f'<div style="flex:1;font-size:12px;color:rgba(0,0,0,0.72)">{_drv.get("factor","")}</div>'
+            f'<div style="font-size:11px;font-weight:800;color:{_drv_col};white-space:nowrap">'
+            f'{_drv_sign}{_drv_impact}pts</div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+    st.markdown(
+        f'<div style="margin-top:10px;background:#EEF3FB;border-radius:6px;padding:8px 10px;'
+        f'font-size:11px;color:#0A66C2;font-weight:600">'
+        f'{icon("zap",12,"#0A66C2")} &nbsp;Next lever: {_ops_result["next_lever"]}'
+        f'</div></div>',
+        unsafe_allow_html=True,
+    )
 
 
 # ============================================================
@@ -12670,33 +13044,33 @@ with _tab_interview:
             _ctx_parts.append(f"Top skills: {', '.join((_cv_profile.get('top_skills') or [])[:8])}")
             _ctx_parts.append(f"Years experience: {_cv_profile.get('years_experience', 'unknown')}")
             _ctx_parts.append(f"CV role: {_cv_profile.get('extracted_role', '')}")
-        if st.session_state.onet_match:
+        if st.session_state.get("onet_match"):
             _ctx_parts.append(f"O*NET target match: {st.session_state.onet_match.get('occupation_title', '')}")
-        if st.session_state.skill_gap_results:
+        if st.session_state.get("skill_gap_results"):
             _sg = st.session_state.skill_gap_results
             _ctx_parts.append(f"Fit percentile: {_sg.get('fit_percentile', 'N/A')}")
             _top_gaps = [g['skill'] for g in (_sg.get('gaps', []) or [])[:3]]
             if _top_gaps:
                 _ctx_parts.append(f"Top 3 skill gaps: {', '.join(_top_gaps)}")
-        if st.session_state.pivot_dna:
+        if st.session_state.get("pivot_dna"):
             _dna = st.session_state.pivot_dna
             _ctx_parts.append(f"Strongest transferable argument: {_dna.get('strongest_transferable_argument', '')}")
             _ctx_parts.append(f"Unfair advantage: {_dna.get('unfair_advantage', '')}")
-        if st.session_state.cohort_intelligence:
+        if st.session_state.get("cohort_intelligence"):
             _ci = st.session_state.cohort_intelligence
             _ctx_parts.append(f"Cohort median timeline: {_ci.get('median_timeline_weeks', '?')} weeks, {_ci.get('median_applications', '?')} applications")
             _ctx_parts.append(f"What works for this pivot: {_ci.get('what_worked', '')[:200]}")
-        if st.session_state.mock_interview_report:
+        if st.session_state.get("mock_interview_report"):
             _mir = st.session_state.mock_interview_report
             _ctx_parts.append(f"Mock interview score: {_mir.get('overall_score', 'N/A')}/100 · {_mir.get('hire_recommendation', '')}")
             _ctx_parts.append(f"Mock interview verdict: {_mir.get('one_line_verdict', '')}")
-        _pipeline = st.session_state.pipeline_jobs or []
+        _pipeline = st.session_state.get("pipeline_jobs") or []
         if _pipeline:
             _stats = {
                 "total": len(_pipeline),
-                "active": sum(1 for j in _pipeline if j.status not in ("rejected", "offer", "declined")),
-                "rejected": sum(1 for j in _pipeline if j.status == "rejected"),
-                "interviews": sum(1 for j in _pipeline if j.status in ("interview", "technical", "final")),
+                "active": sum(1 for j in _pipeline if j.get("status") not in ("rejected", "offer", "declined")),
+                "rejected": sum(1 for j in _pipeline if j.get("status") == "rejected"),
+                "interviews": sum(1 for j in _pipeline if j.get("status") in ("interview", "technical", "final")),
             }
             _ctx_parts.append(f"Pipeline: {_stats['total']} applications · {_stats['active']} active · {_stats['rejected']} rejected · {_stats['interviews']} in interview")
         _ctx_parts += [
