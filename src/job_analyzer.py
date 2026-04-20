@@ -266,3 +266,175 @@ Respond ONLY with JSON: {{"ratings": {{"<skill>": <0-7>, ...}}}}
         "user_label": user_label,
         "source": "online",
     }
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# ATS Compatibility Scanner
+# ──────────────────────────────────────────────────────────────────────────────
+
+def scan_ats_compatibility(
+    cv_text: str,
+    cover_letter: str = "",
+    job_description: str = "",
+    job_title: str = "",
+    model: str = "gpt-4o-mini",
+    api_key: Optional[str] = None,
+    prefer_online: bool = True,
+) -> Dict[str, Any]:
+    """
+    Check how well a CV + cover letter will pass an ATS (Applicant Tracking System)
+    for a specific job description.
+
+    ~75% of resumes are rejected by ATS before any human sees them.
+    This scanner closes the gap between "generated application" and "application that
+    gets past the first automated filter."
+
+    Returns:
+        {
+          "ats_score": int,                  0-100 overall ATS compatibility
+          "keyword_coverage_pct": int,       % of JD keywords found in CV+CL
+          "matched_keywords": List[str],     keywords present in CV/cover letter
+          "missing_critical": List[str],     high-priority missing keywords (must-add)
+          "missing_nice": List[str],         lower-priority missing keywords
+          "suggestions": List[Dict],         [{keyword, where_to_add, example_sentence}]
+          "title_match": bool,              job title or synonym in CV
+          "format_warnings": List[str],      ATS-unfriendly formatting signals
+          "one_line_verdict": str,
+          "source": str,
+        }
+    """
+    _heuristic_result: Dict[str, Any] = {
+        "ats_score": 55,
+        "keyword_coverage_pct": 55,
+        "matched_keywords": [],
+        "missing_critical": ["Upload CV and add OpenAI key for full ATS scan"],
+        "missing_nice": [],
+        "suggestions": [],
+        "title_match": False,
+        "format_warnings": [],
+        "one_line_verdict": "Add API key and CV text for an ATS compatibility scan.",
+        "source": "heuristic",
+    }
+
+    if not cv_text.strip() or not job_description.strip():
+        return _heuristic_result
+
+    if not prefer_online:
+        # Offline keyword scan — no LLM
+        text_combined = (cv_text + " " + cover_letter).lower()
+        jd_lower = job_description.lower()
+        # Extract simple word tokens from JD (skip stopwords)
+        import re
+        _stopwords = {"and", "or", "the", "a", "an", "in", "of", "to", "for",
+                      "with", "at", "by", "from", "is", "are", "be", "will", "you"}
+        jd_tokens = [
+            w for w in re.findall(r"\b[a-z]{4,}\b", jd_lower)
+            if w not in _stopwords
+        ]
+        from collections import Counter
+        freq = Counter(jd_tokens)
+        top_keywords = [kw for kw, _ in freq.most_common(20)]
+        matched = [kw for kw in top_keywords if kw in text_combined]
+        missing = [kw for kw in top_keywords if kw not in text_combined]
+        cov = int(len(matched) / max(len(top_keywords), 1) * 100)
+        return {
+            "ats_score": cov,
+            "keyword_coverage_pct": cov,
+            "matched_keywords": matched[:10],
+            "missing_critical": missing[:5],
+            "missing_nice": missing[5:10],
+            "suggestions": [],
+            "title_match": job_title.lower() in text_combined if job_title else False,
+            "format_warnings": [],
+            "one_line_verdict": f"Offline scan: {cov}% keyword coverage. Add API key for full analysis.",
+            "source": "offline",
+        }
+
+    try:
+        from openai import OpenAI
+        client = OpenAI(api_key=api_key) if api_key else OpenAI()
+    except Exception:
+        return _heuristic_result
+
+    cv_snippet = cv_text[:2000]
+    cl_snippet = (cover_letter or "")[:800]
+    jd_snippet = job_description[:1500]
+
+    prompt = f"""You are an expert ATS (Applicant Tracking System) analyst.
+Analyse how well this CV and cover letter will pass ATS screening for the job below.
+
+JOB TITLE: {job_title or "Not specified"}
+JOB DESCRIPTION:
+{jd_snippet}
+
+CV TEXT:
+{cv_snippet}
+
+COVER LETTER (if provided):
+{cl_snippet or "Not provided"}
+
+Extract ALL important keywords from the job description (technical skills, tools, certifications,
+role-specific verbs, industry terms). Then check which are present/missing from the CV+CL.
+
+ATS scoring rules:
+- Title match: +10 if job title or close synonym appears in CV
+- Keyword coverage: % of extracted keywords found in CV+CL (case-insensitive)
+- ats_score = keyword_coverage_pct adjusted for critical vs. nice-to-have weighting
+- Format warnings: flag tables, images, headers/footers, columns (ATS can't parse these)
+
+Respond ONLY with valid JSON:
+{{
+  "ats_score": 67,
+  "keyword_coverage_pct": 62,
+  "matched_keywords": ["python", "data analysis", "sql", "stakeholder management"],
+  "missing_critical": ["machine learning", "a/b testing", "product roadmap"],
+  "missing_nice": ["tableau", "jira", "agile"],
+  "suggestions": [
+    {{
+      "keyword": "machine learning",
+      "where_to_add": "CV skills section or cover letter paragraph 2",
+      "example_sentence": "Applied machine learning models to predict customer churn, reducing attrition by 12%."
+    }}
+  ],
+  "title_match": false,
+  "format_warnings": ["Possible table detected — ATS may skip table content", "Consider single-column layout"],
+  "one_line_verdict": "67% ATS coverage — add 3 critical keywords to reach 85%+ and pass most ATS filters."
+}}
+
+missing_critical: keywords that appear 3+ times in JD or are explicitly listed as requirements
+missing_nice: mentioned once or in "preferred" section
+suggestions: provide for the top 3 missing_critical keywords only
+one_line_verdict: ≤ 120 chars, specific and actionable"""
+
+    try:
+        resp = client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"},
+            temperature=0.1,
+            max_tokens=900,
+        )
+        data = json.loads(resp.choices[0].message.content or "{}")
+        return {
+            "ats_score": int(data.get("ats_score", 55)),
+            "keyword_coverage_pct": int(data.get("keyword_coverage_pct", 55)),
+            "matched_keywords": [str(x) for x in data.get("matched_keywords", [])[:15]],
+            "missing_critical": [str(x) for x in data.get("missing_critical", [])[:8]],
+            "missing_nice": [str(x) for x in data.get("missing_nice", [])[:8]],
+            "suggestions": [
+                {
+                    "keyword": str(s.get("keyword", "")),
+                    "where_to_add": str(s.get("where_to_add", "")),
+                    "example_sentence": str(s.get("example_sentence", "")),
+                }
+                for s in data.get("suggestions", [])[:3]
+            ],
+            "title_match": bool(data.get("title_match", False)),
+            "format_warnings": [str(x) for x in data.get("format_warnings", [])[:3]],
+            "one_line_verdict": str(data.get("one_line_verdict", ""))[:130],
+            "source": "llm",
+        }
+    except Exception as exc:
+        result = dict(_heuristic_result)
+        result["source"] = f"heuristic (error: {repr(exc)[:60]})"
+        return result

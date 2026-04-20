@@ -11,15 +11,15 @@ Not a collection of career tools. A single pipeline.
 ## The Pipeline
 
 ```
-Upload CV  →  Find Jobs  →  Generate Portfolio  →  Debate + Rank  →  Interview Prep  →  Interview
-   ↓              ↓                ↓                     ↓                  ↓
-O*NET skill   SerpAPI live    gpt-4o × N jobs      Advocate vs.       Role-specific
-mapping       + fit score     in parallel           Skeptic → Judge    questions +
-              ranking         + gpt-4o-mini         hire_prob %        answer coaching
-                              evaluation
+Upload CV  →  Find Jobs  →  Generate Portfolio  →  Debate + Rank  →  ATS Scan  →  Interview Prep  →  Mock Interview
+   ↓              ↓                ↓                     ↓               ↓               ↓                  ↓
+O*NET skill   SerpAPI live    gpt-4o × N jobs      Advocate vs.     keyword        Role-specific      multi-turn
+mapping       + fit score     in parallel           Skeptic → Judge  gap analysis   questions +        gpt-4o
+              ranking         + gpt-4o-mini         hire_prob %      + fix          answer             interviewer
+                              evaluation                             suggestions    coaching            + report
 ```
 
-**One button. ~60 seconds. Output: "Apply to Company X first (78% hire probability)."**
+**One button. ~60 seconds. Output: "Apply to Company X first (78% hire probability). Your ATS score: 82. Here's what to fix."**
 
 ---
 
@@ -88,6 +88,36 @@ controversy_score > 50  →  auto-expand diagnostics panel
 Offline preprocessing (PCA, IDF weighting, cosine similarity matrix).  
 Runtime: O(1) lookup. No LLM call needed for fit scoring.
 
+### 7. Mock Interview Simulator (multi-turn LLM conversation)
+
+```
+User answer  →  gpt-4o interviewer acknowledges + asks follow-up  →  repeat × 6 turns
+                                       ↓
+                  Post-interview report: 5 dimension scores × weighted aggregate
+                  strongest moment + weakest moment (with coached rewrite)
+                  hire recommendation: Strong Yes | Yes | Conditional | No
+```
+
+Not a Q&A quiz. A real multi-turn conversation where gpt-4o plays a senior interviewer.  
+The interviewer builds on each answer — follow-ups are context-aware.  
+5 dimensions: communication (×0.25), technical depth (×0.25), pivot narrative (×0.20), culture fit (×0.15), STAR structure (×0.15).
+
+### 8. ATS Compatibility Scanner
+
+```
+CV + Cover Letter + Job Description  →  gpt-4o-mini keyword extraction
+                                              ↓
+                         Critical keywords vs nice-to-have classification
+                                              ↓
+                  ATS score (0–100) + matched/missing keyword lists
+                                              ↓
+                  3 specific fix suggestions with exact sentences to add
+```
+
+75% of resumes are rejected by ATS before any human sees them.  
+The scanner closes the gap between "generated application" and "application that passes the bots."  
+Has offline fallback: regex keyword frequency analysis when API key unavailable.
+
 ---
 
 ## Two Entry Points, One Destination
@@ -155,12 +185,13 @@ Benchmark data stored as `ZERO_SHOT_BENCHMARK` constant in `app.py` and surfaced
 
 ---
 
-## LLM Architecture (15 user-facing pipeline components)
+## LLM Architecture (17 user-facing pipeline components)
 
 | Layer | Component | Model | Justification |
 |---|---|---|---|
 | ANALYSIS | CV Skill Extraction | gpt-4o-mini | Constrained schema; O*NET validation pass |
 | ANALYSIS | Job Posting Parser | gpt-4o-mini | Structured extraction; schema enforced |
+| ANALYSIS | ATS Compatibility Scan | gpt-4o-mini | Keyword extraction + classification; offline fallback |
 | GENERATION | Application Package | **gpt-4o** | +14pt vs mini in zero-shot test (82 vs 68) |
 | GENERATION | A/B Cover Letter (×2) | **gpt-4o** | Strategy comparison; quality delta measured |
 | GENERATION | Adversarial Advocate | gpt-4o-mini | Persona framing drives quality; JSON schema |
@@ -169,10 +200,12 @@ Benchmark data stored as `ZERO_SHOT_BENCHMARK` constant in `app.py` and surfaced
 | GENERATION | Learning Plan | gpt-4o-mini | Template-filling; gaps pre-computed by O*NET |
 | GENERATION | LinkedIn Profile | gpt-4o-mini | Constrained character limits; mini adequate |
 | GENERATION | Interview Questions | gpt-4o-mini | JD + CV context constrains output |
+| GENERATION | Mock Interview Turn | **gpt-4o** | Multi-turn conversation; context-aware follow-ups |
 | EVALUATION | Application Eval | gpt-4o-mini | 4-dimension rubric; scoring task |
 | EVALUATION | Learning Plan Eval | gpt-4o-mini | Same pattern |
 | EVALUATION | LinkedIn Eval | gpt-4o-mini | pivot_clarity × 0.30 + keyword_density × 0.30 + … |
 | EVALUATION | Interview Answer Eval | gpt-4o-mini | relevance × 0.30 + STAR × 0.25 + … |
+| EVALUATION | Mock Interview Report | **gpt-4o** | 5-dim rubric; hire recommendation + coached rewrite |
 | ORCHESTRATION | Agent Loop | **gpt-4o** | Tool selection + multi-step reasoning |
 
 Full rationale — including sub-components (review board strategies, review personas, market signal, salary estimation, job listing generation, pivot narrative) — in `src/career_agent.py → MODEL_RATIONALE` (16 entries covering all architectural decisions).

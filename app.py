@@ -35,7 +35,7 @@ from src.career_agent import (
 )
 from src.cv_parser import parse_cv, compute_personal_gap_df
 from src.cover_letter import generate_pivot_narrative
-from src.job_analyzer import analyze_job_posting
+from src.job_analyzer import analyze_job_posting, scan_ats_compatibility
 from src.pivot_debate import run_pivot_debate, run_application_debate, DebateRound, DebateVerdict
 from src.smart_apply import (
     generate_job_listings, generate_application_package, generate_pivot_peers,
@@ -44,7 +44,12 @@ from src.smart_apply import (
 from src.salary_estimator import estimate_salary_impact
 from src.job_search import search_real_jobs, real_job_to_listing, extract_cv_text
 from src.evaluator import evaluate_application_package, evaluate_learning_plan
-from src.interview_coach import generate_interview_questions, evaluate_interview_answer
+from src.interview_coach import (
+    generate_interview_questions,
+    evaluate_interview_answer,
+    run_mock_interview_turn,
+    generate_mock_interview_report,
+)
 from src.linkedin_optimizer import generate_linkedin_profile, evaluate_linkedin_profile
 import plotly.graph_objects as go
 import plotly.express as px
@@ -1331,6 +1336,14 @@ DEFAULT_STATE = {
     "interview_answers": {},       # {idx: answer_text}
     "interview_evals": {},         # {idx: eval_dict}
     "interview_prep_done": False,  # True when ≥1 answer evaluated
+    # Mock Interview Simulator
+    "mock_interview_messages": [],      # [{role, content}] — full conversation
+    "mock_interview_exchange_count": 0, # number of user turns completed
+    "mock_interview_report": None,      # final performance report
+    "mock_interview_active": False,     # True while interview is running
+    "mock_interview_job_ctx": {},       # {title, company, jd} for the interview session
+    # ATS Scanner
+    "ats_result": None,                 # result from scan_ats_compatibility
     # Sprint Mode
     "sprint_step": 1,              # 1-5: active sprint step
     # Phase navigation
@@ -1347,6 +1360,7 @@ DEFAULT_STATE = {
     "qa_linkedin": None,           # LinkedIn profile optimised for this job
     "qa_debate": None,             # Application Debate verdict dict
     "qa_ab_test": None,            # A/B test result dict
+    "qa_ats_paste": None,          # ATS scan result for paste-flow application
     # Portfolio Mode (multi-job parallel generation)
     "qa_portfolio_jobs": None,     # List[Dict] — jobs fetched from SerpAPI / AI
     "qa_portfolio_packages": {},   # {idx: {"job":…,"package":…,"eval":…,"fit":…,"hire_prob":…}}
@@ -2500,6 +2514,85 @@ if quick_apply:
                                     height=150, key=f"pf_inmail_{_pf_ri}", disabled=False,
                                 )
 
+                            # ── ATS Compatibility Scan (Quick Apply) ──────────
+                            st.markdown("<div style='margin-top:12px'></div>", unsafe_allow_html=True)
+                            _qa_ats_key = f"qa_ats_{_pf_ri}"
+                            _qa_ats_res = st.session_state.get(_qa_ats_key)
+                            with st.expander("🔍 ATS Compatibility Scan — keyword gap analysis", expanded=False):
+                                st.caption(
+                                    "75% of resumes are filtered out before human review. "
+                                    "Check if your application contains the critical keywords from this JD."
+                                )
+                                if not _qa_ats_res:
+                                    if st.button("Run ATS scan", key=f"qa_ats_btn_{_pf_ri}"):
+                                        _qa_ats_api = None
+                                        try:
+                                            _qa_ats_api = st.secrets.get("OPENAI_API_KEY") or None
+                                        except Exception:
+                                            pass
+                                        with st.spinner("Scanning ATS keyword coverage…"):
+                                            _qa_ats_res = scan_ats_compatibility(
+                                                cv_text=st.session_state.cv_text or "",
+                                                cover_letter=_pf_pkg2.cover_letter,
+                                                job_description=_pf_j2.get("description", ""),
+                                                job_title=_pf_jt2,
+                                                model="gpt-4o-mini",
+                                                prefer_online=_has_openai_secret(),
+                                                api_key=_qa_ats_api,
+                                            )
+                                        st.session_state[_qa_ats_key] = _qa_ats_res
+                                        st.rerun()
+                                else:
+                                    _qas = _qa_ats_res.get("ats_score", 0)
+                                    _qas_c = "#117A37" if _qas >= 75 else ("#A05A00" if _qas >= 50 else "#B71C1C")
+                                    _qas_l = "ATS-Friendly" if _qas >= 75 else ("Borderline" if _qas >= 50 else "High Risk")
+                                    st.markdown(
+                                        f'<div style="display:flex;align-items:center;gap:12px;'
+                                        f'background:#F3F6F9;border-radius:8px;padding:10px 14px;margin-bottom:10px">'
+                                        f'<div style="font-size:28px;font-weight:900;color:{_qas_c};line-height:1">{_qas}</div>'
+                                        f'<div>'
+                                        f'<div style="font-size:13px;font-weight:700;color:#1D2226">{_qas_l}</div>'
+                                        f'<div style="font-size:11px;color:rgba(0,0,0,0.5)">'
+                                        f'{_qa_ats_res.get("one_line_verdict","")}</div>'
+                                        f'</div></div>',
+                                        unsafe_allow_html=True,
+                                    )
+                                    _qas_m = _qa_ats_res.get("matched_keywords", [])
+                                    _qas_mc = _qa_ats_res.get("missing_critical", [])
+                                    _qas_mn = _qa_ats_res.get("missing_nice", [])
+                                    if _qas_m:
+                                        st.markdown(
+                                            "**Matched:** " + " ".join([
+                                                f'<span style="background:#E7F6EC;color:#117A37;font-size:10px;'
+                                                f'font-weight:700;border-radius:10px;padding:2px 8px;margin:1px">✓ {k}</span>'
+                                                for k in _qas_m[:12]
+                                            ]),
+                                            unsafe_allow_html=True,
+                                        )
+                                    if _qas_mc:
+                                        st.markdown(
+                                            "**Missing (critical):** " + " ".join([
+                                                f'<span style="background:#FEECEC;color:#B71C1C;font-size:10px;'
+                                                f'font-weight:700;border-radius:10px;padding:2px 8px;margin:1px">✗ {k}</span>'
+                                                for k in _qas_mc[:8]
+                                            ]),
+                                            unsafe_allow_html=True,
+                                        )
+                                    _qas_sug = _qa_ats_res.get("suggestions", [])
+                                    for _qs2 in _qas_sug[:2]:
+                                        st.markdown(
+                                            f'<div style="background:#fff;border-left:3px solid #0A66C2;'
+                                            f'border-radius:0 6px 6px 0;padding:8px 12px;margin-top:6px;font-size:11px">'
+                                            f'<strong style="color:#0A66C2">Add "{_qs2.get("keyword","")}"</strong> '
+                                            f'→ {_qs2.get("where_to_add","")}<br>'
+                                            f'<em style="color:rgba(0,0,0,0.6)">{_qs2.get("example_sentence","")}</em>'
+                                            f'</div>',
+                                            unsafe_allow_html=True,
+                                        )
+                                    if st.button("Clear", key=f"qa_ats_clear_{_pf_ri}", type="secondary"):
+                                        st.session_state[_qa_ats_key] = None
+                                        st.rerun()
+
                 # Technical architecture note for professor
                 st.markdown(
                     '<div style="background:#F3F6F9;border-radius:8px;padding:10px 14px;margin-top:6px">'
@@ -2902,9 +2995,9 @@ if quick_apply:
                 )
 
                 if _qa_pkg2:
-                    _qa_tab_cl, _qa_tab_cv, _qa_tab_inmail, _qa_tab_score, _qa_tab_ab = st.tabs([
+                    _qa_tab_cl, _qa_tab_cv, _qa_tab_inmail, _qa_tab_score, _qa_tab_ab, _qa_tab_ats = st.tabs([
                         "📄 Cover Letter", "✏️ CV Rewrites", "💬 LinkedIn InMail",
-                        "📊 Quality Score", "🔬 A/B Strategy Test"
+                        "📊 Quality Score", "🔬 A/B Strategy Test", "🔍 ATS Scan"
                     ])
                     with _qa_tab_cl:
                         st.text_area("Cover letter", value=_qa_pkg2.cover_letter, height=300,
@@ -3165,6 +3258,125 @@ if quick_apply:
 
                             if st.button("↩ Re-run A/B test", key="qa_ab_reset", type="secondary"):
                                 st.session_state.qa_ab_test = None
+                                st.rerun()
+
+                    with _qa_tab_ats:
+                        # ── ATS Compatibility Scanner ───────────────────────
+                        st.markdown(
+                            '<div style="font-size:12px;color:rgba(0,0,0,0.55);margin-bottom:12px;line-height:1.6">'
+                            '<strong>75% of resumes never reach a human reader</strong> — Applicant Tracking Systems '
+                            'filter them out by keyword matching first. This scanner checks your CV + cover letter '
+                            'against the job description, identifies gaps, and gives you exact sentences to close them.'
+                            '</div>',
+                            unsafe_allow_html=True,
+                        )
+                        _qa_ats_paste = st.session_state.get("qa_ats_paste")
+                        _qa_ats_api2 = None
+                        try:
+                            _qa_ats_api2 = st.secrets.get("OPENAI_API_KEY") or None
+                        except Exception:
+                            pass
+                        if not _qa_ats_paste:
+                            if st.button(
+                                "🔍 Run ATS Compatibility Scan",
+                                key="qa_ats_paste_btn",
+                                type="primary", use_container_width=True,
+                            ):
+                                _qa_p_for_ats = st.session_state.qa_parsed or {}
+                                with st.spinner("Scanning keyword coverage…"):
+                                    _qa_ats_paste = scan_ats_compatibility(
+                                        cv_text=st.session_state.cv_text or "",
+                                        cover_letter=_qa_pkg2.cover_letter if _qa_pkg2 else "",
+                                        job_description=_qa_p_for_ats.get("cleaned_description", ""),
+                                        job_title=_qa_p_for_ats.get("job_title", str(target)),
+                                        model="gpt-4o-mini",
+                                        prefer_online=bool(_qa_ats_api2),
+                                        api_key=_qa_ats_api2,
+                                    )
+                                st.session_state["qa_ats_paste"] = _qa_ats_paste
+                                st.rerun()
+                        else:
+                            _qap_score = _qa_ats_paste.get("ats_score", 0)
+                            _qap_c = "#117A37" if _qap_score >= 75 else ("#A05A00" if _qap_score >= 50 else "#B71C1C")
+                            _qap_l = "ATS-Friendly" if _qap_score >= 75 else ("Borderline" if _qap_score >= 50 else "High Risk")
+
+                            st.markdown(
+                                f'<div style="background:#F3F6F9;border-radius:10px;padding:14px 18px;margin-bottom:14px">'
+                                f'<div style="display:flex;align-items:center;gap:16px">'
+                                f'<div style="text-align:center">'
+                                f'<div style="font-size:40px;font-weight:900;color:{_qap_c};line-height:1">{_qap_score}</div>'
+                                f'<div style="font-size:9px;font-weight:800;color:{_qap_c};text-transform:uppercase;letter-spacing:0.07em">ATS Score</div>'
+                                f'</div>'
+                                f'<div>'
+                                f'<div style="font-size:15px;font-weight:800;color:#1D2226">{_qap_l}</div>'
+                                f'<div style="font-size:12px;color:rgba(0,0,0,0.55);margin-top:2px">'
+                                f'Keyword coverage: {_qa_ats_paste.get("keyword_coverage_pct",0)}%</div>'
+                                f'<div style="font-size:11px;color:rgba(0,0,0,0.45);margin-top:3px;font-style:italic">'
+                                f'{_qa_ats_paste.get("one_line_verdict","")}</div>'
+                                f'</div></div></div>',
+                                unsafe_allow_html=True,
+                            )
+
+                            _qap_matched = _qa_ats_paste.get("matched_keywords", [])
+                            _qap_crit = _qa_ats_paste.get("missing_critical", [])
+                            _qap_nice = _qa_ats_paste.get("missing_nice", [])
+
+                            if _qap_matched:
+                                st.markdown(
+                                    "**Matched keywords:** " + " ".join([
+                                        f'<span style="background:#E7F6EC;color:#117A37;font-size:11px;'
+                                        f'font-weight:700;border-radius:10px;padding:2px 8px;margin:2px">✓ {k}</span>'
+                                        for k in _qap_matched[:15]
+                                    ]),
+                                    unsafe_allow_html=True,
+                                )
+                                st.markdown("<br>", unsafe_allow_html=True)
+
+                            if _qap_crit:
+                                st.markdown(
+                                    "**Missing — critical:** " + " ".join([
+                                        f'<span style="background:#FEECEC;color:#B71C1C;font-size:11px;'
+                                        f'font-weight:700;border-radius:10px;padding:2px 8px;margin:2px">✗ {k}</span>'
+                                        for k in _qap_crit[:10]
+                                    ]),
+                                    unsafe_allow_html=True,
+                                )
+                                st.markdown("<br>", unsafe_allow_html=True)
+
+                            if _qap_nice:
+                                st.markdown(
+                                    "**Missing — nice to have:** " + " ".join([
+                                        f'<span style="background:#FFF8E7;color:#A05A00;font-size:11px;'
+                                        f'font-weight:700;border-radius:10px;padding:2px 8px;margin:2px">◎ {k}</span>'
+                                        for k in _qap_nice[:10]
+                                    ]),
+                                    unsafe_allow_html=True,
+                                )
+                                st.markdown("<br>", unsafe_allow_html=True)
+
+                            _qap_sug = _qa_ats_paste.get("suggestions", [])
+                            if _qap_sug:
+                                st.markdown("**How to fix it — copy these into your CV:**")
+                                for _qs3 in _qap_sug[:3]:
+                                    st.markdown(
+                                        f'<div style="background:#fff;border-left:3px solid #0A66C2;'
+                                        f'border-radius:0 8px 8px 0;padding:10px 14px;margin-bottom:8px">'
+                                        f'<div style="font-size:12px;font-weight:700;color:#0A66C2;margin-bottom:3px">'
+                                        f'Add: "{_qs3.get("keyword","")}" → {_qs3.get("where_to_add","")}</div>'
+                                        f'<div style="font-size:12px;color:rgba(0,0,0,0.65);line-height:1.5;font-style:italic">'
+                                        f'"{_qs3.get("example_sentence","")}"</div>'
+                                        f'</div>',
+                                        unsafe_allow_html=True,
+                                    )
+
+                            _qap_fmt = _qa_ats_paste.get("format_warnings", [])
+                            if _qap_fmt:
+                                st.markdown("**Format warnings:**")
+                                for _fw2 in _qap_fmt:
+                                    st.caption(f"⚠ {_fw2}")
+
+                            if st.button("↩ Re-run ATS scan", key="qa_ats_paste_reset", type="secondary"):
+                                st.session_state["qa_ats_paste"] = None
                                 st.rerun()
 
     # ── Phase 4: Application Debate — adversarial hiring verdict ───────────
@@ -7114,6 +7326,165 @@ with _tab_execute:
                                 st.session_state[_ab_key] = None
                                 st.rerun()
 
+                    # ── ATS Compatibility Scanner ────────────────────────────
+                    with st.expander(
+                        "🔍 ATS Compatibility Scan — will your application pass the bots?",
+                        expanded=False,
+                    ):
+                        st.markdown(
+                            '<div style="font-size:12px;color:rgba(0,0,0,0.55);margin-bottom:10px;line-height:1.6">'
+                            '<strong>75% of resumes are rejected before a human ever reads them</strong> — by Applicant Tracking Systems '
+                            'that scan for keyword matches. This scanner checks whether your CV + cover letter contains '
+                            'the critical keywords from the job description, flags what\'s missing, and gives you '
+                            'exact sentences to add them.'
+                            '</div>',
+                            unsafe_allow_html=True,
+                        )
+                        _ats_key_sa = "ats_result_" + str(i)
+                        _ats_result = st.session_state.get(_ats_key_sa)
+
+                        if not _ats_result:
+                            if st.button(
+                                "Run ATS scan",
+                                key=f"ats_btn_{i}",
+                                use_container_width=False,
+                                help="Analyses keyword overlap between your application and the job description",
+                            ):
+                                _ats_api = None
+                                try:
+                                    _ats_api = st.secrets.get("OPENAI_API_KEY") or None
+                                except Exception:
+                                    pass
+                                with st.spinner("Scanning ATS keyword coverage…"):
+                                    _ats_res = scan_ats_compatibility(
+                                        cv_text=st.session_state.cv_text or "",
+                                        cover_letter=pkg.cover_letter,
+                                        job_description=getattr(job, "full_description", "") or job.description_preview,
+                                        job_title=job.title,
+                                        model="gpt-4o-mini",
+                                        prefer_online=_has_openai_secret(),
+                                        api_key=_ats_api,
+                                    )
+                                st.session_state[_ats_key_sa] = _ats_res
+                                st.rerun()
+                        else:
+                            _ats = _ats_result
+                            _ats_score = _ats.get("ats_score", 0)
+                            _ats_kw_pct = _ats.get("keyword_coverage_pct", 0)
+                            _ats_color = "#117A37" if _ats_score >= 75 else ("#A05A00" if _ats_score >= 50 else "#B71C1C")
+                            _ats_label = "ATS-Friendly" if _ats_score >= 75 else ("Borderline" if _ats_score >= 50 else "High Risk")
+
+                            # Score header
+                            st.markdown(
+                                f'<div style="background:#F3F6F9;border-radius:10px;padding:14px 18px;margin-bottom:12px">'
+                                f'<div style="display:flex;align-items:center;gap:16px">'
+                                f'<div style="text-align:center">'
+                                f'<div style="font-size:36px;font-weight:900;color:{_ats_color};line-height:1">{_ats_score}</div>'
+                                f'<div style="font-size:10px;font-weight:800;color:{_ats_color};text-transform:uppercase;letter-spacing:0.06em">ATS Score</div>'
+                                f'</div>'
+                                f'<div>'
+                                f'<div style="font-size:15px;font-weight:800;color:#1D2226">{_ats_label}</div>'
+                                f'<div style="font-size:12px;color:rgba(0,0,0,0.55);margin-top:2px">'
+                                f'Keyword coverage: {_ats_kw_pct}% · '
+                                f'{"Likely to pass ATS filters" if _ats_score >= 75 else ("May be filtered by stricter ATS" if _ats_score >= 50 else "Likely filtered before human review")}'
+                                f'</div>'
+                                f'<div style="font-size:11px;color:rgba(0,0,0,0.45);margin-top:4px;font-style:italic">{_ats.get("one_line_verdict","")}</div>'
+                                f'</div>'
+                                f'</div>'
+                                f'</div>',
+                                unsafe_allow_html=True,
+                            )
+
+                            # Keyword pills
+                            _ats_matched = _ats.get("matched_keywords", [])
+                            _ats_miss_crit = _ats.get("missing_critical", [])
+                            _ats_miss_nice = _ats.get("missing_nice", [])
+
+                            if _ats_matched:
+                                st.markdown(
+                                    '<div style="font-size:11px;font-weight:800;text-transform:uppercase;'
+                                    'letter-spacing:0.06em;color:rgba(0,0,0,0.45);margin-bottom:6px">Matched keywords</div>'
+                                    + "".join([
+                                        f'<span style="display:inline-block;background:#E7F6EC;color:#117A37;'
+                                        f'font-size:11px;font-weight:700;border-radius:12px;padding:3px 10px;'
+                                        f'margin:2px 3px 2px 0">✓ {kw}</span>'
+                                        for kw in _ats_matched[:15]
+                                    ]),
+                                    unsafe_allow_html=True,
+                                )
+                                st.markdown("<div style='margin-bottom:10px'></div>", unsafe_allow_html=True)
+
+                            if _ats_miss_crit:
+                                st.markdown(
+                                    '<div style="font-size:11px;font-weight:800;text-transform:uppercase;'
+                                    'letter-spacing:0.06em;color:#B71C1C;margin-bottom:6px">Missing — critical (must add)</div>'
+                                    + "".join([
+                                        f'<span style="display:inline-block;background:#FEECEC;color:#B71C1C;'
+                                        f'font-size:11px;font-weight:700;border-radius:12px;padding:3px 10px;'
+                                        f'margin:2px 3px 2px 0">✗ {kw}</span>'
+                                        for kw in _ats_miss_crit[:10]
+                                    ]),
+                                    unsafe_allow_html=True,
+                                )
+                                st.markdown("<div style='margin-bottom:10px'></div>", unsafe_allow_html=True)
+
+                            if _ats_miss_nice:
+                                st.markdown(
+                                    '<div style="font-size:11px;font-weight:800;text-transform:uppercase;'
+                                    'letter-spacing:0.06em;color:#A05A00;margin-bottom:6px">Missing — nice to have</div>'
+                                    + "".join([
+                                        f'<span style="display:inline-block;background:#FFF8E7;color:#A05A00;'
+                                        f'font-size:11px;font-weight:700;border-radius:12px;padding:3px 10px;'
+                                        f'margin:2px 3px 2px 0">◎ {kw}</span>'
+                                        for kw in _ats_miss_nice[:10]
+                                    ]),
+                                    unsafe_allow_html=True,
+                                )
+                                st.markdown("<div style='margin-bottom:10px'></div>", unsafe_allow_html=True)
+
+                            # Actionable suggestions
+                            _ats_suggestions = _ats.get("suggestions", [])
+                            if _ats_suggestions:
+                                st.markdown(
+                                    '<div style="font-size:11px;font-weight:800;text-transform:uppercase;'
+                                    'letter-spacing:0.06em;color:rgba(0,0,0,0.45);margin:12px 0 8px 0">'
+                                    'How to fix it — add these lines to your CV</div>',
+                                    unsafe_allow_html=True,
+                                )
+                                for _sug in _ats_suggestions[:3]:
+                                    _kw = _sug.get("keyword", "")
+                                    _where = _sug.get("where_to_add", "")
+                                    _ex = _sug.get("example_sentence", "")
+                                    st.markdown(
+                                        f'<div style="background:#fff;border:1px solid rgba(0,0,0,0.1);'
+                                        f'border-left:3px solid #0A66C2;border-radius:6px;padding:10px 14px;margin-bottom:8px">'
+                                        f'<div style="font-size:12px;font-weight:700;color:#0A66C2;margin-bottom:4px">'
+                                        f'Add: "{_kw}" → {_where}</div>'
+                                        f'<div style="font-size:12px;color:rgba(0,0,0,0.65);line-height:1.5;font-style:italic">'
+                                        f'"{_ex}"</div>'
+                                        f'</div>',
+                                        unsafe_allow_html=True,
+                                    )
+
+                            # Format warnings
+                            _ats_fmt = _ats.get("format_warnings", [])
+                            if _ats_fmt:
+                                st.markdown(
+                                    '<div style="font-size:11px;font-weight:800;text-transform:uppercase;'
+                                    'letter-spacing:0.06em;color:#A05A00;margin:12px 0 6px 0">Format warnings</div>',
+                                    unsafe_allow_html=True,
+                                )
+                                for _fw in _ats_fmt:
+                                    st.caption(f"⚠ {_fw}")
+
+                            _ats_src = _ats.get("source", "")
+                            if _ats_src == "offline":
+                                st.caption("_Offline mode: keyword frequency analysis only. Add OPENAI_API_KEY for full AI-powered ATS scan._")
+
+                            if st.button("Clear ATS scan", key=f"ats_clear_{i}", type="secondary"):
+                                st.session_state[_ats_key_sa] = None
+                                st.rerun()
+
         # ── Pivot Peers — social proof ──────────────────────────────
         st.divider()
         st.markdown(
@@ -9006,3 +9377,256 @@ with _tab_interview:
             '</div>',
             unsafe_allow_html=True,
         )
+
+    # ── Mock Interview Simulator ───────────────────────────────────────────────
+    st.divider()
+    st.markdown(
+        '<div class="li-tool-header">'
+        '<div class="li-tool-icon" style="background:#F3EEF9">🎭</div>'
+        '<div><div class="li-tool-title">Live Mock Interview</div>'
+        '<div class="li-tool-cap">Real-time conversational interview · gpt-4o plays the interviewer · dynamic follow-ups · post-interview report</div></div>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
+
+    _mock_oai_key = None
+    try:
+        _mock_oai_key = st.secrets.get("OPENAI_API_KEY")
+    except Exception:
+        pass
+
+    _mock_msgs: list = st.session_state.mock_interview_messages or []
+    _mock_ex: int = st.session_state.mock_interview_exchange_count
+    _mock_active: bool = st.session_state.mock_interview_active
+    _mock_report = st.session_state.mock_interview_report
+    _mock_ctx: dict = st.session_state.mock_interview_job_ctx or {}
+    _MAX_EXCHANGES = 6
+
+    if not _mock_active and not _mock_msgs:
+        # Start panel
+        st.markdown(
+            '<div style="background:#F8F3FD;border:1px solid #D4B8F0;border-radius:10px;'
+            'padding:16px 20px;margin-bottom:12px">'
+            '<div style="font-size:12px;color:rgba(0,0,0,0.6);line-height:1.7">'
+            '🎭 <strong>How it works:</strong> gpt-4o plays a senior interviewer at your target company. '
+            'It asks one question at a time and follows up dynamically based on your answer — '
+            'just like a real interview. After 6 exchanges, you get a full performance report '
+            'with scores across 5 dimensions and a coached rewrite of your weakest answer.'
+            '</div></div>',
+            unsafe_allow_html=True,
+        )
+        _mock_col1, _mock_col2 = st.columns([2, 3])
+        with _mock_col1:
+            if st.button("🎭 Start Mock Interview", use_container_width=True,
+                         type="primary", key="mock_start",
+                         disabled=not bool(_mock_oai_key)):
+                # Pull job context from whatever is loaded
+                _m_title = _itv_job_title
+                _m_company = _itv_company
+                _m_jd = _itv_jd
+                _m_cv = (_cv_profile.get("extracted_role", "") + " · " +
+                         ", ".join((_cv_profile.get("top_skills", []) or [])[:5])
+                         ) if _cv_profile else ""
+                st.session_state.mock_interview_job_ctx = {
+                    "title": _m_title, "company": _m_company,
+                    "jd": _m_jd, "cv_summary": _m_cv,
+                }
+                # Get the first question from the interviewer
+                with st.spinner("Starting interview — interviewer preparing first question…"):
+                    _first = run_mock_interview_turn(
+                        history=[],
+                        job_title=_m_title, company=_m_company,
+                        job_description=_m_jd, current_role=str(current),
+                        target_role=str(target), cv_summary=_m_cv,
+                        exchange_num=0, max_exchanges=_MAX_EXCHANGES,
+                        model="gpt-4o", api_key=_mock_oai_key,
+                        prefer_online=bool(_mock_oai_key),
+                    )
+                st.session_state.mock_interview_messages = [
+                    {"role": "assistant", "content": _first["response"]}
+                ]
+                st.session_state.mock_interview_active = True
+                st.session_state.mock_interview_exchange_count = 0
+                st.session_state.mock_interview_report = None
+                st.rerun()
+        with _mock_col2:
+            if not _mock_oai_key:
+                st.warning("Add OPENAI_API_KEY in .streamlit/secrets.toml to enable mock interview.")
+            else:
+                st.caption(
+                    f"Context: **{_itv_job_title}**"
+                    + (f" at {_itv_company}" if _itv_company else "")
+                    + (" · CV loaded ✓" if _itv_cv.strip() else " · Upload CV for personalised questions")
+                )
+
+    elif _mock_active:
+        # Active interview — chat UI
+        _rounds_left = _MAX_EXCHANGES - _mock_ex
+        _prog_color = "#117A37" if _mock_ex >= 5 else ("#0A66C2" if _mock_ex >= 3 else "#5F6B7A")
+        st.markdown(
+            f'<div style="display:flex;align-items:center;justify-content:space-between;'
+            f'margin-bottom:12px">'
+            f'<div style="font-size:11px;font-weight:800;color:{_prog_color}">'
+            f'Exchange {_mock_ex}/{_MAX_EXCHANGES}'
+            f'</div>'
+            f'<div style="font-size:11px;color:rgba(0,0,0,0.4)">'
+            f'{"Almost done — final exchange" if _rounds_left <= 1 else f"{_rounds_left} exchanges remaining"}'
+            f'</div>'
+            f'</div>'
+            f'<div style="height:3px;background:rgba(0,0,0,0.07);border-radius:2px;overflow:hidden;margin-bottom:16px">'
+            f'<div style="width:{int(_mock_ex/_MAX_EXCHANGES*100)}%;height:3px;background:{_prog_color};border-radius:2px"></div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+
+        # Render conversation
+        for _m_msg in _mock_msgs:
+            with st.chat_message("assistant" if _m_msg["role"] == "assistant" else "user"):
+                st.markdown(_m_msg["content"])
+
+        # User input
+        if _mock_ex < _MAX_EXCHANGES:
+            _user_ans = st.chat_input("Your answer… (be as detailed as you would in a real interview)")
+            if _user_ans:
+                _new_history = _mock_msgs + [{"role": "user", "content": _user_ans}]
+                _new_ex = _mock_ex + 1
+                with st.spinner("Interviewer thinking…"):
+                    _turn = run_mock_interview_turn(
+                        history=_new_history,
+                        job_title=_mock_ctx.get("title", str(target)),
+                        company=_mock_ctx.get("company", ""),
+                        job_description=_mock_ctx.get("jd", ""),
+                        current_role=str(current), target_role=str(target),
+                        cv_summary=_mock_ctx.get("cv_summary", ""),
+                        exchange_num=_new_ex, max_exchanges=_MAX_EXCHANGES,
+                        model="gpt-4o", api_key=_mock_oai_key,
+                        prefer_online=bool(_mock_oai_key),
+                    )
+                _final_history = _new_history + [{"role": "assistant", "content": _turn["response"]}]
+                st.session_state.mock_interview_messages = _final_history
+                st.session_state.mock_interview_exchange_count = _new_ex
+                if _turn["is_complete"]:
+                    st.session_state.mock_interview_active = False
+                    # Generate post-interview report
+                    with st.spinner("Generating your performance report…"):
+                        _report = generate_mock_interview_report(
+                            history=_final_history,
+                            job_title=_mock_ctx.get("title", str(target)),
+                            company=_mock_ctx.get("company", ""),
+                            target_role=str(target),
+                            model="gpt-4o", api_key=_mock_oai_key,
+                            prefer_online=bool(_mock_oai_key),
+                        )
+                    st.session_state.mock_interview_report = _report
+                st.rerun()
+        else:
+            # Max exchanges reached — force close
+            st.session_state.mock_interview_active = False
+            if not st.session_state.mock_interview_report:
+                with st.spinner("Generating your performance report…"):
+                    _report = generate_mock_interview_report(
+                        history=_mock_msgs,
+                        job_title=_mock_ctx.get("title", str(target)),
+                        company=_mock_ctx.get("company", ""),
+                        target_role=str(target),
+                        model="gpt-4o", api_key=_mock_oai_key,
+                        prefer_online=bool(_mock_oai_key),
+                    )
+                st.session_state.mock_interview_report = _report
+            st.rerun()
+
+        # End early button
+        if st.button("End interview early", key="mock_end_early", type="secondary"):
+            st.session_state.mock_interview_active = False
+            if not st.session_state.mock_interview_report and len(_mock_msgs) >= 2:
+                with st.spinner("Generating partial performance report…"):
+                    _report = generate_mock_interview_report(
+                        history=_mock_msgs,
+                        job_title=_mock_ctx.get("title", str(target)),
+                        company=_mock_ctx.get("company", ""),
+                        target_role=str(target),
+                        model="gpt-4o", api_key=_mock_oai_key,
+                        prefer_online=bool(_mock_oai_key),
+                    )
+                st.session_state.mock_interview_report = _report
+            st.rerun()
+
+    # ── Post-interview report ──────────────────────────────────────────────────
+    if _mock_report and not _mock_active:
+        _mr_score = _mock_report.get("overall_score", 65)
+        _mr_rec = _mock_report.get("hire_recommendation", "Conditional")
+        _mr_prob = _mock_report.get("hire_probability_pct", 55)
+        _mr_rec_colors = {
+            "Strong Yes": "#057642", "Yes": "#117A37",
+            "Conditional": "#A05A00", "No": "#B71C1C",
+        }
+        _mr_c = _mr_rec_colors.get(_mr_rec, "#5F6B7A")
+        _mr_dims = _mock_report.get("dimension_scores", {})
+        _mr_dim_names = {
+            "communication": "Communication", "technical_depth": "Technical Depth",
+            "pivot_narrative": "Pivot Narrative", "culture_fit": "Culture Fit",
+            "star_structure": "STAR Structure",
+        }
+        _mr_dim_pills = "".join(
+            f'<span style="font-size:10px;padding:3px 9px;border-radius:20px;'
+            f'background:{("#E7F6EC" if v>=75 else ("#FFF8E7" if v>=55 else "#FEECEC"))};'
+            f'color:{("#057642" if v>=75 else ("#A05A00" if v>=55 else "#B71C1C"))};'
+            f'border:1px solid {("#A8DDB8" if v>=75 else ("#F0D080" if v>=55 else "#F0A0A0"))};'
+            f'font-weight:700;margin-right:5px;margin-bottom:5px;display:inline-block">'
+            f'{_mr_dim_names.get(k,k)} {v}</span>'
+            for k, v in _mr_dims.items()
+        )
+        st.markdown(
+            f'<div style="background:linear-gradient(135deg,#1D2226 0%,#2D3A42 100%);'
+            f'border-radius:12px;padding:20px 24px;margin:12px 0 16px 0">'
+            f'<div style="font-size:10px;font-weight:800;letter-spacing:0.12em;text-transform:uppercase;'
+            f'color:rgba(255,255,255,0.45);margin-bottom:8px">Mock Interview Performance Report</div>'
+            f'<div style="display:flex;align-items:flex-start;gap:20px;margin-bottom:14px">'
+            f'<div>'
+            f'<div style="font-size:36px;font-weight:900;color:#fff;line-height:1">{_mr_score}'
+            f'<span style="font-size:14px;font-weight:600;color:rgba(255,255,255,0.4)">/100</span></div>'
+            f'<div style="font-size:11px;color:rgba(255,255,255,0.5);margin-top:2px">{_mock_report.get("one_line_verdict","")}</div>'
+            f'</div>'
+            f'<div style="flex:1">'
+            f'<div style="font-size:13px;font-weight:800;color:{_mr_c};margin-bottom:3px">{_mr_rec}</div>'
+            f'<div style="font-size:11px;color:rgba(255,255,255,0.5)">Hire recommendation · {_mr_prob}% probability</div>'
+            f'</div>'
+            f'</div>'
+            f'<div style="margin-bottom:10px">{_mr_dim_pills}</div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+        _mr_col1, _mr_col2 = st.columns(2, gap="medium")
+        with _mr_col1:
+            st.markdown("**Strongest moment**")
+            st.markdown(
+                f'<div style="background:#F0FAF4;border-left:3px solid #057642;border-radius:0 8px 8px 0;'
+                f'padding:10px 14px;font-size:12px;line-height:1.6;color:rgba(0,0,0,0.75)">'
+                f'{_mock_report.get("strongest_moment","")}</div>',
+                unsafe_allow_html=True,
+            )
+            st.markdown("**Top 3 improvements**")
+            for _imp in _mock_report.get("top_improvements", []):
+                st.markdown(f"→ {_imp}")
+        with _mr_col2:
+            st.markdown("**Weakest moment**")
+            st.markdown(
+                f'<div style="background:#FFF4F0;border-left:3px solid #B24020;border-radius:0 8px 8px 0;'
+                f'padding:10px 14px;font-size:12px;line-height:1.6;color:rgba(0,0,0,0.75)">'
+                f'{_mock_report.get("weakest_moment","")}</div>',
+                unsafe_allow_html=True,
+            )
+        if _mock_report.get("sample_rewrite"):
+            with st.expander("✨ Coached rewrite of weakest answer — study this structure"):
+                st.markdown(
+                    f'<div style="background:#F0F7FF;border-left:3px solid #0A66C2;border-radius:0 8px 8px 0;'
+                    f'padding:14px 16px;font-size:13px;line-height:1.7;color:rgba(0,0,0,0.8)">'
+                    f'{_mock_report.get("sample_rewrite","")}</div>',
+                    unsafe_allow_html=True,
+                )
+        if st.button("🔄 Run another mock interview", key="mock_reset", type="secondary"):
+            st.session_state.mock_interview_messages = []
+            st.session_state.mock_interview_exchange_count = 0
+            st.session_state.mock_interview_report = None
+            st.session_state.mock_interview_active = False
+            st.rerun()

@@ -1,35 +1,30 @@
 """
 Interview Coach
 ===============
-Generates role-specific interview questions and evaluates user answers
-with coaching feedback. Completes the full career pivot journey:
+Generates role-specific interview questions, evaluates user answers with
+coaching feedback, and runs a live multi-turn Mock Interview Simulator.
 
-    Assess → Plan → Validate → Execute → Interview-Ready
+Pipeline
+--------
+    Assess → Plan → Validate → Execute → Interview-Ready → Mock Interview → Offer
 
-Two-layer architecture (mirrors the evaluator pattern):
-  Layer 1 — Generation (gpt-4o-mini): produce tailored Q&A questions
-  Layer 2 — Evaluation (gpt-4o-mini): score the user's draft answer,
-             then generate an improved coached version
+Three modes:
+  1. generate_interview_questions   — produce N tailored questions
+  2. evaluate_interview_answer      — score + coach a single answer
+  3. run_mock_interview_turn        — one turn of a live conversational interview
+  4. generate_mock_interview_report — post-interview performance analysis (gpt-4o)
 
-Both functions have rule-based fallbacks so the Interview tab always works
+Mock Interview Architecture
+---------------------------
+  gpt-4o plays a realistic senior interviewer at the target company.
+  It receives the full conversation history each turn and responds with:
+    - Brief acknowledgement of the previous answer (1 sentence)
+    - One targeted follow-up OR a new topic question
+  After max_exchanges, it gives a closing statement and sets is_complete=True.
+  A separate report call then analyses the full conversation across 5 dimensions.
+
+All functions have rule-based fallbacks so the Interview tab always works
 even without an API key.
-
-Returns
--------
-generate_interview_questions → List[Dict]:
-    [{question, type, why_asked, difficulty}]
-
-evaluate_interview_answer → Dict:
-    {
-      overall_score: int          0-100
-      dimension_scores: dict      relevance · specificity · star_structure · keywords
-      strengths: List[str]
-      improvements: List[str]
-      coached_answer: str         improved version of the user's answer
-      one_line_verdict: str       ≤100 chars
-      regenerate_recommended: bool
-      source: str                 "llm" | "heuristic" | "heuristic (error: …)"
-    }
 """
 
 from __future__ import annotations
@@ -337,5 +332,240 @@ Scoring rules:
         }
     except Exception as exc:
         result = _heuristic_eval_answer(answer)
+        result["source"] = f"heuristic (error: {repr(exc)[:60]})"
+        return result
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Mock Interview Simulator — multi-turn conversational interview
+# ──────────────────────────────────────────────────────────────────────────────
+
+def run_mock_interview_turn(
+    history: List[Dict[str, str]],
+    job_title: str,
+    company: str = "",
+    job_description: str = "",
+    current_role: str = "",
+    target_role: str = "",
+    cv_summary: str = "",
+    exchange_num: int = 1,
+    max_exchanges: int = 6,
+    model: str = "gpt-4o",
+    api_key: Optional[str] = None,
+    prefer_online: bool = True,
+) -> Dict[str, Any]:
+    """
+    Conduct one turn of a live mock interview.
+
+    The interviewer (gpt-4o) receives full conversation history and responds
+    with a brief acknowledgement + one focused follow-up or new question.
+    After max_exchanges it delivers a closing statement and signals completion.
+
+    Returns:
+        {
+          "response": str,        # interviewer's next message
+          "is_complete": bool,    # True when interview is finished
+          "exchange_num": int,    # current exchange count
+          "source": str,
+        }
+    """
+    _heuristic_closes = [
+        "That's a strong example — thank you. We're wrapping up. You've shown genuine "
+        "self-awareness about your pivot. Expect our decision within a week.",
+        "Appreciate the detailed answer. That concludes our interview today. "
+        "You made a compelling case for your transferable skills.",
+    ]
+    if not prefer_online:
+        return {
+            "response": _heuristic_closes[0],
+            "is_complete": True,
+            "exchange_num": exchange_num,
+            "source": "heuristic",
+        }
+
+    try:
+        from openai import OpenAI
+        client = OpenAI(api_key=api_key) if api_key else OpenAI()
+    except Exception:
+        return {
+            "response": _heuristic_closes[0],
+            "is_complete": True,
+            "exchange_num": exchange_num,
+            "source": "heuristic (openai unavailable)",
+        }
+
+    remaining = max_exchanges - exchange_num
+    company_str = f" at {company}" if company else ""
+    jd_snippet = (job_description or "")[:600] or "Not provided"
+    cv_str = (cv_summary or "")[:300] or "Not provided"
+
+    system_prompt = f"""You are a senior {job_title} interviewer{company_str}.
+You are conducting a real job interview with a candidate transitioning from {current_role or "a previous role"} to {target_role or job_title}.
+Candidate CV summary: {cv_str}
+Job requirements (excerpt): {jd_snippet}
+
+Your interview style:
+- Professional, direct, realistic. Not a cheerleader.
+- Ask ONE question per turn. Make it specific to THIS role and THIS candidate's background.
+- After each answer: 1 sentence of genuine acknowledgement (not sycophantic), then your next question.
+- Vary question types: behavioural (STAR), technical depth, motivation, gap acknowledgement.
+- Build on what the candidate said — follow-up naturally when an answer is vague.
+
+{"This is the FINAL exchange. After their answer, give a brief professional closing (2-3 sentences): thank them, mention next steps, end the interview naturally. Do NOT ask another question." if remaining <= 1 else f"You have {remaining} exchanges remaining after this one."}
+
+Respond only with your spoken words as the interviewer. No meta-commentary."""
+
+    messages_for_api = [{"role": "system", "content": system_prompt}] + history
+
+    try:
+        resp = client.chat.completions.create(
+            model=model,
+            messages=messages_for_api,
+            temperature=0.7,
+            max_tokens=300,
+        )
+        response_text = (resp.choices[0].message.content or "").strip()
+        is_done = remaining <= 1
+        return {
+            "response": response_text,
+            "is_complete": is_done,
+            "exchange_num": exchange_num,
+            "source": "llm",
+        }
+    except Exception as exc:
+        return {
+            "response": _heuristic_closes[0],
+            "is_complete": True,
+            "exchange_num": exchange_num,
+            "source": f"heuristic (error: {repr(exc)[:60]})",
+        }
+
+
+def generate_mock_interview_report(
+    history: List[Dict[str, str]],
+    job_title: str,
+    company: str = "",
+    target_role: str = "",
+    model: str = "gpt-4o",
+    api_key: Optional[str] = None,
+    prefer_online: bool = True,
+) -> Dict[str, Any]:
+    """
+    Analyse the full mock interview conversation and return a structured
+    performance report across 5 dimensions.
+
+    Returns:
+        {
+          "overall_score": int,           0-100
+          "hire_recommendation": str,     "Strong Yes" | "Yes" | "Conditional" | "No"
+          "hire_probability_pct": int,    0-100
+          "dimension_scores": dict,       communication · technical_depth · pivot_narrative
+                                          culture_fit · star_structure
+          "strongest_moment": str,        quote + analysis of best answer
+          "weakest_moment": str,          quote + what to improve
+          "top_improvements": List[str],  3 specific actions
+          "sample_rewrite": str,          improved version of weakest answer
+          "one_line_verdict": str,        ≤120 chars
+          "source": str,
+        }
+    """
+    _heuristic_report: Dict[str, Any] = {
+        "overall_score": 65,
+        "hire_recommendation": "Conditional",
+        "hire_probability_pct": 55,
+        "dimension_scores": {
+            "communication": 65, "technical_depth": 60,
+            "pivot_narrative": 70, "culture_fit": 65, "star_structure": 60,
+        },
+        "strongest_moment": "Candidate showed self-awareness about their career pivot.",
+        "weakest_moment": "Technical depth answers lacked specific examples.",
+        "top_improvements": [
+            "Add quantified outcomes to every STAR answer",
+            "Deepen technical vocabulary for the target role",
+            "Clarify your 90-day plan for the pivot",
+        ],
+        "sample_rewrite": "Consider framing your answer with: 'In my previous role as X, I encountered [situation]...'",
+        "one_line_verdict": "Solid pivot narrative — strengthen technical depth to convert to Yes.",
+        "source": "heuristic",
+    }
+
+    if not prefer_online or len(history) < 2:
+        return _heuristic_report
+
+    try:
+        from openai import OpenAI
+        client = OpenAI(api_key=api_key) if api_key else OpenAI()
+    except Exception:
+        return _heuristic_report
+
+    # Build readable transcript
+    transcript_lines = []
+    for msg in history:
+        role = "Interviewer" if msg["role"] == "assistant" else "Candidate"
+        transcript_lines.append(f"{role}: {msg['content']}")
+    transcript = "\n\n".join(transcript_lines)
+
+    company_str = f" at {company}" if company else ""
+    prompt = f"""You analysed a mock interview for a {job_title} role{company_str}.
+The candidate is transitioning to {target_role or job_title}.
+
+FULL TRANSCRIPT:
+{transcript[:4000]}
+
+Score the candidate's performance across 5 dimensions (0-100 each):
+1. communication      — clarity, confidence, structure
+2. technical_depth    — domain knowledge and role-specific language
+3. pivot_narrative    — how compellingly they explained the career change
+4. culture_fit        — enthusiasm, professionalism, alignment signals
+5. star_structure     — use of Situation/Task/Action/Result in answers
+
+overall_score = communication×0.25 + technical_depth×0.25 + pivot_narrative×0.20 + culture_fit×0.15 + star_structure×0.15
+
+Respond ONLY with valid JSON:
+{{
+  "overall_score": 72,
+  "hire_recommendation": "Yes",
+  "hire_probability_pct": 68,
+  "dimension_scores": {{
+    "communication": 78, "technical_depth": 65, "pivot_narrative": 80, "culture_fit": 72, "star_structure": 60
+  }},
+  "strongest_moment": "Quote the specific answer that worked best and explain why in 1-2 sentences.",
+  "weakest_moment": "Quote the weakest answer and state specifically what was missing.",
+  "top_improvements": [
+    "Specific improvement 1",
+    "Specific improvement 2",
+    "Specific improvement 3"
+  ],
+  "sample_rewrite": "Here is how the weakest answer could have been structured: [rewrite in 100-150 words preserving their real experience]",
+  "one_line_verdict": "Strong pivot story, technical depth needs work — add one metric per STAR answer to convert to Strong Yes."
+}}
+
+hire_recommendation must be: "Strong Yes" | "Yes" | "Conditional" | "No"
+hire_probability_pct: 0-100, consistent with hire_recommendation (Strong Yes ≥ 80, Yes 65-79, Conditional 40-64, No < 40)
+one_line_verdict ≤ 120 characters."""
+
+    try:
+        resp = client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"},
+            temperature=0.2,
+            max_tokens=800,
+        )
+        data = json.loads(resp.choices[0].message.content or "{}")
+        return {
+            "overall_score": int(data.get("overall_score", 65)),
+            "hire_recommendation": str(data.get("hire_recommendation", "Conditional")),
+            "hire_probability_pct": int(data.get("hire_probability_pct", 55)),
+            "dimension_scores": {k: int(v) for k, v in data.get("dimension_scores", {}).items()},
+            "strongest_moment": str(data.get("strongest_moment", ""))[:500],
+            "weakest_moment": str(data.get("weakest_moment", ""))[:500],
+            "top_improvements": [str(x) for x in data.get("top_improvements", [])[:3]],
+            "sample_rewrite": str(data.get("sample_rewrite", ""))[:1000],
+            "one_line_verdict": str(data.get("one_line_verdict", ""))[:130],
+            "source": "llm",
+        }
+    except Exception as exc:
+        result = dict(_heuristic_report)
         result["source"] = f"heuristic (error: {repr(exc)[:60]})"
         return result
