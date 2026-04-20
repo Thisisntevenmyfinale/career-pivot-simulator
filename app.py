@@ -111,6 +111,11 @@ from src.pivot_roadmap import generate_pivot_roadmap
 from src.defensibility import (
     generate_defensibility_briefing, generate_proof_task, evaluate_proof_submission,
 )
+from src.compensation import analyze_offer, offer_assessment_color, offer_assessment_label
+from src.adversarial_review import run_adversarial_review, severity_color as adv_severity_color, severity_label as adv_severity_label, reject_prob_color
+from src.decision_matrix import compare_offers, bridge_vs_direct, analyze_counter_offer, recommendation_color
+from src.week_zero import generate_week_zero_plan
+from src.linkedin_content import generate_content_plan, moat_builder_plan
 import plotly.graph_objects as go
 import plotly.express as px
 
@@ -1483,7 +1488,14 @@ DEFAULT_STATE = {
     "skill_proof_tasks": {},            # {skill: generate_proof_task() result}
     "skill_proof_submissions": {},      # {skill: {"text": str, "eval": dict}}
     "defensibility_results": {},        # {company_role_key: dict}
-    "pattern_alert": None,             # detect_rejection_pattern() result
+    "pattern_alert": None,              # detect_rejection_pattern() result
+    "comp_analysis": None,             # analyze_offer() result
+    "adversarial_results": {},         # {cover_letter_hash: adversarial_review result}
+    "decision_matrix_result": None,    # last decision_matrix result
+    "decision_matrix_scenario": "",    # "two_offers"|"bridge_direct"|"counter_offer"
+    "week_zero_plan": None,            # generate_week_zero_plan() result
+    "linkedin_content_plan": None,     # generate_content_plan() result
+    "moat_builder_plan": None,         # moat_builder_plan() result
     # Rejection Interpreter — per-rejection actionable diagnosis
     "rejection_interpretations": {},    # {outcome_id: interpret_rejection() result}
     # Outcome Tracker + Calibration Motor
@@ -3912,6 +3924,638 @@ if quick_apply:
                     )
                     st.plotly_chart(_fig2, use_container_width=True, config={"displayModeBar": False})
 
+    # ════════════════════════════════════════════════════════════════════════
+    # DECISION MATRIX — The 3 hardest decisions in any pivot
+    # ════════════════════════════════════════════════════════════════════════
+    with st.expander(
+        f'{icon("git-branch",14,"#7C3AED")} Decision Matrix — Two offers? Bridge vs. direct? Counter-offer?',
+        expanded=False,
+    ):
+        st.markdown(
+            '<div style="font-size:11px;color:rgba(0,0,0,0.55);line-height:1.6;margin-bottom:12px">'
+            'The three hardest decisions in any pivot — with a structured framework and a clear recommendation. '
+            'Not "it depends." An actual call, with reasoning.'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+
+        _dm_scenario = st.radio(
+            "Which decision are you facing?",
+            options=["Two offers at the same time", "Bridge role vs. direct PM application", "Counter-offer from current employer"],
+            key="dm_scenario_radio",
+            horizontal=True,
+        )
+
+        if _dm_scenario == "Two offers at the same time":
+            _dm_c1, _dm_c2 = st.columns(2)
+            with _dm_c1:
+                st.markdown('<div style="font-size:11px;font-weight:700;color:#0A66C2;margin-bottom:4px">Offer A</div>', unsafe_allow_html=True)
+                _dm_co_a = st.text_input("Company", key="dm_co_a", placeholder="e.g. Personio")
+                _dm_title_a = st.text_input("Role title", key="dm_title_a", placeholder="e.g. PM — Growth")
+                _dm_sal_a = st.number_input("Salary (annual)", key="dm_sal_a", min_value=0, value=75000, step=1000)
+                _dm_stage_a = st.selectbox("Company stage", ["Seed","Series A","Series B","Series C","Scale-up","Enterprise"], key="dm_stage_a")
+                _dm_notes_a = st.text_area("Notes", key="dm_notes_a", height=60, placeholder="Anything else relevant...")
+            with _dm_c2:
+                st.markdown('<div style="font-size:11px;font-weight:700;color:#7C3AED;margin-bottom:4px">Offer B</div>', unsafe_allow_html=True)
+                _dm_co_b = st.text_input("Company", key="dm_co_b", placeholder="e.g. Linear")
+                _dm_title_b = st.text_input("Role title", key="dm_title_b", placeholder="e.g. Product Manager")
+                _dm_sal_b = st.number_input("Salary (annual)", key="dm_sal_b", min_value=0, value=82000, step=1000)
+                _dm_stage_b = st.selectbox("Company stage", ["Seed","Series A","Series B","Series C","Scale-up","Enterprise"], key="dm_stage_b")
+                _dm_notes_b = st.text_area("Notes", key="dm_notes_b", height=60, placeholder="Anything else relevant...")
+
+            if st.button("Get Recommendation", key="btn_dm_two", type="primary", use_container_width=True):
+                if not _qa_key:
+                    st.warning("Add your OpenAI key to the sidebar.")
+                elif not _dm_co_a or not _dm_co_b:
+                    st.warning("Fill in both companies.")
+                else:
+                    with st.spinner("Analysing both offers…"):
+                        _dm_result = compare_offers(
+                            _qa_key,
+                            offer_a={"company":_dm_co_a,"title":_dm_title_a,"salary":_dm_sal_a,"stage":_dm_stage_a,"notes":_dm_notes_a},
+                            offer_b={"company":_dm_co_b,"title":_dm_title_b,"salary":_dm_sal_b,"stage":_dm_stage_b,"notes":_dm_notes_b},
+                            pivot_dna=st.session_state.get("pivot_dna"),
+                            cv_profile=st.session_state.get("cv_profile"),
+                            ops_score=st.session_state.get("_ops_val"),
+                        )
+                        st.session_state.decision_matrix_result = _dm_result
+                        st.session_state.decision_matrix_scenario = "two_offers"
+
+        elif _dm_scenario == "Bridge role vs. direct PM application":
+            _dm_bridge_role = st.text_input("Bridge role you're considering", key="dm_bridge_role", placeholder="e.g. Product Analyst at Series B SaaS")
+            _dm_target_role = st.text_input("Direct target role", key="dm_target_role", placeholder="e.g. Product Manager")
+            _dm_cur_apps    = st.number_input("Applications sent so far", key="dm_cur_apps", min_value=0, value=len(st.session_state.get("pipeline_jobs") or []))
+            _dm_ops_now     = st.slider("Current OPS score", 0, 100, st.session_state.get("_ops_val", 40), key="dm_ops_slider")
+
+            if st.button("Get Recommendation", key="btn_dm_bridge", type="primary", use_container_width=True):
+                if not _qa_key:
+                    st.warning("Add your OpenAI key.")
+                else:
+                    with st.spinner("Computing expected value of each path…"):
+                        _sg_for_dm = [g.get("skill","") for g in ((st.session_state.get("skill_gap_results") or {}).get("gaps") or [])[:5]]
+                        _pp_for_dm = (st.session_state.get("pivot_path_result") or {}).get("bridge_occupations",[])
+                        _dm_result = bridge_vs_direct(
+                            _qa_key,
+                            bridge_role=_dm_bridge_role,
+                            target_role=_dm_target_role,
+                            current_ops=_dm_ops_now,
+                            current_applications=_dm_cur_apps,
+                            cohort_median_apps=int((st.session_state.get("cohort_intelligence") or {}).get("median_applications",32)),
+                            skill_gaps=_sg_for_dm,
+                            pivot_dna=st.session_state.get("pivot_dna"),
+                            bridge_occupations=_pp_for_dm,
+                        )
+                        st.session_state.decision_matrix_result = _dm_result
+                        st.session_state.decision_matrix_scenario = "bridge_direct"
+
+        else:  # Counter-offer
+            _dm_cc1, _dm_cc2, _dm_cc3 = st.columns(3)
+            with _dm_cc1:
+                _dm_cur_sal = st.number_input("Current salary", key="dm_cur_sal", min_value=0, value=65000, step=1000)
+            with _dm_cc2:
+                _dm_ext_sal = st.number_input("External offer", key="dm_ext_sal", min_value=0, value=82000, step=1000)
+            with _dm_cc3:
+                _dm_cnt_sal = st.number_input("Counter-offer", key="dm_cnt_sal", min_value=0, value=75000, step=1000)
+            _dm_months = st.slider("Months in search", 0, 24, 3, key="dm_months_search")
+
+            if st.button("Get Recommendation", key="btn_dm_counter", type="primary", use_container_width=True):
+                if not _qa_key:
+                    st.warning("Add your OpenAI key.")
+                else:
+                    with st.spinner("Analysing counter-offer dynamics…"):
+                        _dm_result = analyze_counter_offer(
+                            _qa_key,
+                            external_offer_amount=_dm_ext_sal,
+                            counter_offer_amount=_dm_cnt_sal,
+                            current_salary=_dm_cur_sal,
+                            months_in_search=_dm_months,
+                            current_ops=st.session_state.get("_ops_val", 40),
+                            pivot_dna=st.session_state.get("pivot_dna"),
+                        )
+                        st.session_state.decision_matrix_result = _dm_result
+                        st.session_state.decision_matrix_scenario = "counter_offer"
+
+        # ── Display result ─────────────────────────────────────────────────
+        _dm_r = st.session_state.get("decision_matrix_result")
+        _dm_s = st.session_state.get("decision_matrix_scenario","")
+        if _dm_r:
+            _dm_rec   = _dm_r.get("recommendation","")
+            _dm_rec_c = recommendation_color(_dm_rec)
+            _dm_conf  = _dm_r.get("confidence","medium")
+            _dm_reason = _dm_r.get("decision_reason","")
+
+            st.markdown(
+                f'<div style="background:{_dm_rec_c}12;border:2px solid {_dm_rec_c};border-radius:10px;'
+                f'padding:16px 18px;margin-top:10px">'
+                f'<div style="display:flex;align-items:center;gap:14px">'
+                f'<div style="font-size:32px;font-weight:900;color:{_dm_rec_c};white-space:nowrap">'
+                f'{_dm_rec.replace("_"," ").upper()}</div>'
+                f'<div>'
+                f'<div style="font-size:12px;font-weight:700;color:rgba(0,0,0,0.4);text-transform:uppercase;'
+                f'letter-spacing:0.05em">{_dm_conf.upper()} CONFIDENCE</div>'
+                f'<div style="font-size:13px;color:#0A0A0A;line-height:1.5;margin-top:4px">{_dm_reason}</div>'
+                f'</div></div></div>',
+                unsafe_allow_html=True,
+            )
+
+            # Show the_one_question
+            _dm_q = _dm_r.get("the_one_question") or _dm_r.get("the_real_question","")
+            if _dm_q:
+                st.markdown(
+                    f'<div style="background:#F5F0FF;border-radius:6px;padding:10px 14px;margin-top:8px">'
+                    f'<div style="font-size:10px;font-weight:800;color:#7C3AED;letter-spacing:0.06em;'
+                    f'text-transform:uppercase;margin-bottom:3px">The question that cuts through the noise</div>'
+                    f'<div style="font-size:13px;font-style:italic;color:#0A0A0A">"{_dm_q}"</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+
+            # Hidden risks / extra context
+            for _dm_k, _dm_label, _dm_col in [
+                ("hidden_risk_a","Hidden risk of option A","#DC2626"),
+                ("hidden_risk_b","Hidden risk of option B","#D97706"),
+                ("negotiation_angle","Negotiation angle","#057642"),
+                ("pivot_cost_of_staying","Cost to your pivot","#DC2626"),
+                ("if_accept","If you accept","#D97706"),
+                ("if_decline","If you decline","#057642"),
+                ("hybrid_approach","Hybrid approach","#0A66C2"),
+            ]:
+                if _dm_r.get(_dm_k):
+                    st.markdown(
+                        f'<div style="background:{_dm_col}08;border-left:2px solid {_dm_col};'
+                        f'border-radius:0 5px 5px 0;padding:7px 11px;margin-top:5px">'
+                        f'<div style="font-size:9px;font-weight:800;color:{_dm_col};letter-spacing:0.06em;'
+                        f'text-transform:uppercase">{_dm_label}</div>'
+                        f'<div style="font-size:11px;color:rgba(0,0,0,0.75)">{_dm_r[_dm_k]}</div>'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
+
+    # ════════════════════════════════════════════════════════════════════════
+    # COMPENSATION ENGINE — Negotiate with data, not gratitude
+    # ════════════════════════════════════════════════════════════════════════
+    with st.expander(
+        f'{icon("trending-up",14,"#057642")} Compensation Intelligence — Got an offer? Here\'s what it\'s worth.',
+        expanded=False,
+    ):
+        st.markdown(
+            '<div style="font-size:11px;color:rgba(0,0,0,0.55);line-height:1.6;margin-bottom:10px">'
+            'Career changers accept initial offers out of gratitude. The difference between '
+            'the first offer and the negotiated outcome is typically <strong>€5,000–€15,000</strong>. '
+            'This gives you the market range, negotiation scripts, and the walk-away threshold.'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+        _comp_c1, _comp_c2, _comp_c3 = st.columns(3)
+        with _comp_c1:
+            _comp_offer = st.number_input("Offered salary (annual)", min_value=0, value=75000, step=1000, key="comp_offered")
+            _comp_curr  = st.number_input("Current salary (optional)", min_value=0, value=0, step=1000, key="comp_current")
+        with _comp_c2:
+            _comp_role  = st.text_input("Role title", key="comp_role", value=str(target) if "target" in dir() and target else "Product Manager")
+            _comp_co    = st.text_input("Company", key="comp_company", placeholder="e.g. Personio")
+        with _comp_c3:
+            _comp_loc   = st.text_input("Location", key="comp_location", value="Berlin, Germany")
+            _comp_stage = st.selectbox("Company stage", ["Seed","Series A","Series B","Series C","Scale-up","Enterprise"], key="comp_stage", index=2)
+        _comp_counter = st.checkbox("This is a counter-offer from my current employer", key="comp_is_counter")
+
+        if st.button("Analyse & Get Negotiation Scripts", key="btn_comp_run", type="primary", use_container_width=True):
+            if not _qa_key:
+                st.warning("Add your OpenAI key to the sidebar.")
+            elif not _comp_offer:
+                st.warning("Enter the offered salary.")
+            else:
+                with st.spinner("Calibrating market range · Building negotiation scripts…"):
+                    _comp_result = analyze_offer(
+                        _qa_key,
+                        offered_amount=_comp_offer,
+                        role_title=_comp_role,
+                        company=_comp_co,
+                        location=_comp_loc,
+                        company_stage=_comp_stage,
+                        years_experience=int((st.session_state.get("cv_profile") or {}).get("years_experience",5)),
+                        current_salary=_comp_curr or None,
+                        pivot_dna=st.session_state.get("pivot_dna"),
+                        is_counter_offer=_comp_counter,
+                    )
+                    st.session_state.comp_analysis = _comp_result
+
+        _ca = st.session_state.get("comp_analysis")
+        if _ca:
+            _ca_low  = _ca.get("market_low",0)
+            _ca_mid  = _ca.get("market_mid",0)
+            _ca_high = _ca.get("market_high",0)
+            _ca_ass  = _ca.get("offer_assessment","fair")
+            _ca_col  = offer_assessment_color(_ca_ass)
+            _ca_lbl  = offer_assessment_label(_ca_ass)
+            _ca_head = _ca.get("negotiation_headroom",0)
+            _ca_walk = _ca.get("walk_away_threshold",0)
+            _ca_curr_symbol = "€"
+
+            # Market range bar
+            st.markdown(
+                f'<div style="background:{_ca_col}10;border:1.5px solid {_ca_col}40;border-radius:8px;'
+                f'padding:14px 18px;margin-top:8px">'
+                f'<div style="font-size:13px;font-weight:800;color:{_ca_col};margin-bottom:8px">{_ca_lbl}</div>'
+                f'<div style="display:flex;gap:4px;align-items:center;margin-bottom:6px">'
+                f'<div style="font-size:11px;color:rgba(0,0,0,0.4);min-width:60px">Market low</div>'
+                f'<div style="flex:1;height:8px;background:#F3F6F9;border-radius:4px;position:relative">'
+                f'<div style="position:absolute;left:0;top:0;height:8px;'
+                f'width:{min(100,int(((_ca.get("offered_amount",0)-_ca_low)/max(_ca_high-_ca_low,1))*100))}%;'
+                f'background:{_ca_col};border-radius:4px"></div></div>'
+                f'<div style="font-size:11px;color:rgba(0,0,0,0.4);min-width:60px;text-align:right">Market high</div>'
+                f'</div>'
+                f'<div style="display:flex;justify-content:space-between;font-size:11px;color:rgba(0,0,0,0.55);margin-bottom:10px">'
+                f'<span>{_ca_curr_symbol}{_ca_low:,}</span>'
+                f'<span style="font-weight:700;color:#0A0A0A">Offered: {_ca_curr_symbol}{_ca.get("offered_amount",0):,}</span>'
+                f'<span>Midpoint: {_ca_curr_symbol}{_ca_mid:,}</span>'
+                f'<span>{_ca_curr_symbol}{_ca_high:,}</span>'
+                f'</div>'
+                f'<div style="display:flex;gap:16px">'
+                f'<div style="text-align:center">'
+                f'<div style="font-size:18px;font-weight:900;color:#0A66C2">+{_ca_curr_symbol}{_ca_head:,}</div>'
+                f'<div style="font-size:9px;color:rgba(0,0,0,0.4);text-transform:uppercase">Likely headroom</div>'
+                f'</div>'
+                f'<div style="text-align:center">'
+                f'<div style="font-size:18px;font-weight:900;color:#DC2626">{_ca_curr_symbol}{_ca_walk:,}</div>'
+                f'<div style="font-size:9px;color:rgba(0,0,0,0.4);text-transform:uppercase">Walk-away floor</div>'
+                f'</div>'
+                f'<div style="flex:1">'
+                f'<div style="font-size:10px;color:rgba(0,0,0,0.5)">{_ca.get("offer_assessment_reason","")}</div>'
+                f'</div></div></div>',
+                unsafe_allow_html=True,
+            )
+
+            # Negotiation scripts
+            st.markdown('<div style="height:10px"></div>', unsafe_allow_html=True)
+            st.markdown(
+                '<div style="font-size:10px;font-weight:800;letter-spacing:0.06em;text-transform:uppercase;'
+                'color:rgba(0,0,0,0.35);margin-bottom:8px">Negotiation scripts — copy and send</div>',
+                unsafe_allow_html=True,
+            )
+            _scripts = _ca.get("scripts",{})
+            for _sc_key, _sc_label, _sc_col in [
+                ("direct_ask","Direct ask — base salary","#057642"),
+                ("anchor_high","Anchor high first","#0A66C2"),
+                ("alternatives","When base is firm — alternatives","#7C3AED"),
+            ]:
+                _sc_text = _scripts.get(_sc_key,"")
+                if _sc_text:
+                    st.markdown(
+                        f'<div style="background:{_sc_col}08;border-left:3px solid {_sc_col};'
+                        f'border-radius:0 6px 6px 0;padding:10px 14px;margin-bottom:8px">'
+                        f'<div style="font-size:10px;font-weight:800;color:{_sc_col};letter-spacing:0.06em;'
+                        f'text-transform:uppercase;margin-bottom:4px">{_sc_label}</div>'
+                        f'<div style="font-size:11px;color:#0A0A0A;line-height:1.6;font-style:italic">"{_sc_text}"</div>'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
+
+            # Fear reframe + Three asks
+            if _ca.get("fear_reframe"):
+                st.markdown(
+                    f'<div style="background:#FFF5E5;border-radius:6px;padding:10px 14px;margin-top:4px">'
+                    f'<div style="font-size:10px;font-weight:800;color:#A05A00;letter-spacing:0.06em;'
+                    f'text-transform:uppercase;margin-bottom:3px">On the fear of losing the offer</div>'
+                    f'<div style="font-size:11px;color:rgba(0,0,0,0.75)">{_ca["fear_reframe"]}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+
+            if _ca.get("timing_advice"):
+                st.caption(f"Timing: {_ca['timing_advice']}")
+
+            if _comp_counter and _ca.get("counter_offer_context"):
+                st.markdown(
+                    f'<div style="background:#FFF0E5;border:1.5px solid #D97706;border-radius:6px;'
+                    f'padding:10px 14px;margin-top:6px">'
+                    f'<div style="font-size:10px;font-weight:800;color:#D97706;letter-spacing:0.06em;'
+                    f'text-transform:uppercase;margin-bottom:3px">Counter-offer analysis</div>'
+                    f'<div style="font-size:11px;color:rgba(0,0,0,0.75)">{_ca["counter_offer_context"]}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+
+    # ════════════════════════════════════════════════════════════════════════
+    # LINKEDIN CONTENT ENGINE + MOAT BUILDER
+    # ════════════════════════════════════════════════════════════════════════
+    with st.expander(
+        f'{icon("linkedin",14,"#0A66C2")} LinkedIn Content Engine — 8-week PM credibility strategy',
+        expanded=False,
+    ):
+        _lc_has_data = bool(st.session_state.get("pivot_dna") and st.session_state.get("cv_profile"))
+        if not _lc_has_data:
+            st.caption("Upload your CV and build a Pivot DNA to unlock the content engine.")
+        else:
+            _lc_plan = st.session_state.get("linkedin_content_plan")
+            _lc_c1, _lc_c2 = st.columns([3,1])
+            with _lc_c1:
+                st.markdown(
+                    '<div style="font-size:11px;color:rgba(0,0,0,0.55);line-height:1.6">'
+                    '8 fully written posts, ready to copy-paste. Built from your real career stories — '
+                    'specific numbers, company names, outcomes. No invented examples. Each post shows '
+                    'PM-thinking in action without saying "I want to break into product."'
+                    '</div>',
+                    unsafe_allow_html=True,
+                )
+            with _lc_c2:
+                if st.button(
+                    "Generate Plan" if not _lc_plan else "Regenerate",
+                    key="btn_lc_gen",
+                    type="primary" if not _lc_plan else "secondary",
+                    use_container_width=True,
+                ):
+                    if not _qa_key:
+                        st.warning("Add your OpenAI key.")
+                    else:
+                        with st.spinner("Building 8-week content arc from your career stories…"):
+                            _lc_plan = generate_content_plan(
+                                _qa_key,
+                                cv_profile=st.session_state.get("cv_profile",{}),
+                                pivot_dna=st.session_state.get("pivot_dna",{}),
+                                target_role=str(target) if "target" in dir() else "Product Manager",
+                                skill_gap_results=st.session_state.get("skill_gap_results"),
+                            )
+                            st.session_state.linkedin_content_plan = _lc_plan
+
+            if _lc_plan:
+                if _lc_plan.get("content_arc"):
+                    st.markdown(
+                        f'<div style="background:#E8F0FE;border-radius:6px;padding:8px 12px;margin:8px 0">'
+                        f'<div style="font-size:10px;font-weight:800;color:#0A66C2;letter-spacing:0.06em;'
+                        f'text-transform:uppercase;margin-bottom:2px">8-week arc</div>'
+                        f'<div style="font-size:11px;color:#0A0A0A">{_lc_plan["content_arc"]}</div>'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
+
+                if _lc_plan.get("profile_optimization_tip"):
+                    st.markdown(
+                        f'<div style="background:#FFF5E5;border-radius:5px;padding:7px 11px;margin-bottom:8px">'
+                        f'<strong style="font-size:10px;color:#A05A00">Do this first:</strong> '
+                        f'<span style="font-size:11px;color:rgba(0,0,0,0.7)">{_lc_plan["profile_optimization_tip"]}</span>'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
+
+                _lc_posts = _lc_plan.get("posts",[])
+                for _lc_post in _lc_posts:
+                    _lc_week    = _lc_post.get("week",1)
+                    _lc_theme   = _lc_post.get("theme","")
+                    _lc_hook    = _lc_post.get("hook_type","")
+                    _lc_day     = _lc_post.get("post_day","Thursday")
+                    _lc_time    = _lc_post.get("post_time","8:00 AM")
+                    _lc_text    = _lc_post.get("post_text","")
+                    _lc_tags    = " ".join(_lc_post.get("hashtags",[])[:5])
+                    _lc_eng     = _lc_post.get("expected_engagement","")
+                    _hook_colors = {"data":"#0A66C2","story":"#7C3AED","question":"#D97706","counterintuitive":"#DC2626"}
+                    _lc_hc = _hook_colors.get(_lc_hook,"#555")
+
+                    with st.expander(f"Week {_lc_week} — {_lc_theme}", expanded=False):
+                        st.markdown(
+                            f'<div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap">'
+                            f'<span style="font-size:9px;background:{_lc_hc}20;color:{_lc_hc};padding:2px 8px;border-radius:4px;font-weight:700">{_lc_hook.upper()} hook</span>'
+                            f'<span style="font-size:9px;background:#F3F6F9;color:rgba(0,0,0,0.5);padding:2px 8px;border-radius:4px">{_lc_day} {_lc_time}</span>'
+                            f'<span style="font-size:9px;background:#F3F6F9;color:rgba(0,0,0,0.5);padding:2px 8px;border-radius:4px">Expected: {_lc_eng}</span>'
+                            f'</div>',
+                            unsafe_allow_html=True,
+                        )
+                        st.text_area(
+                            "Post text (copy & paste to LinkedIn)",
+                            value=_lc_text + ("\n\n" + _lc_tags if _lc_tags else ""),
+                            height=200,
+                            key=f"lc_post_{_lc_week}",
+                        )
+                        st.caption(f"Why week {_lc_week}: {_lc_post.get('why_this_week','')}")
+
+                if _lc_plan.get("engagement_strategy"):
+                    st.caption(f"Engagement strategy: {_lc_plan['engagement_strategy']}")
+
+    # ════════════════════════════════════════════════════════════════════════
+    # PERSONAL MOAT BUILDER — Build what others can't copy
+    # ════════════════════════════════════════════════════════════════════════
+    with st.expander(
+        f'{icon("lock",14,"#DC2626")} Personal Moat Builder — What can you do that PM lifers can\'t?',
+        expanded=False,
+    ):
+        _mb_has_data = bool(st.session_state.get("cv_profile") and st.session_state.get("pivot_dna"))
+        if not _mb_has_data:
+            st.caption("Upload your CV and build a Pivot DNA first.")
+        else:
+            st.markdown(
+                '<div style="font-size:11px;color:rgba(0,0,0,0.55);line-height:1.6;margin-bottom:10px">'
+                'You can\'t compete on PM title. You CAN compete on things PM lifers don\'t have. '
+                '5 concrete 60-day projects that only someone with your specific background can do — '
+                'and that will be remembered in every interview.'
+                '</div>',
+                unsafe_allow_html=True,
+            )
+            _mb_plan = st.session_state.get("moat_builder_plan")
+            if st.button(
+                "Build My Moat" if not _mb_plan else "Rebuild",
+                key="btn_mb",
+                type="primary" if not _mb_plan else "secondary",
+                use_container_width=True,
+            ):
+                if not _qa_key:
+                    st.warning("Add your OpenAI key.")
+                else:
+                    with st.spinner("Finding your unfair advantages…"):
+                        _mb_plan = moat_builder_plan(
+                            _qa_key,
+                            cv_profile=st.session_state.get("cv_profile",{}),
+                            pivot_dna=st.session_state.get("pivot_dna",{}),
+                            target_role=str(target) if "target" in dir() else "Product Manager",
+                            skill_gap_results=st.session_state.get("skill_gap_results"),
+                            cohort_intelligence=st.session_state.get("cohort_intelligence"),
+                        )
+                        st.session_state.moat_builder_plan = _mb_plan
+
+            if _mb_plan:
+                if _mb_plan.get("moat_philosophy"):
+                    st.markdown(
+                        f'<div style="background:#DC262610;border:1.5px solid #DC2626;border-radius:8px;'
+                        f'padding:10px 14px;margin-bottom:12px">'
+                        f'<div style="font-size:10px;font-weight:800;color:#DC2626;letter-spacing:0.06em;'
+                        f'text-transform:uppercase;margin-bottom:3px">Your core unfair advantage</div>'
+                        f'<div style="font-size:13px;font-weight:700;color:#0A0A0A">{_mb_plan["moat_philosophy"]}</div>'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
+
+                for _mb_i, _mb_proj in enumerate((_mb_plan.get("projects") or [])[:5]):
+                    with st.expander(f"Project {_mb_i+1}: {_mb_proj.get('title','')}", expanded=_mb_i==0):
+                        _mb_pc1, _mb_pc2 = st.columns([2,1])
+                        with _mb_pc1:
+                            st.markdown(
+                                f'<div style="font-size:12px;color:#0A0A0A;line-height:1.5;margin-bottom:8px">'
+                                f'{_mb_proj.get("what","")}</div>'
+                                f'<div style="font-size:10px;font-weight:800;color:#DC2626;letter-spacing:0.06em;'
+                                f'text-transform:uppercase;margin-bottom:2px">Why only you can do this</div>'
+                                f'<div style="font-size:11px;color:rgba(0,0,0,0.7);margin-bottom:6px">{_mb_proj.get("why_unique","")}</div>'
+                                f'<div style="font-size:10px;font-weight:800;color:#057642;letter-spacing:0.06em;'
+                                f'text-transform:uppercase;margin-bottom:2px">In the interview, say</div>'
+                                f'<div style="font-size:11px;color:rgba(0,0,0,0.7);font-style:italic">"{_mb_proj.get("interview_angle","")}"</div>',
+                                unsafe_allow_html=True,
+                            )
+                        with _mb_pc2:
+                            st.markdown(
+                                f'<div style="background:#F3F6F9;border-radius:6px;padding:10px">'
+                                f'<div style="font-size:10px;color:rgba(0,0,0,0.4);margin-bottom:2px">Deliverable</div>'
+                                f'<div style="font-size:11px;font-weight:600">{_mb_proj.get("output","")}</div>'
+                                f'<div style="font-size:10px;color:rgba(0,0,0,0.4);margin-top:6px;margin-bottom:2px">Time</div>'
+                                f'<div style="font-size:11px;font-weight:600">{_mb_proj.get("time_investment","")}</div>'
+                                f'<div style="font-size:10px;color:rgba(0,0,0,0.4);margin-top:6px;margin-bottom:2px">Publish at</div>'
+                                f'<div style="font-size:11px;color:#0A66C2">{_mb_proj.get("visibility_strategy","")}</div>'
+                                f'</div>',
+                                unsafe_allow_html=True,
+                            )
+
+                if _mb_plan.get("60_day_plan"):
+                    st.markdown(
+                        f'<div style="background:#F5F0FF;border-radius:6px;padding:10px 14px;margin-top:6px">'
+                        f'<div style="font-size:10px;font-weight:800;color:#7C3AED;letter-spacing:0.06em;'
+                        f'text-transform:uppercase;margin-bottom:4px">60-day execution order</div>'
+                        f'<div style="font-size:11px;color:rgba(0,0,0,0.75)">{_mb_plan["60_day_plan"]}</div>'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
+
+    # ════════════════════════════════════════════════════════════════════════
+    # WEEK ZERO PROTOCOL — First 30 days in the new role
+    # ════════════════════════════════════════════════════════════════════════
+    # Only show when an offer has been accepted (or user has offer in pipeline)
+    _wz_has_offer = any(j.get("status") in ("offer_accepted","offer","hired") for j in (st.session_state.get("pipeline_jobs") or []))
+    with st.expander(
+        f'{icon("sunrise",14,"#057642")} Week Zero Protocol — Your first 30 days as a PM',
+        expanded=_wz_has_offer,
+    ):
+        st.markdown(
+            '<div style="font-size:11px;color:rgba(0,0,0,0.55);line-height:1.6;margin-bottom:10px">'
+            'The pivot doesn\'t end when you sign the offer. It ends when you survive the probation. '
+            '40% of career changers feel out of their depth in the first 90 days. '
+            'This is your personalised 30-day plan, calibrated to your specific transition.'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+
+        _wz_c1, _wz_c2 = st.columns(2)
+        with _wz_c1:
+            _wz_role    = st.text_input("Your new role", key="wz_role", value=str(target) if "target" in dir() else "Product Manager")
+            _wz_company = st.text_input("Company", key="wz_company", placeholder="e.g. Personio")
+        with _wz_c2:
+            _wz_stage   = st.selectbox("Company stage", ["Seed","Series A","Series B","Series C","Scale-up","Enterprise"], key="wz_stage", index=2)
+            _wz_prev    = st.text_input("Your previous role", key="wz_prev_role",
+                value=(st.session_state.get("cv_profile") or {}).get("extracted_role",""))
+
+        _wz_plan = st.session_state.get("week_zero_plan")
+        if st.button(
+            "Generate My Week Zero Plan" if not _wz_plan else "Regenerate",
+            key="btn_wz",
+            type="primary" if not _wz_plan else "secondary",
+            use_container_width=True,
+        ):
+            if not _qa_key:
+                st.warning("Add your OpenAI key.")
+            elif not _wz_role:
+                st.warning("Enter your new role.")
+            else:
+                with st.spinner("Building your 30-day onboarding plan…"):
+                    _sg_for_wz = [(g.get("skill","")) for g in ((st.session_state.get("skill_gap_results") or {}).get("gaps") or [])[:5]]
+                    _wz_plan = generate_week_zero_plan(
+                        _qa_key,
+                        target_role=_wz_role,
+                        company=_wz_company,
+                        company_stage=_wz_stage,
+                        previous_role=_wz_prev,
+                        skill_gaps=_sg_for_wz,
+                        pivot_dna=st.session_state.get("pivot_dna"),
+                        cv_profile=st.session_state.get("cv_profile"),
+                    )
+                    st.session_state.week_zero_plan = _wz_plan
+
+        if _wz_plan:
+            # Mindset banner
+            if _wz_plan.get("mindset_for_day_one"):
+                st.markdown(
+                    f'<div style="background:#F0FAF4;border:1.5px solid #057642;border-radius:8px;'
+                    f'padding:12px 16px;margin-bottom:12px">'
+                    f'<div style="font-size:10px;font-weight:800;color:#057642;letter-spacing:0.06em;'
+                    f'text-transform:uppercase;margin-bottom:4px">The one mindset shift for Day 1</div>'
+                    f'<div style="font-size:13px;font-weight:700;color:#0A0A0A">{_wz_plan["mindset_for_day_one"]}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+
+            # Leverage from old role
+            if _wz_plan.get("leverage_from_old_role"):
+                st.markdown(
+                    f'<div style="background:#EEF3FB;border-radius:6px;padding:8px 12px;margin-bottom:10px">'
+                    f'<div style="font-size:10px;font-weight:800;color:#0A66C2;letter-spacing:0.06em;'
+                    f'text-transform:uppercase;margin-bottom:2px">Your superpower most new PMs don\'t have</div>'
+                    f'<div style="font-size:11px;color:#0A0A0A">{_wz_plan["leverage_from_old_role"]}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+
+            # Phase timeline
+            _wz_phases = [
+                ("day_1_5",  "Day 1–5: Listen & Map",      "#0A66C2"),
+                ("day_6_15", "Day 6–15: Find the quick win","#7C3AED"),
+                ("day_16_30","Day 16–30: First impact",      "#057642"),
+            ]
+            for _wz_key, _wz_label, _wz_col in _wz_phases:
+                _wz_phase_tasks = _wz_plan.get(_wz_key, [])
+                if not _wz_phase_tasks:
+                    continue
+                st.markdown(
+                    f'<div style="font-size:11px;font-weight:800;color:{_wz_col};margin:10px 0 4px 0">{_wz_label}</div>',
+                    unsafe_allow_html=True,
+                )
+                for _wz_task_group in _wz_phase_tasks:
+                    _wz_day   = _wz_task_group.get("day","") if isinstance(_wz_task_group, dict) else ""
+                    _wz_tasks = _wz_task_group.get("tasks",[]) if isinstance(_wz_task_group, dict) else [str(_wz_task_group)]
+                    _wz_why   = _wz_task_group.get("why","") if isinstance(_wz_task_group, dict) else ""
+                    if _wz_day:
+                        st.markdown(f'<div style="font-size:10px;color:rgba(0,0,0,0.4);margin:4px 0 2px 0">{_wz_day}</div>', unsafe_allow_html=True)
+                    for _wz_t in _wz_tasks:
+                        st.markdown(f'<div style="font-size:11px;color:#0A0A0A;padding:2px 0">{check_icon(10)} {_wz_t}</div>', unsafe_allow_html=True)
+                    if _wz_why:
+                        st.markdown(f'<div style="font-size:10px;color:rgba(0,0,0,0.45);padding:0 0 4px 16px">{_wz_why}</div>', unsafe_allow_html=True)
+
+            if _wz_plan.get("day_31_90"):
+                st.markdown(
+                    f'<div style="background:#F3F6F9;border-radius:6px;padding:8px 12px;margin-top:6px">'
+                    f'<div style="font-size:10px;font-weight:800;color:rgba(0,0,0,0.35);letter-spacing:0.06em;'
+                    f'text-transform:uppercase;margin-bottom:3px">Day 31–90</div>'
+                    f'<div style="font-size:11px;color:rgba(0,0,0,0.7)">{_wz_plan["day_31_90"]}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+
+            # Failure modes + success signals
+            _wz_fails = _wz_plan.get("failure_modes",[])
+            _wz_sigs  = _wz_plan.get("success_signals",[])
+            if _wz_fails or _wz_sigs:
+                _wz_fc, _wz_sc = st.columns(2)
+                with _wz_fc:
+                    if _wz_fails:
+                        st.markdown('<div style="font-size:10px;font-weight:800;color:#DC2626;letter-spacing:0.06em;text-transform:uppercase;margin-top:8px;margin-bottom:4px">Common failure modes</div>', unsafe_allow_html=True)
+                        for _fm in _wz_fails[:3]:
+                            st.markdown(f'<div style="font-size:11px;color:rgba(0,0,0,0.7);padding:1px 0">{warn_icon(10)} {_fm}</div>', unsafe_allow_html=True)
+                with _wz_sc:
+                    if _wz_sigs:
+                        st.markdown('<div style="font-size:10px;font-weight:800;color:#057642;letter-spacing:0.06em;text-transform:uppercase;margin-top:8px;margin-bottom:4px">You\'re on track if…</div>', unsafe_allow_html=True)
+                        for _sg2 in _wz_sigs[:3]:
+                            st.markdown(f'<div style="font-size:11px;color:rgba(0,0,0,0.7);padding:1px 0">{check_icon(10)} {_sg2}</div>', unsafe_allow_html=True)
+
+            if _wz_plan.get("imposter_syndrome_note"):
+                st.markdown(
+                    f'<div style="background:#F5F5F5;border-radius:6px;padding:8px 12px;margin-top:8px;'
+                    f'font-size:11px;color:rgba(0,0,0,0.65);font-style:italic">'
+                    f'"{_wz_plan["imposter_syndrome_note"]}"</div>',
+                    unsafe_allow_html=True,
+                )
+
     # ── Next Action Engine ────────────────────────────────────────────────────
     # Reads session state → determines single most important next action.
     # This is the "Obsession with end-goal" made explicit: the product always
@@ -5553,9 +6197,9 @@ if quick_apply:
                 )
 
                 if _qa_pkg2:
-                    _qa_tab_cl, _qa_tab_cv, _qa_tab_inmail, _qa_tab_score, _qa_tab_ab, _qa_tab_ats = st.tabs([
+                    _qa_tab_cl, _qa_tab_cv, _qa_tab_inmail, _qa_tab_score, _qa_tab_ab, _qa_tab_ats, _qa_tab_adv = st.tabs([
                         "Cover Letter", "️ CV Rewrites", "LinkedIn InMail",
-                        "Quality Score", "A/B Strategy Test", "ATS Scan"
+                        "Quality Score", "A/B Strategy Test", "ATS Scan", "☠️ Ablehnungsrichter"
                     ])
                     with _qa_tab_cl:
                         st.text_area("Cover letter", value=_qa_pkg2.cover_letter, height=300,
@@ -6003,6 +6647,142 @@ if quick_apply:
                             if st.button("↩ Re-run ATS scan", key="qa_ats_paste_reset", type="secondary"):
                                 st.session_state["qa_ats_paste"] = None
                                 st.session_state["qa_ats_paste_fix"] = None
+                                st.rerun()
+
+                    with _qa_tab_adv:
+                        # ── Der Ablehnungsrichter — Adversarial Review ──────
+                        st.markdown(
+                            '<div style="background:#1C0A0A;border-radius:8px;padding:12px 16px;margin-bottom:12px">'
+                            '<div style="font-size:13px;font-weight:800;color:#FCA5A5;margin-bottom:4px">'
+                            '☠️ Der Ablehnungsrichter</div>'
+                            '<div style="font-size:11px;color:rgba(255,255,255,0.65);line-height:1.5">'
+                            'Every other tool tells you your application is good. This one tries to kill it. '
+                            'A hostile hiring manager reads your cover letter looking for rejection reasons — '
+                            'not reasons to hire. See it before they do.'
+                            '</div></div>',
+                            unsafe_allow_html=True,
+                        )
+                        _adv_pkg    = st.session_state.qa_package
+                        _adv_parsed = st.session_state.qa_parsed or {}
+                        _adv_key    = f"adv_{_adv_parsed.get('company','')[:12]}_{_adv_parsed.get('job_title','')[:12]}"
+                        _adv_cached = st.session_state.adversarial_results.get(_adv_key)
+
+                        if not _adv_cached:
+                            if st.button("Run Adversarial Review", key="btn_adv_review", type="primary", use_container_width=True):
+                                _adv_api = None
+                                try: _adv_api = st.secrets.get("OPENAI_API_KEY","")
+                                except Exception: pass
+                                with st.spinner("A hostile hiring manager is reading your application…"):
+                                    _adv_result = run_adversarial_review(
+                                        _adv_api or "",
+                                        cover_letter=_adv_pkg.cover_letter if _adv_pkg else "",
+                                        cv_text=st.session_state.cv_text or "",
+                                        job_title=_adv_parsed.get("job_title",""),
+                                        company=_adv_parsed.get("company",""),
+                                        jd_text=_adv_parsed.get("cleaned_description",""),
+                                        pivot_dna=st.session_state.get("pivot_dna",{}),
+                                        cv_profile=st.session_state.get("cv_profile",{}),
+                                    )
+                                    if _adv_result:
+                                        _adv_store = dict(st.session_state.adversarial_results)
+                                        _adv_store[_adv_key] = _adv_result
+                                        st.session_state.adversarial_results = _adv_store
+                                        _adv_cached = _adv_result
+                                    else:
+                                        st.error("Add OpenAI key to run adversarial review.")
+                        if _adv_cached:
+                            _adv_rp   = int(_adv_cached.get("reject_probability", 50))
+                            _adv_rp_c = reject_prob_color(_adv_rp)
+                            _adv_ats  = int(_adv_cached.get("ats_pass_probability", 50))
+                            _adv_hr   = int(_adv_cached.get("human_read_probability", 50))
+                            _adv_sub  = _adv_cached.get("submit_as_is", False)
+
+                            st.markdown(
+                                f'<div style="background:#1C0A0A;border-radius:8px;padding:14px 18px;margin-bottom:12px">'
+                                f'<div style="font-size:11px;color:rgba(255,255,255,0.5);font-weight:700;'
+                                f'text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px">Hostile verdict</div>'
+                                f'<div style="font-size:13px;color:#FCA5A5;line-height:1.5;margin-bottom:10px">'
+                                f'"{_adv_cached.get("hostile_verdict","")}"</div>'
+                                f'<div style="display:flex;gap:16px">'
+                                f'<div style="text-align:center">'
+                                f'<div style="font-size:28px;font-weight:900;color:{_adv_rp_c}">{_adv_rp}%</div>'
+                                f'<div style="font-size:9px;color:rgba(255,255,255,0.45);text-transform:uppercase">Reject prob.</div>'
+                                f'</div>'
+                                f'<div style="text-align:center">'
+                                f'<div style="font-size:28px;font-weight:900;color:{"#4ADE80" if _adv_ats>=60 else "#FCA5A5"}">{_adv_ats}%</div>'
+                                f'<div style="font-size:9px;color:rgba(255,255,255,0.45);text-transform:uppercase">ATS pass</div>'
+                                f'</div>'
+                                f'<div style="text-align:center">'
+                                f'<div style="font-size:28px;font-weight:900;color:{"#4ADE80" if _adv_hr>=50 else "#FCA5A5"}">{_adv_hr}%</div>'
+                                f'<div style="font-size:9px;color:rgba(255,255,255,0.45);text-transform:uppercase">Human reads</div>'
+                                f'</div>'
+                                f'<div style="flex:1;text-align:right;align-self:center">'
+                                f'<div style="font-size:11px;font-weight:800;'
+                                f'color:{"#4ADE80" if _adv_sub else "#FCA5A5"}">'
+                                f'{"✓ Submit as-is" if _adv_sub else "✗ Fix before submitting"}</div>'
+                                f'</div></div></div>',
+                                unsafe_allow_html=True,
+                            )
+
+                            # Fatal flaws
+                            _adv_fatal = _adv_cached.get("fatal_flaws",[])
+                            if _adv_fatal:
+                                st.markdown(
+                                    '<div style="background:#7C2D1220;border:1.5px solid #7C2D12;border-radius:6px;'
+                                    'padding:10px 14px;margin-bottom:10px">'
+                                    '<div style="font-size:10px;font-weight:800;color:#7C2D12;letter-spacing:0.06em;'
+                                    'text-transform:uppercase;margin-bottom:6px">Fatal flaws — fix these or don\'t submit</div>'
+                                    + "".join(f'<div style="font-size:11px;color:#DC2626;padding:2px 0">✗ {f}</div>' for f in _adv_fatal)
+                                    + '</div>',
+                                    unsafe_allow_html=True,
+                                )
+
+                            # Rejection reasons
+                            for _rr in (_adv_cached.get("rejection_reasons") or [])[:5]:
+                                _rr_sev = _rr.get("severity","minor")
+                                _rr_col = adv_severity_color(_rr_sev)
+                                _rr_lbl = adv_severity_label(_rr_sev)
+                                st.markdown(
+                                    f'<div style="background:{_rr_col}10;border-left:3px solid {_rr_col};'
+                                    f'border-radius:0 6px 6px 0;padding:8px 12px;margin-bottom:6px">'
+                                    f'<div style="display:flex;gap:8px;align-items:center;margin-bottom:3px">'
+                                    f'<span style="font-size:9px;font-weight:800;background:{_rr_col};color:white;'
+                                    f'padding:1px 6px;border-radius:3px">{_rr_lbl}</span>'
+                                    f'<span style="font-size:10px;color:{_rr_col};font-weight:600">{_rr.get("axis","").upper()}</span>'
+                                    f'</div>'
+                                    f'<div style="font-size:11px;color:rgba(0,0,0,0.8);margin-bottom:4px">{_rr.get("reason","")}</div>'
+                                    f'<div style="font-size:10px;color:#057642">→ Fix: {_rr.get("fix","")}</div>'
+                                    f'</div>',
+                                    unsafe_allow_html=True,
+                                )
+
+                            # Strongest points + one fix
+                            _adv_strong = _adv_cached.get("strongest_points",[])
+                            if _adv_strong:
+                                st.markdown(
+                                    '<div style="background:#F0FAF410;border-radius:6px;padding:8px 12px;margin-top:6px">'
+                                    '<div style="font-size:10px;font-weight:800;color:#057642;letter-spacing:0.06em;'
+                                    'text-transform:uppercase;margin-bottom:4px">What actually works</div>'
+                                    + "".join(f'<div style="font-size:11px;color:rgba(0,0,0,0.7);padding:1px 0">✓ {s}</div>' for s in _adv_strong[:2])
+                                    + '</div>',
+                                    unsafe_allow_html=True,
+                                )
+
+                            if _adv_cached.get("one_thing_to_fix_now"):
+                                st.markdown(
+                                    f'<div style="background:#0A66C220;border:1.5px solid #0A66C2;border-radius:6px;'
+                                    f'padding:10px 14px;margin-top:8px">'
+                                    f'<div style="font-size:10px;font-weight:800;color:#0A66C2;letter-spacing:0.06em;'
+                                    f'text-transform:uppercase;margin-bottom:3px">If you do ONE thing</div>'
+                                    f'<div style="font-size:12px;font-weight:600;color:#0A0A0A">{_adv_cached["one_thing_to_fix_now"]}</div>'
+                                    f'</div>',
+                                    unsafe_allow_html=True,
+                                )
+
+                            if st.button("↩ Re-run", key="adv_reset", type="secondary"):
+                                _adv_store2 = dict(st.session_state.adversarial_results)
+                                _adv_store2.pop(_adv_key, None)
+                                st.session_state.adversarial_results = _adv_store2
                                 st.rerun()
 
     # ── Phase 4: Application Debate — adversarial hiring verdict ───────────
