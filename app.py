@@ -74,6 +74,12 @@ from src.interview_coach import (
     generate_mock_interview_report,
 )
 from src.linkedin_optimizer import generate_linkedin_profile, evaluate_linkedin_profile
+from src.persistence import save_profile, load_profile, profile_exists, delete_profile, get_profile_meta
+from src.outcome_tracker import (
+    create_outcome_entry, compute_calibration, diagnose_rejection_pattern,
+    get_funnel_stats, OUTCOME_STAGES, STAGE_LABELS, STAGE_COLORS,
+)
+from src.daily_brief import generate_daily_brief
 import plotly.graph_objects as go
 import plotly.express as px
 
@@ -1371,6 +1377,15 @@ DEFAULT_STATE = {
     "zwilling_initialized": False,      # True after first system context injected
     # Voice transcriptions (audio → Whisper)
     "voice_transcripts": {},            # {question_idx: transcribed_text}
+    # Outcome Tracker + Calibration Motor
+    "outcome_log": [],                  # [create_outcome_entry(...)] — every recorded outcome
+    "calibration_data": {},             # compute_calibration() result
+    # Daily Pivot Brief
+    "daily_brief_date": "",             # date the brief was last generated (YYYY-MM-DD)
+    "daily_brief_content": None,        # generate_daily_brief() result
+    # Persistence
+    "profile_loaded": False,            # True after load_profile() ran this session
+    "profile_saved_at": "",             # ISO timestamp of last save
     # ATS Scanner
     "ats_result": None,                 # result from scan_ats_compatibility
     # Sprint Mode
@@ -1446,6 +1461,19 @@ DEFAULT_STATE = {
 for key, value in DEFAULT_STATE.items():
     if key not in st.session_state:
         st.session_state[key] = value
+
+# ── Auto-load persisted profile (once per session) ────────────────────────────
+if not st.session_state.get("profile_loaded"):
+    _saved = load_profile()
+    if _saved:
+        for _k, _v in _saved.items():
+            # Only restore if the key exists in DEFAULT_STATE (safe) and is still default
+            if _k in DEFAULT_STATE and st.session_state.get(_k) == DEFAULT_STATE.get(_k):
+                st.session_state[_k] = _v
+            elif _k not in DEFAULT_STATE:
+                # Extra keys like outcome_log, calibration_data, daily_brief_*
+                st.session_state[_k] = _v
+    st.session_state.profile_loaded = True
 
 
 # ============================================================
@@ -1791,6 +1819,35 @@ with st.sidebar:
         if st.button(_run_btn_label, use_container_width=True, type="primary"):
             st.session_state.has_run = True
 
+    # ── Persistence controls ──────────────────────────────────────────────
+    st.divider()
+    _pm = get_profile_meta()
+    if _pm:
+        _saved_at_str = _pm.get("saved_at", "")[:10]
+        st.markdown(
+            f'<div style="font-size:10px;color:rgba(0,0,0,0.4);margin-bottom:6px">'
+            f'Profile saved · {_saved_at_str} · {_pm.get("size_kb",0)} KB · '
+            f'{_pm.get("pipeline_count",0)} applications · {_pm.get("outcome_count",0)} outcomes'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+    _sv_col1, _sv_col2 = st.columns(2)
+    with _sv_col1:
+        if st.button("Save profile", use_container_width=True, help="Save all your data to disk so it persists across sessions"):
+            _sv_ok = save_profile(st.session_state)
+            if _sv_ok:
+                st.session_state.profile_saved_at = __import__("datetime").datetime.now().isoformat()
+                st.toast("Profile saved.", icon=None)
+            else:
+                st.toast("Save failed — check file permissions.")
+    with _sv_col2:
+        if st.button("Reset profile", use_container_width=True, type="secondary",
+                     help="Delete saved profile and start fresh"):
+            delete_profile()
+            for _rk in list(st.session_state.keys()):
+                del st.session_state[_rk]
+            st.rerun()
+
     st.caption(f"Dataset · {mat.shape[0]} occupations · {mat.shape[1]} skills")
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1804,6 +1861,82 @@ if quick_apply:
         _qa_key = str(st.secrets.get("OPENAI_API_KEY", "")).strip()
     except Exception:
         pass
+
+    # ════════════════════════════════════════════════════════════════════════
+    # DAILY PIVOT BRIEF — the first thing you see every morning
+    # ════════════════════════════════════════════════════════════════════════
+    from datetime import date as _date_cls
+    _today_iso = _date_cls.today().isoformat()
+    if st.session_state.get("cv_text") or st.session_state.get("pipeline_jobs"):
+        # Regenerate brief if stale (new day or not yet generated)
+        if st.session_state.get("daily_brief_date") != _today_iso or not st.session_state.get("daily_brief_content"):
+            st.session_state.daily_brief_date = _today_iso
+            st.session_state.daily_brief_content = generate_daily_brief(dict(st.session_state))
+
+        _brief = st.session_state.daily_brief_content
+        if _brief:
+            _db_actions = _brief.get("actions", [])
+            _db_momentum = _brief.get("momentum", {})
+            _db_pipeline = _brief.get("pipeline", {})
+            _db_mot = _brief.get("motivational_line", "")
+
+            st.markdown(
+                f'<div style="background:linear-gradient(135deg,#0A66C2 0%,#004182 100%);'
+                f'border-radius:12px;padding:18px 22px 14px 22px;margin-bottom:16px">'
+                f'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">'
+                f'<div>'
+                f'<div style="font-size:10px;font-weight:800;letter-spacing:0.12em;text-transform:uppercase;color:rgba(255,255,255,0.55)">Daily Pivot Brief</div>'
+                f'<div style="font-size:15px;font-weight:900;color:#fff">{_brief.get("day_name")}, {_brief.get("date_str")}</div>'
+                f'</div>'
+                f'<div style="font-size:11px;font-weight:700;padding:4px 10px;border-radius:20px;'
+                f'background:rgba(255,255,255,0.15);color:#fff">'
+                f'{_db_momentum.get("label","")}</div>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+
+            # Top 3 actions
+            for _dbi, _act in enumerate(_db_actions):
+                _act_color = "#fff" if _dbi == 0 else "rgba(255,255,255,0.75)"
+                _act_size = "14px" if _dbi == 0 else "12px"
+                st.markdown(
+                    f'<div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:8px">'
+                    f'<div style="min-width:22px;height:22px;border-radius:50%;'
+                    f'background:rgba(255,255,255,{"0.25" if _dbi == 0 else "0.12"});'
+                    f'display:flex;align-items:center;justify-content:center;'
+                    f'font-size:10px;font-weight:900;color:#fff;flex-shrink:0;margin-top:1px">{_dbi+1}</div>'
+                    f'<div>'
+                    f'<div style="font-size:{_act_size};font-weight:{"700" if _dbi==0 else "600"};color:{_act_color};line-height:1.4">{_act.get("title","")}</div>'
+                    f'<div style="font-size:10px;color:rgba(255,255,255,0.5);margin-top:1px">{_act.get("why","")}</div>'
+                    f'</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+
+            # Pipeline snapshot + motivational line
+            _db_pl = _db_pipeline
+            _pl_line = ""
+            if not _db_pl.get("empty"):
+                _stale = _db_pl.get("stale_count", 0)
+                _int = _db_pl.get("interview_count", 0)
+                _parts = [f"{_db_pl.get('active',0)} active"]
+                if _stale: _parts.append(f"{_stale} need follow-up")
+                if _int: _parts.append(f"{_int} in interview")
+                _pl_line = " · ".join(_parts)
+
+            _pl_pill = (
+                f'<div style="font-size:10px;color:rgba(255,255,255,0.4)">{_pl_line}</div>'
+                if _pl_line else ""
+            )
+            st.markdown(
+                f'<div style="border-top:1px solid rgba(255,255,255,0.15);margin-top:8px;padding-top:8px;'
+                f'display:flex;align-items:center;justify-content:space-between">'
+                f'<div style="font-size:10px;color:rgba(255,255,255,0.45);font-style:italic">{_db_mot}</div>'
+                f'{_pl_pill}'
+                f'</div>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
 
     # ════════════════════════════════════════════════════════════════════════
     # CAREER COMMAND CENTER — AI Advisor Layer
@@ -2484,6 +2617,147 @@ if quick_apply:
             st.session_state.pipeline_jobs = []
             st.session_state.pipeline_diagnosis = None
             st.rerun()
+
+    # ════════════════════════════════════════════════════════════════════════
+    # OUTCOME TRACKER + CALIBRATION MOTOR
+    # Record what actually happened → calibrate your personal ROI model
+    # ════════════════════════════════════════════════════════════════════════
+    with st.expander("Outcome Tracker · Calibrate your personal ROI model", expanded=False):
+        st.markdown(
+            '<div style="font-size:12px;color:rgba(0,0,0,0.55);line-height:1.6;margin-bottom:12px">'
+            'Record the outcome of each application. The Calibration Motor compares your predicted ROI '
+            'vs. actual results and adjusts your personal response rate. After 5+ outcomes, your ROI scores '
+            'are calibrated to <em>your</em> profile — not industry averages.'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+
+        _ot_log: list = st.session_state.outcome_log or []
+        _ot_pipeline = st.session_state.pipeline_jobs or []
+
+        # ── Log new outcome ────────────────────────────────────────────────
+        st.markdown("**Log an outcome**")
+        _ot_c1, _ot_c2, _ot_c3 = st.columns([2, 2, 2])
+        with _ot_c1:
+            # Pre-fill from pipeline if possible
+            _ot_pipeline_options = [f"{j.get('title','')} @ {j.get('company','')}" for j in _ot_pipeline] + ["Other (manual entry)"]
+            _ot_job_sel = st.selectbox("Application", _ot_pipeline_options, key="ot_job_sel", label_visibility="collapsed")
+        with _ot_c2:
+            _ot_stage = st.selectbox(
+                "Outcome",
+                options=OUTCOME_STAGES,
+                format_func=lambda x: STAGE_LABELS.get(x, x),
+                key="ot_stage_sel",
+                label_visibility="collapsed",
+            )
+        with _ot_c3:
+            _ot_log_btn = st.button("Log outcome", key="ot_log_btn", use_container_width=True)
+
+        if _ot_log_btn:
+            # Find job details
+            _ot_sel_idx = _ot_pipeline_options.index(_ot_job_sel) if _ot_job_sel in _ot_pipeline_options else -1
+            if _ot_sel_idx >= 0 and _ot_sel_idx < len(_ot_pipeline):
+                _ot_job = _ot_pipeline[_ot_sel_idx]
+                _ot_predicted = None
+                _ot_roi_key = f"{_ot_job.get('company','')}_{_ot_job.get('title','')}"
+                if isinstance(st.session_state.roi_results, dict):
+                    _ot_predicted = st.session_state.roi_results.get(_ot_roi_key, {}).get("ei_per_app")
+                _ot_entry = create_outcome_entry(
+                    job_id=_ot_job.get("id", ""),
+                    job_title=_ot_job.get("title", ""),
+                    company=_ot_job.get("company", ""),
+                    predicted_roi=_ot_predicted,
+                    actual_stage=_ot_stage,
+                )
+            else:
+                _ot_entry = create_outcome_entry("manual", _ot_job_sel, "", None, _ot_stage)
+
+            if st.session_state.outcome_log is None:
+                st.session_state.outcome_log = []
+            st.session_state.outcome_log.append(_ot_entry)
+            # Recompute calibration
+            st.session_state.calibration_data = compute_calibration(st.session_state.outcome_log)
+            # Invalidate daily brief
+            st.session_state.daily_brief_date = ""
+            save_profile(st.session_state)
+            st.rerun()
+
+        # ── Outcome log ────────────────────────────────────────────────────
+        if _ot_log:
+            st.divider()
+            _cal = st.session_state.calibration_data or {}
+            _funnel = get_funnel_stats(_ot_log)
+            _diagnosis = diagnose_rejection_pattern(_ot_log)
+
+            # Funnel metrics
+            _fc1, _fc2, _fc3, _fc4 = st.columns(4)
+            _f_metrics = [
+                ("Applied", _funnel.get("applied", 0), None),
+                ("Responded", f"{_funnel.get('response_rate',0):.0f}%", None),
+                ("Interviews", f"{_funnel.get('interview_rate',0):.0f}%", None),
+                ("Offers", _funnel.get("offers", 0), "#057642"),
+            ]
+            for _fc, (_lbl, _val, _col) in zip([_fc1, _fc2, _fc3, _fc4], _f_metrics):
+                with _fc:
+                    _vc = _col or ("#057642" if str(_val).endswith("%") and float(str(_val).rstrip("%")) >= 20 else "#0A66C2")
+                    st.markdown(
+                        f'<div style="text-align:center">'
+                        f'<div style="font-size:22px;font-weight:900;color:{_vc}">{_val}</div>'
+                        f'<div style="font-size:10px;color:rgba(0,0,0,0.45);font-weight:600">{_lbl}</div>'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
+
+            # Calibration insight
+            if _cal.get("calibrated"):
+                _adj = _cal.get("adjustment_factor", 1.0)
+                _adj_color = "#057642" if _adj > 1.1 else ("#B71C1C" if _adj < 0.85 else "#0A66C2")
+                st.markdown(
+                    f'<div style="background:#F8FAFF;border:1px solid #C7D8F0;border-radius:8px;'
+                    f'padding:10px 14px;margin:10px 0;font-size:12px;line-height:1.6">'
+                    f'<span style="font-weight:700;color:{_adj_color}">Calibration: {_adj:.2f}x</span> · '
+                    f'{_cal.get("insight","")}'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+
+            # Rejection diagnosis
+            if _diagnosis:
+                _sev_colors = {"critical": "#B71C1C", "high": "#A05A00", "moderate": "#0A66C2"}
+                _sev_c = _sev_colors.get(_diagnosis.get("severity",""), "#5F6B7A")
+                st.markdown(
+                    f'<div style="background:#FFF8F8;border-left:3px solid {_sev_c};border-radius:0 8px 8px 0;'
+                    f'padding:10px 14px;margin:8px 0">'
+                    f'<div style="font-size:11px;font-weight:800;color:{_sev_c};margin-bottom:4px">'
+                    f'{_diagnosis.get("severity_label","")} — {_diagnosis.get("dominant_pct",0):.0f}% of rejections at {_diagnosis.get("dominant_label","")}'
+                    f'</div>'
+                    f'<div style="font-size:12px;color:rgba(0,0,0,0.7);margin-bottom:6px">'
+                    f'Root cause: {_diagnosis.get("root_cause","")}'
+                    f'</div>'
+                    f'<div style="font-size:11px;font-weight:700;color:rgba(0,0,0,0.55);margin-bottom:4px">Fix:</div>',
+                    unsafe_allow_html=True,
+                )
+                for _act in _diagnosis.get("actions", [])[:3]:
+                    st.markdown(f"→ {_act}")
+                st.markdown("</div>", unsafe_allow_html=True)
+
+            # Log table
+            with st.expander(f"Outcome log ({len(_ot_log)} entries)", expanded=False):
+                for _oe in reversed(_ot_log[-10:]):
+                    _oc = STAGE_COLORS.get(_oe.get("actual_stage",""), "#5F6B7A")
+                    st.markdown(
+                        f'<div style="display:flex;align-items:center;gap:8px;padding:4px 0;'
+                        f'border-bottom:1px solid rgba(0,0,0,0.05);font-size:11px">'
+                        f'<span style="color:rgba(0,0,0,0.4)">{_oe.get("date","")}</span>'
+                        f'<span style="font-weight:600">{_oe.get("job_title","")} @ {_oe.get("company","")}</span>'
+                        f'<span style="padding:1px 7px;border-radius:20px;background:{_oc}18;'
+                        f'color:{_oc};font-weight:700;border:1px solid {_oc}40">'
+                        f'{STAGE_LABELS.get(_oe.get("actual_stage",""),"")}</span>'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
+        else:
+            st.caption("No outcomes logged yet. Log 3+ outcomes to unlock calibration and rejection diagnosis.")
 
     # ════════════════════════════════════════════════════════════════════════
     # JOB MARKET PULSE + WARM INTRO PATHFINDER
