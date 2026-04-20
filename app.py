@@ -2949,6 +2949,23 @@ if quick_apply:
         unsafe_allow_html=True,
     )
 
+    # Section map: each section is labelled by which P(offer) lever it drives
+    st.markdown(
+        '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">'
+        + "".join([
+            f'<div style="font-size:9px;font-weight:700;padding:2px 8px;border-radius:10px;'
+            f'background:{bg};color:{col};letter-spacing:0.04em">{label}</div>'
+            for label, bg, col in [
+                ("Pipeline lever → volume × quality", "#EEF3FB", "#0A66C2"),
+                ("OPS lever → skill match", "#F0FAF4", "#057642"),
+                ("Calibration lever → personal ROI", "#FFF8E7", "#A05A00"),
+                ("Network lever → warm intro", "#F5F0FF", "#7C3AED"),
+            ]
+        ])
+        + '</div>',
+        unsafe_allow_html=True,
+    )
+
     # ════════════════════════════════════════════════════════════════════════
     # APPLICATION PIPELINE CRM — Search OS
     # Tracks every application, every stage, every rejection.
@@ -3321,7 +3338,7 @@ if quick_apply:
                 unsafe_allow_html=True,
             )
 
-    with st.expander("Outcome Tracker · Calibrate your personal ROI model", expanded=False):
+    with st.expander("Outcome Tracker · Calibration lever — Brier score + cross-rejection synthesis", expanded=False):
         st.markdown(
             '<div style="font-size:12px;color:rgba(0,0,0,0.55);line-height:1.6;margin-bottom:12px">'
             'Record the outcome of each application. The Calibration Motor compares your predicted ROI '
@@ -8881,8 +8898,14 @@ if not st.session_state.has_run:
             'color:rgba(0,0,0,0.35);margin:8px 0 10px 0">Python aggregation layer — formulas exposed</div>'
             '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px">'
         )
+        _formula_names = {
+            "portfolio_ranking":    "Portfolio Ranking",
+            "controversy_penalty":  "Controversy Penalty",
+            "tripartite_aggregation": "Tripartite Aggregation",
+            "brier_calibration":    "Brier Calibration",
+        }
         for _fkey, _fdata in _af.items():
-            _fname = "Portfolio Ranking" if _fkey == "portfolio_ranking" else "Controversy Penalty"
+            _fname = _formula_names.get(_fkey, _fkey.replace("_", " ").title())
             _md_html += (
                 f'<div style="background:#FFF8E7;border:1px solid #F0D9A0;border-radius:8px;padding:12px 14px">'
                 f'<div style="font-size:11px;font-weight:800;color:#A05A00;margin-bottom:6px">{_fname}</div>'
