@@ -35,8 +35,19 @@ from src.career_agent import (
 )
 from src.cv_parser import parse_cv, compute_personal_gap_df
 from src.cover_letter import generate_pivot_narrative
-from src.job_analyzer import analyze_job_posting, scan_ats_compatibility
+from src.job_analyzer import analyze_job_posting, scan_ats_compatibility, fix_application_for_ats
 from src.pivot_debate import run_pivot_debate, run_application_debate, DebateRound, DebateVerdict
+from src.negotiation_coach import (
+    analyze_salary_offer, generate_negotiation_script,
+    run_negotiation_roleplay_turn, generate_counter_offer_letter,
+)
+from src.pipeline_manager import (
+    create_pipeline_job, update_pipeline_job_status, compute_pipeline_stats,
+    analyze_rejection_patterns, generate_pipeline_diagnosis,
+    pipeline_to_json, pipeline_from_json,
+    STATUS_LABELS, STATUS_COLORS, APPLICATION_STATUSES,
+)
+from src.company_intelligence import generate_company_brief, format_brief_as_markdown
 from src.smart_apply import (
     generate_job_listings, generate_application_package, generate_pivot_peers,
     JobListing, ApplicationPackage, PivotPeer,
@@ -1361,6 +1372,20 @@ DEFAULT_STATE = {
     "qa_debate": None,             # Application Debate verdict dict
     "qa_ab_test": None,            # A/B test result dict
     "qa_ats_paste": None,          # ATS scan result for paste-flow application
+    # Negotiation Suite
+    "negotiation_offer_analysis": None,   # analyze_salary_offer result
+    "negotiation_script": None,           # generate_negotiation_script result
+    "negotiation_roleplay_messages": [],  # multi-turn negotiation chat history
+    "negotiation_counter_letter": None,   # generated counter-offer letter
+    "negotiation_roleplay_active": False,
+    "negotiation_roleplay_exchange": 0,
+    # Application Pipeline CRM
+    "pipeline_jobs": [],           # List[Dict] — all tracked applications
+    "pipeline_diagnosis": None,    # last pipeline diagnosis result
+    "pipeline_rejection_analysis": None,
+    "pipeline_weeks_searching": 1,
+    # Company Intelligence
+    "company_briefs": {},          # {company_name: brief_dict}
     # Portfolio Mode (multi-job parallel generation)
     "qa_portfolio_jobs": None,     # List[Dict] — jobs fetched from SerpAPI / AI
     "qa_portfolio_packages": {},   # {idx: {"job":…,"package":…,"eval":…,"fit":…,"hire_prob":…}}
@@ -1667,6 +1692,236 @@ if quick_apply:
         _qa_key = str(st.secrets.get("OPENAI_API_KEY", "")).strip()
     except Exception:
         pass
+
+    # ════════════════════════════════════════════════════════════════════════
+    # APPLICATION PIPELINE CRM — Search OS
+    # Tracks every application, every stage, every rejection.
+    # With enough data: diagnoses bottlenecks, predicts time-to-offer.
+    # ════════════════════════════════════════════════════════════════════════
+    _pl_jobs: list = st.session_state.pipeline_jobs or []
+    _pl_stats = compute_pipeline_stats(_pl_jobs)
+
+    with st.expander(
+        f"📊 Application Pipeline — {_pl_stats['total']} tracked · "
+        f"{_pl_stats['response_rate']}% response rate · "
+        f"{'🟢 On track' if _pl_stats['response_rate'] >= 20 else ('🟡 Watch this' if _pl_stats['response_rate'] >= 10 else '🔴 Bottleneck detected') if _pl_stats['total'] >= 3 else '⚪ Log applications to unlock diagnosis'}",
+        expanded=bool(_pl_jobs),
+    ):
+        # ── Pipeline header ──────────────────────────────────────────────
+        _pl_c1, _pl_c2, _pl_c3, _pl_c4, _pl_c5 = st.columns(5, gap="small")
+        for _plc, _plk, _pll, _plcol in [
+            (_pl_c1, "total",       "Total",        "#1D2226"),
+            (_pl_c2, "response_rate", "Response %", "#0A66C2"),
+            (_pl_c3, "interview_rate", "Interview %","#7A2A8A"),
+            (_pl_c4, "offers",      "Offers",       "#057642"),
+            (_pl_c5, "rejected",    "Rejected",     "#B71C1C"),
+        ]:
+            _plv = _pl_stats.get(_plk, 0)
+            with _plc:
+                st.markdown(
+                    f'<div style="background:#F3F6F9;border-radius:8px;padding:10px 14px;text-align:center">'
+                    f'<div style="font-size:22px;font-weight:900;color:{_plcol}">'
+                    f'{_plv}{"%" if "rate" in _plk else ""}</div>'
+                    f'<div style="font-size:10px;font-weight:700;color:rgba(0,0,0,0.45);text-transform:uppercase;letter-spacing:0.05em">{_pll}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+
+        st.markdown("<div style='margin:10px 0 4px 0'></div>", unsafe_allow_html=True)
+
+        # ── Stage Kanban ─────────────────────────────────────────────────
+        if _pl_jobs:
+            _kanban_stages = ["applied", "first_round", "final_round", "offer", "rejected"]
+            _kc = st.columns(len(_kanban_stages), gap="small")
+            for _ki, _ks in enumerate(_kanban_stages):
+                _stage_jobs = [j for j in _pl_jobs if j["status"] == _ks]
+                _sc = STATUS_COLORS.get(_ks, "#888")
+                with _kc[_ki]:
+                    st.markdown(
+                        f'<div style="font-size:10px;font-weight:800;color:{_sc};text-transform:uppercase;'
+                        f'letter-spacing:0.06em;margin-bottom:6px">'
+                        f'{STATUS_LABELS.get(_ks, _ks)} ({len(_stage_jobs)})</div>',
+                        unsafe_allow_html=True,
+                    )
+                    for _sj in _stage_jobs[:4]:
+                        st.markdown(
+                            f'<div style="background:#fff;border:1px solid rgba(0,0,0,0.1);border-left:3px solid {_sc};'
+                            f'border-radius:0 6px 6px 0;padding:6px 8px;margin-bottom:5px;font-size:11px">'
+                            f'<div style="font-weight:700;color:#1D2226">{_sj["company"]}</div>'
+                            f'<div style="color:rgba(0,0,0,0.5)">{_sj["title"][:25]}</div>'
+                            f'{"<div style=color:#057642;font-size:10px>ATS: " + str(_sj["ats_score"]) + "</div>" if _sj.get("ats_score") else ""}'
+                            f'</div>',
+                            unsafe_allow_html=True,
+                        )
+                    if len(_stage_jobs) > 4:
+                        st.caption(f"+{len(_stage_jobs)-4} more")
+
+        st.markdown("---")
+
+        # ── Update status ────────────────────────────────────────────────
+        if _pl_jobs:
+            _upd_c1, _upd_c2, _upd_c3 = st.columns([3, 2, 2], gap="small")
+            with _upd_c1:
+                _upd_idx = st.selectbox(
+                    "Update application",
+                    options=list(range(len(_pl_jobs))),
+                    format_func=lambda i: f"{_pl_jobs[i]['company']} — {_pl_jobs[i]['title']}",
+                    key="pl_update_idx",
+                    label_visibility="collapsed",
+                )
+            with _upd_c2:
+                _new_status = st.selectbox(
+                    "New status",
+                    options=APPLICATION_STATUSES,
+                    format_func=lambda s: STATUS_LABELS.get(s, s),
+                    key="pl_new_status",
+                    label_visibility="collapsed",
+                )
+            with _upd_c3:
+                if st.button("Update status", key="pl_update_btn", use_container_width=True):
+                    _notes = ""
+                    if _new_status == "rejected":
+                        _notes = st.session_state.get("pl_rejection_notes", "")
+                    _pl_jobs[_upd_idx] = update_pipeline_job_status(_pl_jobs[_upd_idx], _new_status, _notes)
+                    st.session_state.pipeline_jobs = _pl_jobs
+                    st.session_state.pipeline_diagnosis = None
+                    st.session_state.pipeline_rejection_analysis = None
+                    st.rerun()
+
+            if _new_status == "rejected":
+                st.text_input(
+                    "Rejection stage/notes (optional)",
+                    key="pl_rejection_notes",
+                    placeholder="e.g. 'After first round — said they wanted more domain experience'",
+                )
+
+        # ── Manually add application ─────────────────────────────────────
+        with st.expander("+ Add application manually", expanded=False):
+            _ma_c1, _ma_c2 = st.columns(2)
+            with _ma_c1:
+                _ma_title = st.text_input("Job title", key="pl_manual_title")
+                _ma_company = st.text_input("Company", key="pl_manual_company")
+            with _ma_c2:
+                _ma_location = st.text_input("Location", key="pl_manual_location")
+                _ma_ats = st.number_input("ATS score (optional)", 0, 100, value=0, key="pl_manual_ats")
+            if st.button("Add to pipeline", key="pl_manual_add", type="primary"):
+                if _ma_title and _ma_company:
+                    _new_job = create_pipeline_job(
+                        title=_ma_title, company=_ma_company,
+                        location=_ma_location, ats_score=_ma_ats if _ma_ats else None,
+                        source="manual",
+                    )
+                    st.session_state.pipeline_jobs = _pl_jobs + [_new_job]
+                    st.rerun()
+
+        st.markdown("---")
+
+        # ── Pipeline Diagnosis ───────────────────────────────────────────
+        _pl_diag_c1, _pl_diag_c2 = st.columns([3, 1], gap="small")
+        with _pl_diag_c1:
+            _pl_weeks = st.slider("Weeks searching", 1, 26, st.session_state.pipeline_weeks_searching, key="pl_weeks")
+            st.session_state.pipeline_weeks_searching = _pl_weeks
+        with _pl_diag_c2:
+            if st.button("Run Diagnosis", key="pl_diagnose", use_container_width=True, disabled=len(_pl_jobs) < 3):
+                with st.spinner("Analysing your pipeline…"):
+                    st.session_state.pipeline_diagnosis = generate_pipeline_diagnosis(
+                        jobs=_pl_jobs,
+                        current_role=str(current),
+                        target_role=str(target),
+                        weeks_searching=_pl_weeks,
+                        model="gpt-4o-mini",
+                        prefer_online=bool(_qa_key),
+                        api_key=_qa_key or None,
+                    )
+                    _rejected_jobs = [j for j in _pl_jobs if j["status"] == "rejected"]
+                    if len(_rejected_jobs) >= 2:
+                        st.session_state.pipeline_rejection_analysis = analyze_rejection_patterns(
+                            rejected_jobs=_rejected_jobs,
+                            pivot_profile={"current_role": str(current), "target_role": str(target)},
+                            model="gpt-4o-mini",
+                            prefer_online=bool(_qa_key),
+                            api_key=_qa_key or None,
+                        )
+                st.rerun()
+
+        if len(_pl_jobs) < 3:
+            st.caption("Log at least 3 applications to unlock pipeline diagnosis.")
+
+        _pl_diag = st.session_state.pipeline_diagnosis
+        if _pl_diag:
+            _ph = _pl_diag.get("health_score", 0)
+            _ph_col = "#117A37" if _ph >= 65 else ("#A05A00" if _ph >= 35 else "#B71C1C")
+            st.markdown(
+                f'<div style="background:#F3F6F9;border-radius:10px;padding:14px 18px;margin-top:8px">'
+                f'<div style="display:flex;align-items:center;gap:14px;margin-bottom:10px">'
+                f'<div style="font-size:30px;font-weight:900;color:{_ph_col}">{_ph}</div>'
+                f'<div>'
+                f'<div style="font-size:13px;font-weight:800;color:#1D2226">'
+                f'Pipeline Health · {_pl_diag.get("overall_health","").title()}</div>'
+                f'<div style="font-size:11px;color:rgba(0,0,0,0.55)">{_pl_diag.get("week_estimate","")}</div>'
+                f'</div></div>'
+                f'<div style="font-size:12px;color:#B71C1C;font-weight:700;margin-bottom:6px">'
+                f'Bottleneck: {_pl_diag.get("top_bottleneck","")}</div>'
+                f'<div style="background:#fff;border-left:3px solid #0A66C2;border-radius:0 6px 6px 0;'
+                f'padding:8px 12px;font-size:12px;line-height:1.55">'
+                f'<strong>Highest-leverage action:</strong> {_pl_diag.get("highest_leverage_action","")}'
+                f'</div>'
+                + (f'<div style="font-size:11px;color:rgba(0,0,0,0.5);margin-top:8px;font-style:italic">'
+                   f'{_pl_diag.get("benchmark_context","")}</div>' if _pl_diag.get("benchmark_context") else "")
+                + f'</div>',
+                unsafe_allow_html=True,
+            )
+
+        _pl_rej = st.session_state.pipeline_rejection_analysis
+        if _pl_rej and _pl_rej.get("root_cause"):
+            st.markdown(
+                f'<div style="background:#FFF4F4;border:1px solid #F5C6C6;border-radius:8px;'
+                f'padding:12px 16px;margin-top:8px">'
+                f'<div style="font-size:11px;font-weight:800;text-transform:uppercase;color:#B71C1C;'
+                f'letter-spacing:0.06em;margin-bottom:6px">Rejection Pattern Analysis</div>'
+                f'<div style="font-size:12px;font-weight:700;color:#1D2226;margin-bottom:4px">'
+                f'{_pl_rej.get("primary_pattern","")}</div>'
+                f'<div style="font-size:12px;color:rgba(0,0,0,0.65);margin-bottom:8px">'
+                f'{_pl_rej.get("root_cause","")}</div>'
+                + "".join([
+                    f'<div style="background:#fff;border-left:3px solid #B71C1C;border-radius:0 4px 4px 0;'
+                    f'padding:5px 10px;margin-bottom:4px;font-size:11px">→ {fix}</div>'
+                    for fix in _pl_rej.get("actionable_fixes", [])[:3]
+                ])
+                + f'</div>',
+                unsafe_allow_html=True,
+            )
+
+        st.markdown("---")
+
+        # ── Save / Load Pipeline ─────────────────────────────────────────
+        _save_c1, _save_c2 = st.columns(2)
+        with _save_c1:
+            if _pl_jobs:
+                st.download_button(
+                    "⬇️ Save Pipeline (JSON)",
+                    data=pipeline_to_json(_pl_jobs),
+                    file_name="job_pipeline.json",
+                    mime="application/json",
+                    key="pl_download",
+                    help="Download your pipeline data to reload in your next session",
+                )
+        with _save_c2:
+            _pl_upload = st.file_uploader(
+                "↑ Load Pipeline", type=["json"], key="pl_upload",
+                label_visibility="collapsed",
+                help="Upload a previously saved pipeline.json to continue your session",
+            )
+            if _pl_upload:
+                _loaded = pipeline_from_json(_pl_upload.read().decode("utf-8"))
+                if _loaded:
+                    st.session_state.pipeline_jobs = _loaded
+                    st.rerun()
+
+        if _pl_jobs and st.button("Clear pipeline", key="pl_clear", type="secondary"):
+            st.session_state.pipeline_jobs = []
+            st.session_state.pipeline_diagnosis = None
+            st.rerun()
 
     # ── Next Action Engine ────────────────────────────────────────────────────
     # Reads session state → determines single most important next action.
@@ -2398,6 +2653,24 @@ if quick_apply:
                         if st.session_state.qa_portfolio_packages is None:
                             st.session_state.qa_portfolio_packages = {}
                         st.session_state.qa_portfolio_packages.update(_pf_results)
+                        # Auto-add all generated applications to Pipeline CRM
+                        _pl_existing = list(st.session_state.pipeline_jobs or [])
+                        for _pf_ri_auto, _pf_rd_auto in _pf_results.items():
+                            _pf_j_auto = _pf_rd_auto.get("job", {})
+                            _pf_pkg_auto = _pf_rd_auto.get("package")
+                            if _pf_j_auto and not _pf_rd_auto.get("error"):
+                                _new_pl = create_pipeline_job(
+                                    title=_pf_j_auto.get("title", str(target)),
+                                    company=_pf_j_auto.get("company", ""),
+                                    ats_score=_pf_rd_auto.get("eval", {}).get("overall_score"),
+                                    hire_prob=_pf_rd_auto.get("hire_prob"),
+                                    cover_letter=_pf_pkg_auto.cover_letter if _pf_pkg_auto else "",
+                                    source="portfolio",
+                                )
+                                if not any(j.get("company") == _new_pl["company"] and
+                                           j.get("title") == _new_pl["title"] for j in _pl_existing):
+                                    _pl_existing.append(_new_pl)
+                        st.session_state.pipeline_jobs = _pl_existing
                         st.rerun()
                 with _pf_btn_c2:
                     st.caption(
@@ -2926,6 +3199,19 @@ if quick_apply:
                             api_key=_qa_key or None,
                         )
                     st.session_state.qa_package = _qa_new_pkg
+                    # Auto-add to pipeline CRM
+                    _qa_p2_for_pipeline = st.session_state.qa_parsed or {}
+                    _new_pipeline_job = create_pipeline_job(
+                        title=_qa_p2_for_pipeline.get("job_title", str(target)),
+                        company=_qa_p2_for_pipeline.get("company", ""),
+                        cover_letter=_qa_new_pkg.cover_letter,
+                        source="quick_apply_paste",
+                    )
+                    _existing_pipeline = list(st.session_state.pipeline_jobs or [])
+                    # Only add if not already in pipeline
+                    if not any(j.get("company") == _new_pipeline_job["company"] and
+                               j.get("title") == _new_pipeline_job["title"] for j in _existing_pipeline):
+                        st.session_state.pipeline_jobs = _existing_pipeline + [_new_pipeline_job]
                     with st.spinner("Evaluating quality with second LLM pass (gpt-4o-mini)…"):
                         st.session_state.qa_eval = evaluate_application_package(
                             cover_letter=_qa_new_pkg.cover_letter,
@@ -3375,8 +3661,76 @@ if quick_apply:
                                 for _fw2 in _qap_fmt:
                                     st.caption(f"⚠ {_fw2}")
 
+                            # ── ATS Fix Loop (paste flow) ──────────────
+                            _qap_miss_crit2 = _qa_ats_paste.get("missing_critical", [])
+                            _qap_score2 = _qa_ats_paste.get("ats_score", 0)
+                            if _qap_miss_crit2 and _qap_score2 < 85:
+                                st.markdown("---")
+                                _fx_paste_col1, _fx_paste_col2 = st.columns([3, 1])
+                                with _fx_paste_col1:
+                                    st.markdown(
+                                        f'<div style="font-size:12px;color:#B71C1C;font-weight:600">'
+                                        f'{len(_qap_miss_crit2)} critical keywords missing — auto-fix rewrites your cover letter to incorporate them</div>',
+                                        unsafe_allow_html=True,
+                                    )
+                                with _fx_paste_col2:
+                                    if st.button("⚡ Fix & Regenerate", key="qa_ats_paste_fix", type="primary", use_container_width=True):
+                                        _fx_api2 = None
+                                        try:
+                                            _fx_api2 = st.secrets.get("OPENAI_API_KEY") or None
+                                        except Exception:
+                                            pass
+                                        _qa_pkg_for_fix = st.session_state.qa_package
+                                        _qa_p_for_fix = st.session_state.qa_parsed or {}
+                                        with st.spinner("Rewriting cover letter to add missing keywords…"):
+                                            _fx_paste = fix_application_for_ats(
+                                                cover_letter=_qa_pkg_for_fix.cover_letter if _qa_pkg_for_fix else "",
+                                                missing_critical=_qap_miss_crit2,
+                                                job_title=_qa_p_for_fix.get("job_title", str(target)),
+                                                job_description=_qa_p_for_fix.get("cleaned_description", ""),
+                                                model="gpt-4o",
+                                                prefer_online=bool(_fx_api2),
+                                                api_key=_fx_api2,
+                                            )
+                                        with st.spinner("Re-scanning ATS…"):
+                                            _ats_v2_paste = scan_ats_compatibility(
+                                                cv_text=st.session_state.cv_text or "",
+                                                cover_letter=_fx_paste.get("fixed_cover_letter", ""),
+                                                job_description=_qa_p_for_fix.get("cleaned_description", ""),
+                                                job_title=_qa_p_for_fix.get("job_title", ""),
+                                                model="gpt-4o-mini",
+                                                prefer_online=bool(_fx_api2),
+                                                api_key=_fx_api2,
+                                            )
+                                        st.session_state["qa_ats_paste_fix"] = {"fix": _fx_paste, "rescan": _ats_v2_paste}
+                                        st.rerun()
+
+                            _fx_paste_data = st.session_state.get("qa_ats_paste_fix")
+                            if _fx_paste_data:
+                                _fxp = _fx_paste_data.get("fix", {})
+                                _rsp = _fx_paste_data.get("rescan", {})
+                                _rsp_score = _rsp.get("ats_score", 0)
+                                _delta_p = _rsp_score - _qap_score2
+                                st.markdown(
+                                    f'<div style="background:#F0FAF4;border-radius:8px;padding:10px 14px;margin-top:8px">'
+                                    f'<strong>ATS score after fix:</strong> '
+                                    f'<span style="font-size:18px;font-weight:900;color:#117A37">{_rsp_score}</span> '
+                                    f'<span style="color:{"#117A37" if _delta_p>0 else "#B71C1C"};font-weight:700">'
+                                    f'({_delta_p:+d} pts)</span>'
+                                    f'</div>',
+                                    unsafe_allow_html=True,
+                                )
+                                with st.expander("View & download fixed cover letter"):
+                                    st.text_area("Fixed cover letter", value=_fxp.get("fixed_cover_letter",""),
+                                                 height=250, key="qa_fixed_cl_paste")
+                                    st.download_button("Download fixed letter",
+                                                       data=(_fxp.get("fixed_cover_letter","")).encode(),
+                                                       file_name="cover_letter_ats_fixed.txt",
+                                                       mime="text/plain", key="qa_fixed_cl_paste_dl")
+
                             if st.button("↩ Re-run ATS scan", key="qa_ats_paste_reset", type="secondary"):
                                 st.session_state["qa_ats_paste"] = None
+                                st.session_state["qa_ats_paste_fix"] = None
                                 st.rerun()
 
     # ── Phase 4: Application Debate — adversarial hiring verdict ───────────
@@ -3525,6 +3879,333 @@ if quick_apply:
                     f"Judge synthesises both arguments (gpt-4o, temp=0.2) · Same 3-agent adversarial "
                     f"pattern as the career pivot debate, repurposed for application quality. Source: {_qa_db_src}"
                 )
+
+    # ════════════════════════════════════════════════════════════════════════
+    # PHASE 4.5: NEGOTIATION COMMAND CENTER
+    # The phase every other tool ignores. Most candidates leave $15-50k on
+    # the table because they don't know what to ask for or how to ask for it.
+    # ════════════════════════════════════════════════════════════════════════
+    if st.session_state.qa_package:
+        _qa_p_neg = st.session_state.qa_parsed or {}
+        _neg_job_title = _qa_p_neg.get("job_title", str(target))
+        _neg_company = _qa_p_neg.get("company", "")
+        _neg_cv = st.session_state.cv_profile or {}
+
+        with st.container(border=True):
+            st.markdown(
+                '<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">'
+                '<div style="width:26px;height:26px;border-radius:50%;background:#057642;'
+                'display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;color:#fff">💰</div>'
+                '<div><div style="font-size:14px;font-weight:800">Negotiation Command Center</div>'
+                '<div style="font-size:11px;color:rgba(0,0,0,0.45)">Market analysis · Negotiation script · Live roleplay · Counter-offer letter</div>'
+                '</div></div>',
+                unsafe_allow_html=True,
+            )
+            st.markdown(
+                '<div style="background:#F0FAF4;border-left:3px solid #057642;border-radius:0 8px 8px 0;'
+                'padding:8px 14px;font-size:12px;color:rgba(0,0,0,0.65);margin-bottom:12px">'
+                'Candidates who negotiate earn <strong>$5,000–$20,000 more per year</strong>. '
+                '60% never ask. This module prepares you for the conversation that matters most — '
+                'after you get the offer.'
+                '</div>',
+                unsafe_allow_html=True,
+            )
+
+            _neg_tab1, _neg_tab2, _neg_tab3, _neg_tab4 = st.tabs([
+                "📊 Market Analysis", "📝 Negotiation Script", "🎭 Roleplay Practice", "✉️ Counter-Offer Letter"
+            ])
+
+            # ── Tab 1: Market Salary Analysis ────────────────────────────
+            with _neg_tab1:
+                _neg_c1, _neg_c2 = st.columns(2, gap="medium")
+                with _neg_c1:
+                    _neg_location = st.text_input("Location", value="United States", key="neg_location",
+                                                  placeholder="e.g. San Francisco, New York, London")
+                    _neg_salary_input = st.number_input(
+                        "Offered salary ($ / year, 0 if not yet received)",
+                        min_value=0, max_value=999999, step=5000, value=0, key="neg_salary_offered",
+                    )
+                with _neg_c2:
+                    _neg_equity = st.text_input("Equity offered", key="neg_equity",
+                                                placeholder="e.g. 0.05% RSUs, 4-year vest")
+                    _neg_benefits = st.text_input("Benefits", key="neg_benefits",
+                                                  placeholder="e.g. 401k match, health, PTO")
+
+                _neg_yrs = float(_neg_cv.get("years_experience", 0.0) or 0.0)
+
+                if st.button("Analyse offer vs. market", key="neg_analyse", type="primary", use_container_width=True):
+                    with st.spinner("Analysing market compensation data…"):
+                        st.session_state.negotiation_offer_analysis = analyze_salary_offer(
+                            job_title=_neg_job_title,
+                            company=_neg_company,
+                            location=_neg_location,
+                            offered_salary=float(_neg_salary_input) if _neg_salary_input > 0 else None,
+                            offered_equity=_neg_equity,
+                            offered_benefits=_neg_benefits,
+                            years_experience=_neg_yrs,
+                            current_role=str(current),
+                            model="gpt-4o-mini",
+                            prefer_online=bool(_qa_key),
+                            api_key=_qa_key or None,
+                        )
+                    st.rerun()
+
+                _neg_analysis = st.session_state.negotiation_offer_analysis
+                if _neg_analysis:
+                    _na_low = _neg_analysis.get("market_salary_low", 0)
+                    _na_mid = _neg_analysis.get("market_salary_mid", 0)
+                    _na_high = _neg_analysis.get("market_salary_high", 0)
+                    _na_room = _neg_analysis.get("negotiation_room", 0)
+                    _na_pct = _neg_analysis.get("negotiation_room_pct", 0)
+                    _na_qual = _neg_analysis.get("offer_quality", "unknown")
+                    _na_qual_c = "#117A37" if _na_qual == "strong" else ("#A05A00" if _na_qual == "fair" else "#B71C1C")
+
+                    st.markdown(
+                        f'<div style="background:#F3F6F9;border-radius:10px;padding:16px 20px;margin-top:10px">'
+                        f'<div style="font-size:10px;font-weight:800;text-transform:uppercase;color:rgba(0,0,0,0.4);'
+                        f'letter-spacing:0.06em;margin-bottom:10px">Market Salary Range — {_neg_job_title} · {_neg_location}</div>'
+                        f'<div style="display:flex;gap:0;margin-bottom:12px">'
+                        f'<div style="flex:1;text-align:center;background:#fff;border-radius:8px 0 0 8px;border:1px solid rgba(0,0,0,0.1);padding:10px">'
+                        f'<div style="font-size:10px;color:rgba(0,0,0,0.45);font-weight:700">P25</div>'
+                        f'<div style="font-size:18px;font-weight:900;color:#5F6B7A">${_na_low:,}</div>'
+                        f'</div>'
+                        f'<div style="flex:1;text-align:center;background:#0A66C2;border-radius:0;padding:10px">'
+                        f'<div style="font-size:10px;color:rgba(255,255,255,0.7);font-weight:700">P50 MARKET</div>'
+                        f'<div style="font-size:20px;font-weight:900;color:#fff">${_na_mid:,}</div>'
+                        f'</div>'
+                        f'<div style="flex:1;text-align:center;background:#fff;border-radius:0 8px 8px 0;border:1px solid rgba(0,0,0,0.1);padding:10px">'
+                        f'<div style="font-size:10px;color:rgba(0,0,0,0.45);font-weight:700">P75</div>'
+                        f'<div style="font-size:18px;font-weight:900;color:#057642">${_na_high:,}</div>'
+                        f'</div>'
+                        f'</div>'
+                        f'<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:10px">'
+                        f'<div style="background:#fff;border-radius:8px;padding:8px 14px;border:1px solid rgba(0,0,0,0.1)">'
+                        f'<div style="font-size:10px;color:rgba(0,0,0,0.45);font-weight:700">OFFER QUALITY</div>'
+                        f'<div style="font-size:14px;font-weight:900;color:{_na_qual_c}">{_na_qual.title()}</div>'
+                        f'</div>'
+                        f'<div style="background:#fff;border-radius:8px;padding:8px 14px;border:1px solid rgba(0,0,0,0.1)">'
+                        f'<div style="font-size:10px;color:rgba(0,0,0,0.45);font-weight:700">NEGOTIATION ROOM</div>'
+                        f'<div style="font-size:14px;font-weight:900;color:#057642">+${_na_room:,} (~{_na_pct}%)</div>'
+                        f'</div>'
+                        f'</div>'
+                        f'<div style="font-size:12px;color:rgba(0,0,0,0.65);font-style:italic;margin-bottom:10px">'
+                        f'{_neg_analysis.get("one_line_verdict","")}</div>'
+                        + "".join([
+                            f'<div style="font-size:11px;color:#057642;margin-bottom:3px">✓ {lp}</div>'
+                            for lp in _neg_analysis.get("key_leverage_points", [])[:3]
+                        ])
+                        + "".join([
+                            f'<div style="font-size:11px;color:#A05A00;margin-bottom:3px">⚠ {rf}</div>'
+                            for rf in _neg_analysis.get("risk_factors", [])[:2]
+                        ])
+                        + f'<div style="font-size:10px;color:rgba(0,0,0,0.35);margin-top:6px">'
+                        f'Source: {_neg_analysis.get("source","")} · These are estimates based on LLM market knowledge — verify with Glassdoor, Levels.fyi</div>'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
+
+            # ── Tab 2: Negotiation Script ─────────────────────────────────
+            with _neg_tab2:
+                _neg_analysis2 = st.session_state.negotiation_offer_analysis or {}
+                _neg_target_salary = st.number_input(
+                    "Your target salary ($)",
+                    min_value=0, max_value=999999, step=5000,
+                    value=int(_neg_analysis2.get("market_salary_mid", 0) or 0),
+                    key="neg_target_salary",
+                )
+                if st.button("Generate negotiation script", key="neg_script_btn", type="primary", use_container_width=True):
+                    with st.spinner("Writing your personalized negotiation playbook…"):
+                        st.session_state.negotiation_script = generate_negotiation_script(
+                            job_title=_neg_job_title,
+                            company=_neg_company,
+                            offered_salary=float(st.session_state.neg_salary_offered) if st.session_state.get("neg_salary_offered", 0) > 0 else None,
+                            target_salary=float(_neg_target_salary) if _neg_target_salary > 0 else None,
+                            market_salary_mid=_neg_analysis2.get("market_salary_mid"),
+                            key_leverage_points=_neg_analysis2.get("key_leverage_points"),
+                            current_role=str(current),
+                            years_experience=_neg_yrs,
+                            top_skills=(_neg_cv.get("top_skills") or [])[:5],
+                            model="gpt-4o",
+                            prefer_online=bool(_qa_key),
+                            api_key=_qa_key or None,
+                        )
+                    st.rerun()
+
+                _neg_script = st.session_state.negotiation_script
+                if _neg_script:
+                    for _label, _key in [
+                        ("Opening", "opening_statement"),
+                        ("The Ask", "salary_ask_line"),
+                        ("Phone Script", "phone_script"),
+                    ]:
+                        val = _neg_script.get(_key, "")
+                        if val:
+                            st.markdown(
+                                f'<div style="background:#F3F6F9;border-radius:8px;padding:12px 16px;margin-bottom:8px">'
+                                f'<div style="font-size:10px;font-weight:800;text-transform:uppercase;color:rgba(0,0,0,0.4);'
+                                f'letter-spacing:0.06em;margin-bottom:5px">{_label}</div>'
+                                f'<div style="font-size:13px;color:#1D2226;line-height:1.6;font-style:italic">"{val}"</div>'
+                                f'</div>',
+                                unsafe_allow_html=True,
+                            )
+
+                    _neg_just = _neg_script.get("justification_points", [])
+                    if _neg_just:
+                        st.markdown("**Your justification points:**")
+                        for _jp in _neg_just:
+                            st.markdown(f"✓ {_jp}")
+
+                    _neg_obj = _neg_script.get("objection_responses", [])
+                    if _neg_obj:
+                        st.markdown("**When they push back:**")
+                        for _or in _neg_obj:
+                            with st.expander(f'They say: "{_or.get("objection","")}"'):
+                                st.markdown(
+                                    f'<div style="background:#F0FAF4;border-left:3px solid #057642;'
+                                    f'border-radius:0 6px 6px 0;padding:10px 14px;font-size:13px;line-height:1.6">'
+                                    f'<strong>You say:</strong> "{_or.get("response","")}"</div>',
+                                    unsafe_allow_html=True,
+                                )
+
+                    if _neg_script.get("closing_line"):
+                        st.markdown(
+                            f'<div style="background:#EEF3FB;border-radius:8px;padding:12px 16px;margin-top:8px">'
+                            f'<div style="font-size:10px;font-weight:800;color:#0A66C2;text-transform:uppercase;'
+                            f'letter-spacing:0.06em;margin-bottom:4px">Close with:</div>'
+                            f'<div style="font-size:13px;color:#1D2226;font-style:italic">'
+                            f'"{_neg_script["closing_line"]}"</div></div>',
+                            unsafe_allow_html=True,
+                        )
+
+            # ── Tab 3: Roleplay Practice ──────────────────────────────────
+            with _neg_tab3:
+                st.markdown(
+                    '<div style="font-size:12px;color:rgba(0,0,0,0.55);margin-bottom:10px;line-height:1.6">'
+                    'Practice the real negotiation before you have it. gpt-4o plays a realistic HR director. '
+                    '5 exchanges — bring your best arguments.'
+                    '</div>',
+                    unsafe_allow_html=True,
+                )
+
+                _neg_rl_msgs = st.session_state.negotiation_roleplay_messages
+                _neg_rl_exc = st.session_state.negotiation_roleplay_exchange
+                _neg_rl_active = st.session_state.negotiation_roleplay_active
+                _MAX_NEG_EXCHANGES = 5
+
+                if not _neg_rl_active and not _neg_rl_msgs:
+                    if st.button("Start negotiation roleplay", key="neg_rl_start", type="primary", use_container_width=True):
+                        with st.spinner("Hiring manager is preparing…"):
+                            _first = run_negotiation_roleplay_turn(
+                                history=[],
+                                job_title=_neg_job_title,
+                                company=_neg_company,
+                                offered_salary=float(st.session_state.get("neg_salary_offered", 0) or 0) or None,
+                                exchange_num=0,
+                                max_exchanges=_MAX_NEG_EXCHANGES,
+                                model="gpt-4o",
+                                prefer_online=bool(_qa_key),
+                                api_key=_qa_key or None,
+                            )
+                        _opener = f"Hi, thanks for taking the time. We're very excited to extend you this offer for the {_neg_job_title} role. How are you feeling about it?"
+                        st.session_state.negotiation_roleplay_messages = [{"role": "assistant", "content": _opener}]
+                        st.session_state.negotiation_roleplay_active = True
+                        st.session_state.negotiation_roleplay_exchange = 0
+                        st.rerun()
+
+                elif _neg_rl_msgs:
+                    # Progress bar
+                    st.progress(_neg_rl_exc / _MAX_NEG_EXCHANGES,
+                                text=f"Exchange {_neg_rl_exc} / {_MAX_NEG_EXCHANGES}")
+
+                    # Chat display
+                    for _nm in _neg_rl_msgs:
+                        with st.chat_message(_nm["role"], avatar="🏢" if _nm["role"] == "assistant" else "🧑"):
+                            st.markdown(_nm["content"])
+
+                    if _neg_rl_active and _neg_rl_exc < _MAX_NEG_EXCHANGES:
+                        if _neg_user_input := st.chat_input("Your response to the HR director…", key="neg_rl_input"):
+                            _neg_rl_msgs.append({"role": "user", "content": _neg_user_input})
+                            with st.spinner("HR director is responding…"):
+                                _neg_turn = run_negotiation_roleplay_turn(
+                                    history=_neg_rl_msgs,
+                                    job_title=_neg_job_title,
+                                    company=_neg_company,
+                                    offered_salary=float(st.session_state.get("neg_salary_offered", 0) or 0) or None,
+                                    exchange_num=_neg_rl_exc + 1,
+                                    max_exchanges=_MAX_NEG_EXCHANGES,
+                                    model="gpt-4o",
+                                    prefer_online=bool(_qa_key),
+                                    api_key=_qa_key or None,
+                                )
+                            _neg_rl_msgs.append({"role": "assistant", "content": _neg_turn["response"]})
+                            st.session_state.negotiation_roleplay_messages = _neg_rl_msgs
+                            st.session_state.negotiation_roleplay_exchange = _neg_rl_exc + 1
+                            if _neg_turn.get("coaching_tip"):
+                                st.session_state["neg_final_coaching"] = _neg_turn["coaching_tip"]
+                            if _neg_turn.get("is_complete"):
+                                st.session_state.negotiation_roleplay_active = False
+                            st.rerun()
+
+                    if not _neg_rl_active and _neg_rl_msgs:
+                        _final_coaching = st.session_state.get("neg_final_coaching", "")
+                        if _final_coaching:
+                            st.markdown(
+                                f'<div style="background:#EEF3FB;border-radius:8px;padding:12px 16px;margin-top:10px">'
+                                f'<div style="font-size:11px;font-weight:800;color:#0A66C2;text-transform:uppercase;'
+                                f'letter-spacing:0.06em;margin-bottom:4px">Coaching Note</div>'
+                                f'<div style="font-size:12px;color:#1D2226;line-height:1.6">{_final_coaching}</div>'
+                                f'</div>',
+                                unsafe_allow_html=True,
+                            )
+                        if st.button("Run another negotiation", key="neg_rl_reset", type="secondary"):
+                            st.session_state.negotiation_roleplay_messages = []
+                            st.session_state.negotiation_roleplay_exchange = 0
+                            st.session_state.negotiation_roleplay_active = False
+                            st.session_state["neg_final_coaching"] = ""
+                            st.rerun()
+
+            # ── Tab 4: Counter-Offer Letter ───────────────────────────────
+            with _neg_tab4:
+                _neg_analysis3 = st.session_state.negotiation_offer_analysis or {}
+                _neg_co_salary = st.number_input(
+                    "Counter salary ($)",
+                    min_value=0, max_value=999999, step=5000,
+                    value=int((_neg_analysis3.get("market_salary_mid") or 0) * 1.05) or 0,
+                    key="neg_counter_salary",
+                )
+                _neg_hm_name = st.text_input("Hiring manager name", key="neg_hm_name", placeholder="e.g. Sarah Chen")
+                _neg_cand_name = st.text_input("Your name", key="neg_cand_name",
+                                               placeholder=_neg_cv.get("extracted_role", ""))
+
+                if st.button("Generate counter-offer letter", key="neg_letter_btn", type="primary", use_container_width=True):
+                    with st.spinner("Writing your counter-offer letter…"):
+                        st.session_state.negotiation_counter_letter = generate_counter_offer_letter(
+                            job_title=_neg_job_title,
+                            company=_neg_company,
+                            hiring_manager=_neg_hm_name,
+                            offered_salary=float(st.session_state.get("neg_salary_offered", 0) or 0) or None,
+                            counter_salary=float(_neg_co_salary) if _neg_co_salary > 0 else None,
+                            justification_points=_neg_analysis3.get("key_leverage_points", []),
+                            candidate_name=_neg_cand_name,
+                            model="gpt-4o",
+                            prefer_online=bool(_qa_key),
+                            api_key=_qa_key or None,
+                        )
+                    st.rerun()
+
+                if st.session_state.negotiation_counter_letter:
+                    st.text_area(
+                        "Counter-offer letter",
+                        value=st.session_state.negotiation_counter_letter,
+                        height=280, key="neg_letter_display",
+                    )
+                    st.download_button(
+                        "⬇️ Download letter",
+                        data=st.session_state.negotiation_counter_letter.encode(),
+                        file_name="counter_offer_letter.txt",
+                        mime="text/plain",
+                        key="neg_letter_dl",
+                    )
 
     # ── Phase 5: Interview prep ──────────────────────────────────────────────
     if st.session_state.qa_package:
@@ -6998,6 +7679,83 @@ with _tab_execute:
                     unsafe_allow_html=True,
                 )
 
+                # ── Company Intelligence Brief ───────────────────────────
+                _ci_key = f"ci_{job.company.replace(' ','_')}"
+                _ci_brief = st.session_state.company_briefs.get(job.company)
+                _ci_col1, _ci_col2 = st.columns([2, 1])
+                with _ci_col1:
+                    if not _ci_brief:
+                        if st.button(f"🔍 Company Intel: {job.company}", key=f"ci_btn_{i}", use_container_width=True):
+                            with st.spinner(f"Generating intelligence brief for {job.company}…"):
+                                _serp_ci = ""
+                                try:
+                                    _serp_ci = str(st.secrets.get("SERP_API_KEY", "")).strip() or None
+                                except Exception:
+                                    pass
+                                _ci_result = generate_company_brief(
+                                    company_name=job.company,
+                                    role_title=job.title,
+                                    location=getattr(job, "location", ""),
+                                    serp_api_key=_serp_ci,
+                                    model="gpt-4o-mini",
+                                    prefer_online=_has_openai_secret(),
+                                    api_key=_sa_api_key or None,
+                                )
+                                _briefs = dict(st.session_state.company_briefs)
+                                _briefs[job.company] = _ci_result
+                                st.session_state.company_briefs = _briefs
+                            st.rerun()
+                    else:
+                        _ci_sig = _ci_brief.get("hiring_signal", "unknown")
+                        _ci_stab = _ci_brief.get("stability_score", 50)
+                        _ci_sig_c = "#117A37" if _ci_sig == "strong" else ("#A05A00" if _ci_sig == "moderate" else "#B71C1C")
+                        _ci_sig_emoji = "🟢" if _ci_sig == "strong" else ("🟡" if _ci_sig == "moderate" else ("🟠" if _ci_sig == "weak" else "🔴"))
+                        with st.expander(f"{_ci_sig_emoji} Company Intel: {job.company} — {_ci_brief.get('stage','').title()} · Stability {_ci_stab}/100", expanded=False):
+                            st.markdown(
+                                f'<div style="font-size:12px;line-height:1.65;color:rgba(0,0,0,0.75);margin-bottom:8px">'
+                                f'<strong>Hiring Signal:</strong> <span style="color:{_ci_sig_c};font-weight:700">'
+                                f'{_ci_sig.title()}</span> · '
+                                f'<strong>Stability:</strong> {_ci_stab}/100<br>'
+                                f'{_ci_brief.get("culture_snapshot","")}'
+                                f'</div>',
+                                unsafe_allow_html=True,
+                            )
+                            if _ci_brief.get("green_flags"):
+                                for _gf in _ci_brief["green_flags"][:2]:
+                                    st.markdown(f'<span style="color:#117A37;font-size:11px">✓ {_gf}</span>', unsafe_allow_html=True)
+                            if _ci_brief.get("red_flags"):
+                                for _rf in _ci_brief["red_flags"][:2]:
+                                    st.markdown(f'<span style="color:#B71C1C;font-size:11px">⚠ {_rf}</span>', unsafe_allow_html=True)
+                            if _ci_brief.get("cover_letter_hook"):
+                                st.markdown(
+                                    f'<div style="background:#EEF3FB;border-radius:6px;padding:8px 12px;margin-top:6px;font-size:11px">'
+                                    f'<strong>Cover letter hook:</strong> {_ci_brief["cover_letter_hook"]}</div>',
+                                    unsafe_allow_html=True,
+                                )
+                            if _ci_brief.get("insider_tip"):
+                                st.markdown(
+                                    f'<div style="background:#F0FAF4;border-radius:6px;padding:8px 12px;margin-top:4px;font-size:11px">'
+                                    f'<strong>Insider tip:</strong> {_ci_brief["insider_tip"]}</div>',
+                                    unsafe_allow_html=True,
+                                )
+                            st.markdown(
+                                f'<div style="font-size:11px;color:rgba(0,0,0,0.5);margin-top:6px;font-style:italic">'
+                                f'{_ci_brief.get("one_line_verdict","")}</div>',
+                                unsafe_allow_html=True,
+                            )
+                            st.download_button(
+                                "Download company brief",
+                                data=format_brief_as_markdown(_ci_brief, job.company, job.title),
+                                file_name=f"intel_{job.company.replace(' ','_')[:20]}.md",
+                                mime="text/markdown",
+                                key=f"ci_dl_{i}",
+                            )
+                            if st.button("Refresh brief", key=f"ci_refresh_{i}", type="secondary"):
+                                _briefs2 = dict(st.session_state.company_briefs)
+                                _briefs2.pop(job.company, None)
+                                st.session_state.company_briefs = _briefs2
+                                st.rerun()
+
                 # Apply button per job — real jobs get "Apply Now" external link + package generator
                 _is_real = getattr(job, "is_real_job", False)
                 _apply_link = getattr(job, "apply_link", "")
@@ -7480,6 +8238,93 @@ with _tab_execute:
                             _ats_src = _ats.get("source", "")
                             if _ats_src == "offline":
                                 st.caption("_Offline mode: keyword frequency analysis only. Add OPENAI_API_KEY for full AI-powered ATS scan._")
+
+                            # ── ATS Fix Loop ─────────────────────────────
+                            _ats_fix_key = f"ats_fix_{i}"
+                            _ats_miss_for_fix = _ats.get("missing_critical", [])
+                            if _ats_miss_for_fix and _ats_score < 85:
+                                _fix_col1, _fix_col2 = st.columns([3, 1])
+                                with _fix_col1:
+                                    st.markdown(
+                                        f'<div style="background:#FFF4F4;border-left:3px solid #B71C1C;'
+                                        f'border-radius:0 6px 6px 0;padding:8px 12px;font-size:11px;margin-top:6px">'
+                                        f'{len(_ats_miss_for_fix)} critical keywords missing — '
+                                        f'Fix & Regenerate will rewrite your cover letter to add them automatically.'
+                                        f'</div>',
+                                        unsafe_allow_html=True,
+                                    )
+                                with _fix_col2:
+                                    if st.button("⚡ Fix & Regenerate", key=f"ats_fix_btn_{i}",
+                                                 type="primary", use_container_width=True):
+                                        _fix_api = None
+                                        try:
+                                            _fix_api = st.secrets.get("OPENAI_API_KEY") or None
+                                        except Exception:
+                                            pass
+                                        with st.spinner("Rewriting cover letter with missing keywords…"):
+                                            _fix_result = fix_application_for_ats(
+                                                cover_letter=pkg.cover_letter if pkg else "",
+                                                missing_critical=_ats_miss_for_fix,
+                                                job_title=job.title,
+                                                job_description=getattr(job, "full_description", "") or job.description_preview,
+                                                model="gpt-4o",
+                                                prefer_online=bool(_fix_api),
+                                                api_key=_fix_api,
+                                            )
+                                        with st.spinner("Re-scanning ATS score…"):
+                                            _ats_v2 = scan_ats_compatibility(
+                                                cv_text=st.session_state.cv_text or "",
+                                                cover_letter=_fix_result.get("fixed_cover_letter", ""),
+                                                job_description=getattr(job, "full_description", "") or job.description_preview,
+                                                job_title=job.title,
+                                                model="gpt-4o-mini",
+                                                prefer_online=bool(_fix_api),
+                                                api_key=_fix_api,
+                                            )
+                                        st.session_state[_ats_fix_key] = {
+                                            "fix": _fix_result,
+                                            "rescan": _ats_v2,
+                                        }
+                                        st.rerun()
+
+                            _fix_data = st.session_state.get(_ats_fix_key)
+                            if _fix_data:
+                                _fx = _fix_data.get("fix", {})
+                                _rs = _fix_data.get("rescan", {})
+                                _rs_score = _rs.get("ats_score", 0)
+                                _delta_ats = _rs_score - _ats_score
+                                _delta_c = "#117A37" if _delta_ats > 0 else "#B71C1C"
+                                st.markdown(
+                                    f'<div style="background:#F0FAF4;border-radius:8px;padding:12px 16px;margin-top:8px">'
+                                    f'<div style="font-size:11px;font-weight:800;text-transform:uppercase;'
+                                    f'color:#057642;letter-spacing:0.06em;margin-bottom:6px">ATS Fix Applied</div>'
+                                    f'<div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">'
+                                    f'<div><span style="font-size:20px;font-weight:900;color:rgba(0,0,0,0.4)">{_ats_score}</span>'
+                                    f'<span style="color:rgba(0,0,0,0.3);margin:0 6px">→</span>'
+                                    f'<span style="font-size:20px;font-weight:900;color:#117A37">{_rs_score}</span>'
+                                    f'<span style="font-size:12px;font-weight:700;color:{_delta_c};margin-left:6px">'
+                                    f'({_delta_ats:+d} pts)</span></div>'
+                                    f'<div style="font-size:11px;color:rgba(0,0,0,0.6)">'
+                                    f'Keywords added: {", ".join(_fx.get("keywords_added",[])[:5]) or "—"}</div>'
+                                    f'</div>'
+                                    f'</div>',
+                                    unsafe_allow_html=True,
+                                )
+                                with st.expander("View fixed cover letter"):
+                                    st.text_area(
+                                        "Fixed cover letter (copy this)",
+                                        value=_fx.get("fixed_cover_letter", ""),
+                                        height=250, key=f"fixed_cl_{i}",
+                                    )
+                                    st.download_button(
+                                        "Download fixed cover letter",
+                                        data=(_fx.get("fixed_cover_letter","")).encode(),
+                                        file_name=f"cover_letter_ats_fixed_{job.company.replace(' ','_')}.txt",
+                                        mime="text/plain", key=f"fixed_cl_dl_{i}",
+                                    )
+                                if st.button("Clear fix", key=f"ats_fix_clear_{i}", type="secondary"):
+                                    st.session_state[_ats_fix_key] = None
+                                    st.rerun()
 
                             if st.button("Clear ATS scan", key=f"ats_clear_{i}", type="secondary"):
                                 st.session_state[_ats_key_sa] = None

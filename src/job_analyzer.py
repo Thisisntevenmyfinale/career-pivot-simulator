@@ -438,3 +438,101 @@ one_line_verdict: ≤ 120 chars, specific and actionable"""
         result = dict(_heuristic_result)
         result["source"] = f"heuristic (error: {repr(exc)[:60]})"
         return result
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ATS Fix Loop — close the gap between scan and fix in one click
+# ─────────────────────────────────────────────────────────────────────────────
+
+def fix_application_for_ats(
+    cover_letter: str,
+    missing_critical: List[str],
+    job_title: str = "",
+    job_description: str = "",
+    model: str = "gpt-4o",
+    api_key: Optional[str] = None,
+    prefer_online: bool = True,
+) -> Dict[str, Any]:
+    """
+    Takes an existing cover letter + list of missing ATS keywords.
+    Rewrites the cover letter to naturally incorporate the critical keywords.
+
+    Returns:
+      {
+        "fixed_cover_letter": str,  # rewritten with keywords integrated
+        "changes_made": List[str],  # what was changed and where
+        "keywords_added": List[str],
+        "source": str,
+      }
+    """
+    _fallback: Dict[str, Any] = {
+        "fixed_cover_letter": cover_letter,
+        "changes_made": ["Add API key for ATS fix."],
+        "keywords_added": [],
+        "source": "offline",
+    }
+
+    if not missing_critical or not cover_letter.strip() or not prefer_online:
+        return _fallback
+
+    try:
+        from openai import OpenAI
+        client = OpenAI(api_key=api_key) if api_key else OpenAI()
+    except Exception:
+        return _fallback
+
+    keywords_str = ", ".join(f'"{k}"' for k in missing_critical[:8])
+
+    prompt = f"""You are a cover letter editor specializing in ATS optimization.
+
+The following cover letter needs to incorporate these missing keywords to pass ATS screening:
+KEYWORDS TO ADD: {keywords_str}
+
+ROLE: {job_title}
+
+ORIGINAL COVER LETTER:
+{cover_letter[:2500]}
+
+TASK:
+Rewrite the cover letter to naturally incorporate ALL the listed keywords.
+
+Rules:
+- Keep the same structure, tone and personal voice
+- Keywords must appear naturally — not stuffed or forced
+- Do NOT add sentences that feel generic or robotic
+- Preserve all specific details, examples and metrics from the original
+- Total length should stay within ±15% of original
+- After the letter, add a line: CHANGES: [brief list of what changed]
+
+Return the full rewritten cover letter followed by the CHANGES line."""
+
+    try:
+        r = client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.3,
+            max_tokens=1600,
+        )
+        content = r.choices[0].message.content or ""
+
+        # Parse out the changes section
+        fixed_letter = content
+        changes: List[str] = []
+        if "CHANGES:" in content:
+            parts = content.split("CHANGES:", 1)
+            fixed_letter = parts[0].strip()
+            changes_raw = parts[1].strip() if len(parts) > 1 else ""
+            changes = [c.strip().lstrip("-•·").strip() for c in changes_raw.split("\n") if c.strip()]
+
+        # Identify which keywords were successfully added
+        lower_letter = fixed_letter.lower()
+        keywords_added = [k for k in missing_critical if k.lower() in lower_letter]
+
+        return {
+            "fixed_cover_letter": fixed_letter,
+            "changes_made": changes or [f"Integrated {len(keywords_added)} ATS keywords"],
+            "keywords_added": keywords_added,
+            "source": "online",
+        }
+    except Exception as e:
+        return {**_fallback, "source": "online_error", "error": str(e)}

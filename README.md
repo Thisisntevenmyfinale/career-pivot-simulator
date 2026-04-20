@@ -19,7 +19,7 @@ mapping       + fit score     in parallel           Skeptic → Judge  gap analy
                               evaluation                             suggestions    coaching            + report
 ```
 
-**One button. ~60 seconds. Output: "Apply to Company X first (78% hire probability). Your ATS score: 82. Here's what to fix."**
+**One system. From pivot decision to signed offer.** No other tool covers this arc.
 
 ---
 
@@ -101,6 +101,57 @@ User answer  →  gpt-4o interviewer acknowledges + asks follow-up  →  repeat 
 Not a Q&A quiz. A real multi-turn conversation where gpt-4o plays a senior interviewer.  
 The interviewer builds on each answer — follow-ups are context-aware.  
 5 dimensions: communication (×0.25), technical depth (×0.25), pivot narrative (×0.20), culture fit (×0.15), STAR structure (×0.15).
+
+### 9. Negotiation Command Center
+
+```
+Offer received  →  Market salary analysis (P25/P50/P75 for role/location/company-type)
+                              ↓
+                   Offer quality assessment + negotiation room estimate ($)
+                              ↓
+                   Personalized negotiation script (opening + ask + objection responses)
+                              ↓
+                   Live roleplay: gpt-4o plays a realistic HR director (5 exchanges)
+                              ↓
+                   Counter-offer letter generator (professional, specific, ready to send)
+```
+
+The phase every other tool ignores. Candidates who negotiate earn $5,000–$20,000 more per year. 60% never ask.
+This module prepares you for the conversation that matters most — after you get the offer.
+Only product that covers the full arc: CV → application → interview → **signed offer**.
+
+### 10. Application Pipeline CRM (Search OS)
+
+```
+Every application auto-tracked (title, company, ATS score, hire prob, status)
+              ↓
+Stage kanban: Applied → 1st Round → Final Round → Offer / Rejected
+              ↓
+Pipeline diagnosis: health score, bottleneck ID, highest-leverage action
+              ↓
+Rejection Intelligence: LLM pattern analysis over all rejections → root cause
+              ↓
+Export/import JSON → persistent across sessions
+```
+
+Treats job search like a sales pipeline. With enough data: predicts time-to-offer,
+identifies whether the bottleneck is ATS, interview conversion, or application volume.
+The data flywheel: more rejections logged → better pattern detection → smarter strategy.
+
+### 11. Company Intelligence Brief
+
+```
+Company name + role  →  gpt-4o-mini analysis (+ optional SerpAPI news)
+                                    ↓
+          Stage (startup/growth/enterprise) · Hiring signal · Stability score
+          Culture snapshot · Glassdoor read · Compensation philosophy
+          Interview process · Recent signals · Red flags · Green flags
+          Cover letter hook (what to mention) · Insider tip
+```
+
+You don't apply blind. You apply with intel.
+Surfaces non-obvious information before every application — what to mention in your cover letter,
+what the interview process looks like, whether this company is actually a safe bet right now.
 
 ### 8. ATS Compatibility Scanner
 
@@ -185,7 +236,7 @@ Benchmark data stored as `ZERO_SHOT_BENCHMARK` constant in `app.py` and surfaced
 
 ---
 
-## LLM Architecture (17 user-facing pipeline components)
+## LLM Architecture (22 user-facing pipeline components)
 
 | Layer | Component | Model | Justification |
 |---|---|---|---|
@@ -206,6 +257,13 @@ Benchmark data stored as `ZERO_SHOT_BENCHMARK` constant in `app.py` and surfaced
 | EVALUATION | LinkedIn Eval | gpt-4o-mini | pivot_clarity × 0.30 + keyword_density × 0.30 + … |
 | EVALUATION | Interview Answer Eval | gpt-4o-mini | relevance × 0.30 + STAR × 0.25 + … |
 | EVALUATION | Mock Interview Report | **gpt-4o** | 5-dim rubric; hire recommendation + coached rewrite |
+| ANALYSIS | Company Intelligence Brief | gpt-4o-mini | Stage/culture/hiring signal/red flags; SerpAPI-augmented |
+| GENERATION | Negotiation Script | **gpt-4o** | Personalized script + objection responses; market-anchored |
+| GENERATION | Salary Market Analysis | gpt-4o-mini | P25/P50/P75 + negotiation room + risk factors |
+| GENERATION | Negotiation Roleplay | **gpt-4o** | Multi-turn HR director persona; coaching tip on final round |
+| GENERATION | Counter-Offer Letter | **gpt-4o** | Professional, specific, data-backed; ready to send |
+| ANALYSIS | Pipeline Diagnosis | gpt-4o-mini | Health score + bottleneck ID + time-to-offer estimate |
+| ANALYSIS | Rejection Intelligence | gpt-4o-mini | Pattern analysis over rejection log → root cause + fixes |
 | ORCHESTRATION | Agent Loop | **gpt-4o** | Tool selection + multi-step reasoning |
 
 Full rationale — including sub-components (review board strategies, review personas, market signal, salary estimation, job listing generation, pivot narrative) — in `src/career_agent.py → MODEL_RATIONALE` (16 entries covering all architectural decisions).
