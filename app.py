@@ -105,6 +105,12 @@ from src.demo_profile import (
 )
 from src.cluster_evaluator import evaluate_all_clusters, _all_fallbacks
 from src.pivot_space import compute_pivot_path, get_all_occupations
+from src.jd_analyzer import analyze_jd, go_no_go_color, go_no_go_label, offer_prob_color
+from src.pattern_alert import detect_rejection_pattern, pattern_severity_color, pattern_severity_icon
+from src.pivot_roadmap import generate_pivot_roadmap
+from src.defensibility import (
+    generate_defensibility_briefing, generate_proof_task, evaluate_proof_submission,
+)
 import plotly.graph_objects as go
 import plotly.express as px
 
@@ -1471,6 +1477,13 @@ DEFAULT_STATE = {
     "pivot_path_result": None,          # compute_pivot_path() result
     "pivot_path_current": "",           # occupation queried
     "pivot_path_target": "",            # occupation queried
+    "jd_analysis_result": None,         # analyze_jd() result
+    "jd_analysis_text": "",             # raw JD text used
+    "pivot_roadmap": None,              # generate_pivot_roadmap() result
+    "skill_proof_tasks": {},            # {skill: generate_proof_task() result}
+    "skill_proof_submissions": {},      # {skill: {"text": str, "eval": dict}}
+    "defensibility_results": {},        # {company_role_key: dict}
+    "pattern_alert": None,             # detect_rejection_pattern() result
     # Rejection Interpreter — per-rejection actionable diagnosis
     "rejection_interpretations": {},    # {outcome_id: interpret_rejection() result}
     # Outcome Tracker + Calibration Motor
@@ -2423,6 +2436,270 @@ if quick_apply:
                 st.rerun()
 
     # ════════════════════════════════════════════════════════════════════════
+    # PER-JD OFFER PREDICTOR — "Should I apply to THIS job?"
+    # ════════════════════════════════════════════════════════════════════════
+    with st.expander(
+        f'{icon("target",14,"#DC2626")} Per-JD Offer Predictor — Paste a job description for instant Go/No-Go',
+        expanded=False,
+    ):
+        st.markdown(
+            '<div style="font-size:11px;color:rgba(0,0,0,0.55);line-height:1.6;margin-bottom:10px">'
+            'Not keyword matching. An actual outcome prediction: <strong>P(offer | this JD, your profile)</strong>. '
+            'Includes ATS risk, missing keywords you must add to your CV, and whether the pivot '
+            'narrative will hold up for this specific company.'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+
+        _jd_text_input = st.text_area(
+            "Paste job description",
+            value=st.session_state.get("jd_analysis_text", ""),
+            height=160,
+            placeholder="Paste the full job description here...",
+            key="jd_predictor_input",
+            label_visibility="collapsed",
+        )
+
+        _jd_run_col, _jd_clear_col = st.columns([3, 1])
+        with _jd_run_col:
+            _jd_can_run = bool(_jd_text_input.strip() and st.session_state.get("cv_profile"))
+            if st.button(
+                "Analyse JD — Get Go/No-Go",
+                key="btn_jd_predict",
+                type="primary",
+                disabled=not _jd_can_run,
+                use_container_width=True,
+            ):
+                if not _qa_key:
+                    st.warning("Add your OpenAI key to run this analysis.")
+                else:
+                    with st.spinner("Extracting requirements · Matching profile · Predicting outcome…"):
+                        _jd_result = analyze_jd(
+                            _qa_key,
+                            jd_text=_jd_text_input,
+                            cv_profile=st.session_state.get("cv_profile", {}),
+                            pivot_dna=st.session_state.get("pivot_dna", {}),
+                            skill_gap_results=st.session_state.get("skill_gap_results", {}),
+                            calibration_data=st.session_state.get("calibration_data"),
+                        )
+                        st.session_state.jd_analysis_result = _jd_result
+                        st.session_state.jd_analysis_text   = _jd_text_input
+        with _jd_clear_col:
+            if st.button("Clear", key="btn_jd_clear", use_container_width=True):
+                st.session_state.jd_analysis_result = None
+                st.session_state.jd_analysis_text   = ""
+                st.rerun()
+
+        if not _jd_can_run and not st.session_state.get("jd_analysis_result"):
+            st.caption("Upload your CV first to enable prediction.")
+
+        _jda = st.session_state.get("jd_analysis_result")
+        if _jda:
+            _jda_verdict  = _jda.get("go_no_go", "borderline")
+            _jda_vcol     = go_no_go_color(_jda_verdict)
+            _jda_vlabel   = go_no_go_label(_jda_verdict)
+            _jda_prob     = int(_jda.get("offer_probability", 0))
+            _jda_prob_col = offer_prob_color(_jda_prob)
+            _jda_fit      = int(_jda.get("fit_score", 0))
+            _jda_ats      = _jda.get("ats_risk", "medium")
+            _jda_ats_col  = {"low":"#057642","medium":"#D97706","high":"#DC2626"}.get(_jda_ats,"#555")
+            _jda_cred     = _jda.get("pivot_credibility","moderate")
+            _jda_cred_col = {"strong":"#057642","moderate":"#D97706","weak":"#DC2626"}.get(_jda_cred,"#555")
+
+            # ── Main verdict banner ──────────────────────────────────────────
+            st.markdown(
+                f'<div style="background:{_jda_vcol}10;border:2px solid {_jda_vcol};'
+                f'border-radius:10px;padding:14px 18px;margin-top:8px;display:flex;align-items:center;gap:18px">'
+                f'<div style="text-align:center;min-width:70px">'
+                f'<div style="font-size:36px;font-weight:900;color:{_jda_prob_col};line-height:1">{_jda_prob}%</div>'
+                f'<div style="font-size:9px;font-weight:800;color:rgba(0,0,0,0.4);letter-spacing:0.06em;'
+                f'text-transform:uppercase">Offer prob.</div>'
+                f'</div>'
+                f'<div style="flex:1">'
+                f'<div style="font-size:14px;font-weight:800;color:{_jda_vcol}">{_jda_vlabel}</div>'
+                f'<div style="font-size:11px;color:rgba(0,0,0,0.6);margin-top:3px">'
+                f'{_jda.get("go_no_go_reason","")}</div>'
+                f'<div style="display:flex;gap:12px;margin-top:8px">'
+                f'<span style="font-size:10px;background:{_jda_vcol}20;color:{_jda_vcol};'
+                f'padding:2px 8px;border-radius:4px;font-weight:700">Fit {_jda_fit}/100</span>'
+                f'<span style="font-size:10px;background:{_jda_ats_col}20;color:{_jda_ats_col};'
+                f'padding:2px 8px;border-radius:4px;font-weight:700">ATS risk: {_jda_ats.upper()}</span>'
+                f'<span style="font-size:10px;background:{_jda_cred_col}20;color:{_jda_cred_col};'
+                f'padding:2px 8px;border-radius:4px;font-weight:700">Pivot cred: {_jda_cred.upper()}</span>'
+                f'</div></div></div>',
+                unsafe_allow_html=True,
+            )
+
+            # ── 3-column breakdown ───────────────────────────────────────────
+            _jda_c1, _jda_c2, _jda_c3 = st.columns(3)
+
+            with _jda_c1:
+                st.markdown('<div style="font-size:10px;font-weight:800;letter-spacing:0.06em;text-transform:uppercase;color:#057642;margin-top:10px">Skills you have</div>', unsafe_allow_html=True)
+                for _sk in (_jda.get("required_skills_found") or [])[:6]:
+                    st.markdown(f'<div style="font-size:11px;color:rgba(0,0,0,0.7);padding:1px 0">{check_icon(11)} {_sk}</div>', unsafe_allow_html=True)
+
+            with _jda_c2:
+                st.markdown('<div style="font-size:10px;font-weight:800;letter-spacing:0.06em;text-transform:uppercase;color:#DC2626;margin-top:10px">Skills missing</div>', unsafe_allow_html=True)
+                for _sk in (_jda.get("required_skills_missing") or [])[:6]:
+                    st.markdown(f'<div style="font-size:11px;color:rgba(0,0,0,0.7);padding:1px 0">{warn_icon(11)} {_sk}</div>', unsafe_allow_html=True)
+
+            with _jda_c3:
+                _ats_absent = _jda.get("ats_keywords_absent") or []
+                if _ats_absent:
+                    st.markdown('<div style="font-size:10px;font-weight:800;letter-spacing:0.06em;text-transform:uppercase;color:#D97706;margin-top:10px">Add to CV NOW (ATS)</div>', unsafe_allow_html=True)
+                    for _kw in _ats_absent[:6]:
+                        st.markdown(f'<div style="font-size:11px;font-weight:600;color:#A05A00;padding:1px 0">{icon("alert-triangle",10,"#D97706")} {_kw}</div>', unsafe_allow_html=True)
+
+            # ── Strengths + Risks ────────────────────────────────────────────
+            _str_col, _risk_col = st.columns(2)
+            with _str_col:
+                if _jda.get("top_strengths"):
+                    st.markdown('<div style="margin-top:8px;font-size:10px;font-weight:800;letter-spacing:0.06em;text-transform:uppercase;color:rgba(0,0,0,0.35)">Why this could work</div>', unsafe_allow_html=True)
+                    for _s in _jda["top_strengths"][:3]:
+                        st.markdown(f'<div style="font-size:11px;color:rgba(0,0,0,0.7);line-height:1.4;padding:2px 0">{check_icon(10)} {_s}</div>', unsafe_allow_html=True)
+            with _risk_col:
+                if _jda.get("top_risks"):
+                    st.markdown('<div style="margin-top:8px;font-size:10px;font-weight:800;letter-spacing:0.06em;text-transform:uppercase;color:rgba(0,0,0,0.35)">Likely rejection reasons</div>', unsafe_allow_html=True)
+                    for _r in _jda["top_risks"][:3]:
+                        st.markdown(f'<div style="font-size:11px;color:rgba(0,0,0,0.7);line-height:1.4;padding:2px 0">{warn_icon(10)} {_r}</div>', unsafe_allow_html=True)
+
+            if _jda.get("pivot_credibility_reason"):
+                st.markdown(
+                    f'<div style="margin-top:8px;background:{_jda_cred_col}10;border-radius:6px;'
+                    f'padding:8px 12px;font-size:11px;color:rgba(0,0,0,0.7)">'
+                    f'<strong>Pivot credibility for this role:</strong> {_jda["pivot_credibility_reason"]}</div>',
+                    unsafe_allow_html=True,
+                )
+            st.caption(f"Role: {_jda.get('role_title','')} · Seniority match: {_jda.get('seniority_match','?')}")
+
+    # ════════════════════════════════════════════════════════════════════════
+    # PIVOT ROADMAP — 30/60/90 Day Execution Plan
+    # ════════════════════════════════════════════════════════════════════════
+    with st.expander(
+        f'{icon("map",14,"#7C3AED")} Pivot Roadmap — Your 30/60/90-day execution plan',
+        expanded=False,
+    ):
+        st.markdown(
+            '<div style="font-size:11px;color:rgba(0,0,0,0.55);line-height:1.6;margin-bottom:10px">'
+            'Not generic career advice. A week-by-week plan calibrated to <em>your</em> gap profile, '
+            'pipeline state, and cohort timeline benchmarks. Every task is specific and completable.'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+
+        _rm_has_data = bool(st.session_state.get("pivot_dna") or st.session_state.get("cv_profile"))
+        _rm = st.session_state.get("pivot_roadmap")
+
+        if st.button(
+            "Generate My Roadmap" if not _rm else "Regenerate Roadmap",
+            key="btn_gen_roadmap",
+            type="primary" if not _rm else "secondary",
+            disabled=not _rm_has_data,
+            use_container_width=True,
+        ):
+            with st.spinner("Building your personalised execution plan…"):
+                # Try to get bridge occupations from existing pivot path result
+                _pp_for_rm = st.session_state.get("pivot_path_result") or {}
+                _bridges_rm = _pp_for_rm.get("bridge_occupations", [])
+                _rm_result = generate_pivot_roadmap(
+                    _qa_key,
+                    current_occ=str(current) if "current" in dir() else "",
+                    target_occ=str(target)   if "target"  in dir() else "",
+                    skill_gap_results=st.session_state.get("skill_gap_results"),
+                    cohort_intelligence=st.session_state.get("cohort_intelligence"),
+                    pivot_dna=st.session_state.get("pivot_dna"),
+                    pipeline_jobs=st.session_state.get("pipeline_jobs"),
+                    outcome_log=st.session_state.get("outcome_log"),
+                    calibration_data=st.session_state.get("calibration_data"),
+                    bridge_occupations=_bridges_rm,
+                )
+                st.session_state.pivot_roadmap = _rm_result
+                _rm = _rm_result
+
+        if not _rm_has_data:
+            st.caption("Upload your CV and build a Pivot DNA to unlock the roadmap.")
+
+        if _rm:
+            # Critical path banner
+            st.markdown(
+                f'<div style="background:#7C3AED12;border:1.5px solid #7C3AED40;border-radius:8px;'
+                f'padding:12px 16px;margin-bottom:12px">'
+                f'<div style="font-size:10px;font-weight:800;letter-spacing:0.06em;text-transform:uppercase;'
+                f'color:#7C3AED;margin-bottom:4px">Critical Path — Do this first</div>'
+                f'<div style="font-size:13px;font-weight:700;color:#0A0A0A">{_rm.get("critical_path","")}</div>'
+                f'<div style="font-size:11px;color:rgba(0,0,0,0.5);margin-top:4px">'
+                f'Timeline: {_rm.get("timeline_estimate","")} · Cadence: {_rm.get("weekly_cadence","")}'
+                f'</div></div>',
+                unsafe_allow_html=True,
+            )
+
+            # Blocking gaps
+            _rm_gaps = _rm.get("blocking_gaps", [])
+            if _rm_gaps:
+                st.markdown(
+                    '<div style="font-size:10px;font-weight:800;letter-spacing:0.06em;text-transform:uppercase;'
+                    'color:#DC2626;margin-bottom:4px">Skills to close BEFORE primary applications</div>',
+                    unsafe_allow_html=True,
+                )
+                for _rg in _rm_gaps:
+                    st.markdown(f'<div style="font-size:11px;color:rgba(0,0,0,0.7)">{warn_icon(10)} {_rg}</div>', unsafe_allow_html=True)
+
+            # Phase timeline
+            _rm_phases = _rm.get("phases", {})
+            _phase_order = ["kickoff", "bridge", "primary", "compound"]
+            _phase_colors = {"kickoff":"#0A66C2","bridge":"#7C3AED","primary":"#057642","compound":"#D97706"}
+
+            for _ph_key in _phase_order:
+                _ph = _rm_phases.get(_ph_key, {})
+                if not _ph:
+                    continue
+                _ph_col = _phase_colors.get(_ph_key, "#555")
+                st.markdown(
+                    f'<div style="background:{_ph_col}08;border-left:3px solid {_ph_col};'
+                    f'padding:10px 14px;border-radius:0 6px 6px 0;margin:8px 0">'
+                    f'<div style="font-size:11px;font-weight:800;color:{_ph_col};margin-bottom:6px">'
+                    f'{_ph.get("label","")}</div>',
+                    unsafe_allow_html=True,
+                )
+                for _task in (_ph.get("tasks") or []):
+                    _task_str = _task if isinstance(_task, str) else _task.get("task","")
+                    _why_str  = "" if isinstance(_task, str) else _task.get("why","")
+                    _time_str = "" if isinstance(_task, str) else _task.get("time_estimate","")
+                    _time_span = f'  <span style="font-size:9px;color:rgba(0,0,0,0.35);font-weight:400">{_time_str}</span>' if _time_str else ""
+                    _why_div   = f'<div style="font-size:10px;color:rgba(0,0,0,0.5);line-height:1.4">{_why_str}</div>' if _why_str else ""
+                    st.markdown(
+                        f'<div style="display:flex;gap:8px;padding:3px 0">'
+                        f'<div style="color:{_ph_col};flex-shrink:0;margin-top:1px">{check_icon(11)}</div>'
+                        f'<div>'
+                        f'<div style="font-size:11px;font-weight:600;color:#0A0A0A">{_task_str}{_time_span}</div>'
+                        f'{_why_div}'
+                        f'</div></div>',
+                        unsafe_allow_html=True,
+                    )
+                st.markdown('</div>', unsafe_allow_html=True)
+
+            # Milestones
+            _rm_ms = _rm.get("milestones", [])
+            if _rm_ms:
+                st.markdown(
+                    '<div style="margin-top:8px;font-size:10px;font-weight:800;letter-spacing:0.06em;'
+                    'text-transform:uppercase;color:rgba(0,0,0,0.35)">Key milestones</div>',
+                    unsafe_allow_html=True,
+                )
+                for _ms in _rm_ms:
+                    _ms_week = _ms.get("week","?")
+                    _ms_text = _ms.get("milestone","")
+                    st.markdown(
+                        f'<div style="display:flex;gap:10px;align-items:center;padding:3px 0">'
+                        f'<div style="font-size:9px;font-weight:800;color:#7C3AED;min-width:42px;'
+                        f'text-align:right">Week {_ms_week}</div>'
+                        f'<div style="width:8px;height:8px;background:#7C3AED;border-radius:50%;flex-shrink:0"></div>'
+                        f'<div style="font-size:11px;color:rgba(0,0,0,0.7)">{_ms_text}</div>'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
+
+    # ════════════════════════════════════════════════════════════════════════
     # APPLICATION PIPELINE CRM — Search OS
     # Tracks every application, every stage, every rejection.
     # With enough data: diagnoses bottlenecks, predicts time-to-offer.
@@ -2758,6 +3035,42 @@ if quick_apply:
     # OUTCOME TRACKER + CALIBRATION MOTOR
     # Record what actually happened → calibrate your personal ROI model
     # ════════════════════════════════════════════════════════════════════════
+    # ── Pattern Alert — runs automatically whenever outcome_log updates ──────
+    _ot_log_check: list = st.session_state.outcome_log or []
+    _ql_check: list     = st.session_state.get("quality_log") or []
+    if _ot_log_check:
+        _pa = detect_rejection_pattern(
+            _ot_log_check, _ql_check,
+            st.session_state.get("cohort_intelligence"),
+        )
+        st.session_state.pattern_alert = _pa
+        if _pa:
+            _pa_sev   = _pa.get("severity","mild")
+            _pa_col   = pattern_severity_color(_pa_sev)
+            _pa_icon  = pattern_severity_icon(_pa_sev)
+            _pa_consec = _pa.get("consecutive_count", 0)
+            st.markdown(
+                f'<div style="background:{_pa_col}12;border:2px solid {_pa_col};border-radius:10px;'
+                f'padding:14px 18px;margin-bottom:10px">'
+                f'<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">'
+                f'<span style="font-size:18px">{_pa_icon}</span>'
+                f'<div>'
+                f'<div style="font-size:13px;font-weight:800;color:{_pa_col}">'
+                f'Pattern Alert — {_pa.get("alert_title","")}</div>'
+                f'<div style="font-size:10px;font-weight:600;color:{_pa_col};opacity:0.8;letter-spacing:0.05em">'
+                f'{_pa_sev.upper()} · {_pa_consec} consecutive · confidence {int(_pa.get("pattern_confidence",0)*100)}%'
+                f'</div></div></div>'
+                f'<div style="font-size:12px;color:rgba(0,0,0,0.75);line-height:1.55;margin-bottom:8px">'
+                f'{_pa.get("alert_message","")}</div>'
+                f'<div style="background:{_pa_col}20;border-radius:6px;padding:8px 12px">'
+                f'<div style="font-size:10px;font-weight:800;color:{_pa_col};letter-spacing:0.06em;'
+                f'text-transform:uppercase;margin-bottom:3px">What to do</div>'
+                f'<div style="font-size:11px;color:rgba(0,0,0,0.8);line-height:1.5">'
+                f'{_pa.get("recommended_action","")}</div>'
+                f'</div></div>',
+                unsafe_allow_html=True,
+            )
+
     with st.expander("Outcome Tracker · Calibrate your personal ROI model", expanded=False):
         st.markdown(
             '<div style="font-size:12px;color:rgba(0,0,0,0.55);line-height:1.6;margin-bottom:12px">'
@@ -4542,6 +4855,85 @@ if quick_apply:
                                         st.session_state[_qa_ats_key] = None
                                         st.rerun()
 
+                            # ── Pivot Defensibility Briefing ──────────────────
+                            st.markdown("<div style='margin-top:12px'></div>", unsafe_allow_html=True)
+                            _def_key = f"def_{_pf_co2}_{_pf_jt2}".replace(" ","_")[:60]
+                            _def_res = st.session_state.defensibility_results.get(_def_key)
+                            with st.expander(
+                                f'{icon("shield",12,"#7C3AED")} Pivot Defensibility Briefing — Hardest questions for this role',
+                                expanded=False,
+                            ):
+                                st.caption(
+                                    "The questions that will make you sweat — calibrated to your weakest pivot points "
+                                    "for this specific company. With exact answers from your CV."
+                                )
+                                if not _def_res:
+                                    if st.button("Generate Briefing", key=f"def_btn_{_pf_ri}", type="primary"):
+                                        _def_api = None
+                                        try: _def_api = st.secrets.get("OPENAI_API_KEY")
+                                        except Exception: pass
+                                        with st.spinner("Generating adversarial interview scenarios…"):
+                                            _def_res = generate_defensibility_briefing(
+                                                _def_api or "",
+                                                company=_pf_co2,
+                                                job_title=_pf_jt2,
+                                                cv_profile=st.session_state.get("cv_profile", {}),
+                                                pivot_dna=st.session_state.get("pivot_dna", {}),
+                                                skill_gap_results=st.session_state.get("skill_gap_results"),
+                                                mock_interview_report=st.session_state.get("mock_interview_report"),
+                                            )
+                                            if _def_res:
+                                                st.session_state.defensibility_results[_def_key] = _def_res
+                                            else:
+                                                st.error("Add your OpenAI key to generate briefing.")
+                                else:
+                                    # Killer story
+                                    if _def_res.get("killer_story"):
+                                        st.markdown(
+                                            f'<div style="background:#F0F7FF;border:1.5px solid #0A66C2;border-radius:8px;'
+                                            f'padding:10px 14px;margin-bottom:10px">'
+                                            f'<div style="font-size:10px;font-weight:800;letter-spacing:0.06em;'
+                                            f'text-transform:uppercase;color:#0A66C2;margin-bottom:4px">Lead with this</div>'
+                                            f'<div style="font-size:12px;color:#0A0A0A;line-height:1.5">{_def_res["killer_story"]}</div>'
+                                            f'</div>',
+                                            unsafe_allow_html=True,
+                                        )
+
+                                    # Hard questions
+                                    _def_qs = _def_res.get("hardest_questions", [])
+                                    for _qi, _dq in enumerate(_def_qs[:4]):
+                                        st.markdown(
+                                            f'<div style="background:#FFF5F5;border-left:3px solid #DC2626;'
+                                            f'border-radius:0 8px 8px 0;padding:10px 14px;margin-bottom:8px">'
+                                            f'<div style="font-size:12px;font-weight:700;color:#DC2626;margin-bottom:6px">'
+                                            f'Q{_qi+1}: {_dq.get("question","")}</div>'
+                                            f'<div style="font-size:10px;font-weight:700;color:rgba(0,0,0,0.4);'
+                                            f'text-transform:uppercase;letter-spacing:0.05em;margin-bottom:2px">Why they ask this</div>'
+                                            f'<div style="font-size:11px;color:rgba(0,0,0,0.65);margin-bottom:6px">{_dq.get("why_asked","")}</div>'
+                                            f'<div style="font-size:10px;font-weight:700;color:#057642;'
+                                            f'text-transform:uppercase;letter-spacing:0.05em;margin-bottom:2px">Best answer</div>'
+                                            f'<div style="font-size:11px;color:rgba(0,0,0,0.8);line-height:1.5;margin-bottom:6px">{_dq.get("best_answer","")}</div>'
+                                            f'<div style="background:#FEF3C7;border-radius:4px;padding:5px 9px;font-size:10px;color:#92400E">'
+                                            f'⚠️ Trap: {_dq.get("trap_to_avoid","")}</div>'
+                                            f'</div>',
+                                            unsafe_allow_html=True,
+                                        )
+
+                                    # Topics to avoid
+                                    _def_avoid = _def_res.get("topics_to_avoid_volunteering", [])
+                                    if _def_avoid:
+                                        st.markdown(
+                                            '<div style="background:#FFF0E5;border-radius:6px;padding:8px 12px;margin-top:4px">'
+                                            '<div style="font-size:10px;font-weight:800;color:#A05A00;letter-spacing:0.06em;'
+                                            'text-transform:uppercase;margin-bottom:4px">Don\'t volunteer these topics</div>'
+                                            + "".join(f'<div style="font-size:11px;color:rgba(0,0,0,0.7)">• {t}</div>' for t in _def_avoid[:4])
+                                            + '</div>',
+                                            unsafe_allow_html=True,
+                                        )
+                                    if st.button("Clear", key=f"def_clear_{_pf_ri}", type="secondary"):
+                                        st.session_state.defensibility_results.pop(_def_key, None)
+                                        st.rerun()
+
                 # Technical architecture note for professor
                 st.markdown(
                     '<div style="background:#F3F6F9;border-radius:8px;padding:10px 14px;margin-top:6px">'
@@ -4906,6 +5298,74 @@ if quick_apply:
                                 mime="text/markdown",
                                 key=f"proof_dl_{_proof_skill[:10]}",
                             )
+
+                            # ── Submission + Evaluation (new) ─────────────────
+                            st.markdown("---")
+                            st.markdown(
+                                '<div style="font-size:11px;font-weight:800;letter-spacing:0.06em;'
+                                'text-transform:uppercase;color:rgba(0,0,0,0.4);margin-bottom:6px">'
+                                'Submit your work for evaluation</div>',
+                                unsafe_allow_html=True,
+                            )
+                            _sub_key  = f"proof_sub_{_proof_skill}"
+                            _eval_key = f"proof_eval_{_proof_skill}"
+                            _sub_prev = (st.session_state.skill_proof_submissions.get(_proof_skill) or {}).get("text","")
+                            _sub_text = st.text_area(
+                                "Paste your completed proof artifact here",
+                                value=_sub_prev,
+                                height=140,
+                                key=_sub_key,
+                                placeholder="Paste your PRD, analysis, case study, or prototype description here…",
+                            )
+                            if st.button("Evaluate my work", key=f"proof_eval_btn_{_proof_skill[:12]}", type="primary"):
+                                if not _sub_text.strip():
+                                    st.warning("Paste your work above first.")
+                                elif not _qa_key:
+                                    st.warning("Add OpenAI key to evaluate.")
+                                else:
+                                    with st.spinner("Evaluating against PM hiring standards…"):
+                                        _eval_result = evaluate_proof_submission(
+                                            _qa_key,
+                                            skill=_proof_skill,
+                                            task_description=_proof.get("what_you_build",""),
+                                            deliverable=_proof.get("artifact_format",""),
+                                            submission_text=_sub_text,
+                                            evaluation_criteria=_proof.get("evaluation_criteria",[]) or [],
+                                        )
+                                        _subs = dict(st.session_state.skill_proof_submissions)
+                                        _subs[_proof_skill] = {"text": _sub_text, "eval": _eval_result}
+                                        st.session_state.skill_proof_submissions = _subs
+                                    st.rerun()
+
+                            _eval_r = (st.session_state.skill_proof_submissions.get(_proof_skill) or {}).get("eval")
+                            if _eval_r:
+                                _ev_score   = int(_eval_r.get("score", 0))
+                                _ev_verdict = _eval_r.get("verdict","")
+                                _ev_col     = {"strong":"#057642","adequate":"#D97706","needs_work":"#DC2626"}.get(_ev_verdict,"#555")
+                                _ev_ready   = _eval_r.get("interview_ready", False)
+                                _ev_cred    = _eval_r.get("credibility_level","")
+                                st.markdown(
+                                    f'<div style="background:{_ev_col}10;border:1.5px solid {_ev_col}40;'
+                                    f'border-radius:8px;padding:12px 16px;margin-top:8px">'
+                                    f'<div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">'
+                                    f'<div style="font-size:30px;font-weight:900;color:{_ev_col}">{_ev_score}</div>'
+                                    f'<div>'
+                                    f'<div style="font-size:13px;font-weight:700;color:{_ev_col}">'
+                                    f'{_ev_verdict.replace("_"," ").title()} — {_ev_cred.title()} level</div>'
+                                    f'<div style="font-size:10px;color:rgba(0,0,0,0.5)">'
+                                    f'{"✅ Interview-ready" if _ev_ready else "❌ Not yet interview-ready"}</div>'
+                                    f'</div></div>'
+                                    f'<div style="font-size:11px;color:rgba(0,0,0,0.75);margin-bottom:4px">'
+                                    f'<strong>What works:</strong> {_eval_r.get("what_works","")}</div>'
+                                    f'<div style="font-size:11px;color:rgba(0,0,0,0.75);margin-bottom:6px">'
+                                    f'<strong>To improve:</strong> {_eval_r.get("what_to_improve","")}</div>'
+                                    f'<div style="background:{_ev_col}15;border-radius:5px;padding:6px 10px;font-size:11px;color:rgba(0,0,0,0.8)">'
+                                    f'<strong>Revision:</strong> {_eval_r.get("suggested_revision","")}'
+                                    f'</div></div>',
+                                    unsafe_allow_html=True,
+                                )
+                                if _ev_score >= 75:
+                                    st.success(f"Proof accepted! '{_proof_skill}' is now evidenced in your profile.")
 
     # ── Phase 3: Generate application ────────────────────────────────────────
     if st.session_state.qa_parsed and st.session_state.qa_closest_occ:
