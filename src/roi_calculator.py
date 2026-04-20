@@ -116,19 +116,19 @@ def compute_application_roi(
     if ei_per_app >= 0.35:
         priority = "High ROI"
         priority_color = "#057642"
-        priority_icon = "🟢"
+        priority_icon = "●"
     elif ei_per_app >= 0.18:
         priority = "Medium ROI"
         priority_color = "#A05A00"
-        priority_icon = "🟡"
+        priority_icon = "●"
     elif ei_per_app >= 0.08:
         priority = "Low ROI"
         priority_color = "#7A2A8A"
-        priority_icon = "🟠"
+        priority_icon = "●"
     else:
         priority = "Skip"
         priority_color = "#B71C1C"
-        priority_icon = "🔴"
+        priority_icon = "●"
 
     # Build reasoning
     factors = []
