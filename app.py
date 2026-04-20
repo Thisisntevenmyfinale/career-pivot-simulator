@@ -2491,7 +2491,7 @@ if quick_apply:
                 )
 
         # ── Manually add application ─────────────────────────────────────
-        with st.expander("+ Add application manually", expanded=False):
+        if st.checkbox("+ Add application manually", key="pl_show_manual"):
             _ma_c1, _ma_c2 = st.columns(2)
             with _ma_c1:
                 _ma_title = st.text_input("Job title", key="pl_manual_title")
@@ -2742,7 +2742,7 @@ if quick_apply:
                 st.markdown("</div>", unsafe_allow_html=True)
 
             # Log table
-            with st.expander(f"Outcome log ({len(_ot_log)} entries)", expanded=False):
+            if st.checkbox(f"Show outcome log ({len(_ot_log)} entries)", key="ot_show_log"):
                 for _oe in reversed(_ot_log[-10:]):
                     _oc = STAGE_COLORS.get(_oe.get("actual_stage",""), "#5F6B7A")
                     st.markdown(
