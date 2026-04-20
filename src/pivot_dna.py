@@ -220,7 +220,9 @@ Respond ONLY with valid JSON:
   "pivot_hook": "Six years of turning financial complexity into strategic clarity taught me that the highest-leverage version of analytical thinking isn't in a model — it's in the product decisions those models inform. I'm moving into product management to operate at that leverage point directly.",
   "unfair_advantage": "You bring quantitative fluency and stakeholder credibility that most product managers spend years trying to fake. In rooms with data teams, finance leaders, and C-suite, you speak the language natively — which removes the single biggest friction point in cross-functional product leadership.",
   "writing_persona": "systems-minded analyst"
-}}"""
+}}
+
+No emojis. Plain professional prose only."""
 
     try:
         r = client.chat.completions.create(
@@ -363,7 +365,9 @@ Respond ONLY with valid JSON:
   "benchmark_context": "At the {exp_bracket} level, this pivot typically takes 12-18 weeks and 15-25 applications. You're in the median range if you've been searching 8+ weeks with 10+ applications and haven't had a first round yet — not behind schedule.",
   "your_week_estimate": "10-16 weeks to first offer, assuming 8-12 quality applications per month and at least one warm intro pathway active.",
   "confidence": "medium"
-}}"""
+}}
+
+No emojis. Plain professional prose only."""
 
     try:
         r = client.chat.completions.create(
@@ -483,7 +487,9 @@ Respond ONLY with valid JSON:
   "linkedin_post_hook": "I spent 3 hours turning a public dataset into a product insight. Here's the funnel drop-off I found — and what I'd do about it as a PM.",
   "cv_bullet": "Built SQL funnel analysis (5 queries, 100k-row dataset) identifying 34% payment drop-off; produced PM-ready executive summary with 3 data-backed product interventions",
   "difficulty": "intermediate"
-}}"""
+}}
+
+No emojis. Plain professional prose only."""
 
     try:
         r = client.chat.completions.create(
@@ -608,7 +614,9 @@ Respond ONLY with valid JSON:
   ],
   "one_line_read": "Lead with structure and specificity. This person is not moved by enthusiasm — they're moved by evidence of rigorous thinking.",
   "confidence": "medium"
-}}"""
+}}
+
+No emojis. Plain professional prose only."""
 
     try:
         r = client.chat.completions.create(

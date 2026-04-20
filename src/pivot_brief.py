@@ -154,7 +154,9 @@ Respond ONLY with valid JSON:
     }}
   ],
   "one_line_brand": "Financial analyst who builds products — not just models — that help teams make smarter decisions at scale."
-}}"""
+}}
+
+All text must be plain professional prose. No emojis anywhere."""
 
     try:
         r = client.chat.completions.create(
@@ -359,7 +361,9 @@ Respond ONLY with valid JSON:
   ],
   "opening_statement": "I spent 6 years in [current field] doing [core work]. The insight that drove my pivot was [specific insight]. I've spent the last [X months] preparing specifically for [target role] — I've [specific preparation action]. I'm targeting companies like {company_name} because [specific reason tied to company]. Here's what I'd do in my first 90 days...",
   "closing_statement": "Based on what we've discussed today, I'm genuinely excited about this role — specifically [X you learned]. I'd love to know what the next step looks like from your end, and what I could do to be the strongest candidate in your consideration set."
-}}"""
+}}
+
+All text must be plain professional prose. No emojis anywhere."""
 
     try:
         r = client.chat.completions.create(

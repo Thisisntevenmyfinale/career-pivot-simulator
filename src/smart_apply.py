@@ -426,6 +426,7 @@ Requirements:
 - interview_prep: exactly 5 items
 - Be specific — mention actual skills, actual job requirements
 - The cover letter should feel like it was written by a human for THIS job, not copy-pasted
+- ABSOLUTELY NO emojis anywhere in any field — cover letter, bullets, InMail, interview answers must all be plain professional text
 """
 
     try:
