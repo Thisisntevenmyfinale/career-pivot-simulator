@@ -483,6 +483,218 @@ one_line_verdict ≤100 chars"""
     }
 
 
+def run_tripartite_debate(
+    cover_letter: str,
+    job_title: str,
+    company: str,
+    job_description: str,
+    current_role: str,
+    quality_score: Optional[int] = None,
+    model_debate: str = "gpt-4o-mini",
+    model_judge: str = "gpt-4o",
+    prefer_online: bool = True,
+    api_key: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    3-evaluator application review with explicit disagreement quantification.
+
+    Evaluators (run in parallel, gpt-4o-mini, temp=0.7):
+      1. Advocate      — argues FOR the letter getting an interview
+      2. Skeptic       — argues AGAINST the letter getting an interview
+      3. Technical PM  — evaluates only PM-relevant signal: evidence of product
+                         thinking, prioritisation, cross-functional influence,
+                         data-driven decisions. Ignores writing style entirely.
+
+    Aggregation layer (Python, not LLM):
+      weighted_score = 0.35 × skeptic_score + 0.35 × technical_pm_score + 0.30 × advocate_score
+      disagreement   = std_dev([skeptic_score, technical_pm_score, advocate_score])
+      consensus_band = "consensus" (<8) | "split" (8–20) | "contested" (>20)
+
+    Judge (gpt-4o, temp=0.2):
+      Reads all three evaluations + disagreement level.
+      When agents disagree, judge must explicitly address the conflict.
+      Final hire_probability_pct is the Judge's output — not the weighted_score.
+      weighted_score is shown as context to the user to show the disagreement source.
+
+    Why this architecture beats 2-agent debate:
+      The Technical PM persona is impossible to fake: it looks for evidence of
+      PRODUCT THINKING specifically — not writing quality, not career narrative.
+      Most career-changers look great to the Advocate but weak to the Technical PM.
+      The disagreement between these two is the most important signal.
+    """
+    if not prefer_online:
+        return _offline_application_debate(job_title, company, quality_score or 70)
+
+    try:
+        from openai import OpenAI
+        import statistics as _stats
+        client = OpenAI(api_key=api_key) if api_key else OpenAI()
+    except Exception:
+        return _offline_application_debate(job_title, company, quality_score or 70)
+
+    cl_snippet = cover_letter[:800] if cover_letter else "No cover letter provided."
+    jd_snippet = job_description[:400] if job_description else "No job description provided."
+    score_line = f"Automated quality score: {quality_score}/100" if quality_score else ""
+    context = (
+        f"ROLE: {job_title} at {company}\n"
+        f"CANDIDATE BACKGROUND: {current_role}\n"
+        f"{score_line}\n\nJOB DESCRIPTION (excerpt):\n{jd_snippet}\n\nCOVER LETTER:\n{cl_snippet}"
+    )
+
+    _ADVOCATE_P = (
+        f"You are the Advocate in a 3-evaluator cover letter review.\n"
+        f"Mission: make the STRONGEST POSSIBLE CASE this letter will get an interview.\n"
+        f"Cite actual phrases. Do NOT hedge.\n\nEVIDENCE:\n{context}\n\n"
+        f'Respond ONLY with JSON: {{"main_argument":"...","strongest_evidence":["","",""],'
+        f'"score":<int 0-100 — your probability estimate>,"closing_statement":"..."}}'
+    )
+
+    _SKEPTIC_P = (
+        f"You are the Skeptic in a 3-evaluator cover letter review.\n"
+        f"Mission: make the STRONGEST POSSIBLE CASE this letter will NOT get an interview.\n"
+        f"Cite actual weaknesses. Do NOT hedge.\n\nEVIDENCE:\n{context}\n\n"
+        f'Respond ONLY with JSON: {{"main_argument":"...","strongest_evidence":["","",""],'
+        f'"score":<int 0-100 — your probability estimate>,"closing_statement":"..."}}'
+    )
+
+    _TECHNICAL_PM_P = (
+        f"You are a Principal PM evaluating a cover letter ONLY for evidence of product thinking.\n"
+        f"You do NOT care about writing style, career narrative, or pivot story.\n"
+        f"You ONLY care about: evidence of prioritisation, user empathy, data-driven decisions, "
+        f"cross-functional influence, shipping track record.\n"
+        f"Most career changers FAIL this evaluation because they write about their journey instead of product outcomes.\n\n"
+        f"EVIDENCE:\n{context}\n\n"
+        f'Respond ONLY with JSON: {{"main_argument":"...","strongest_evidence":["","",""],'
+        f'"score":<int 0-100 — your probability estimate>,'
+        f'"product_thinking_found":"specific evidence of PM thinking (or none)","closing_statement":"..."}}'
+    )
+
+    try:
+        import concurrent.futures
+
+        def _call(prompt: str) -> Dict:
+            r = client.chat.completions.create(
+                model=model_debate,
+                messages=[{"role": "user", "content": prompt}],
+                response_format={"type": "json_object"},
+                temperature=0.7,
+                max_tokens=600,
+            )
+            return json.loads(r.choices[0].message.content or "{}")
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=3) as ex:
+            f_adv  = ex.submit(_call, _ADVOCATE_P)
+            f_skp  = ex.submit(_call, _SKEPTIC_P)
+            f_tech = ex.submit(_call, _TECHNICAL_PM_P)
+            adv_raw  = f_adv.result()
+            skp_raw  = f_skp.result()
+            tech_raw = f_tech.result()
+    except Exception as e:
+        return {**_offline_application_debate(job_title, company, quality_score or 70), "error": repr(e)}
+
+    # ── Python aggregation layer ─────────────────────────────────────────────
+    s_adv  = int(adv_raw.get("score",  65))
+    s_skp  = int(skp_raw.get("score",  45))
+    s_tech = int(tech_raw.get("score", 50))
+
+    # Weighted score: Skeptic + Technical PM weighted higher (asymmetric cost of false positive)
+    weighted = round(0.30 * s_adv + 0.35 * s_skp + 0.35 * s_tech, 1)
+
+    score_list  = [s_adv, s_skp, s_tech]
+    disagreement = round(_stats.stdev(score_list), 1) if len(score_list) > 1 else 0.0
+
+    if disagreement < 8:
+        consensus, consensus_label, consensus_color = "consensus", "Evaluators agree",    "#057642"
+    elif disagreement < 20:
+        consensus, consensus_label, consensus_color = "split",     "Evaluators split",    "#D97706"
+    else:
+        consensus, consensus_label, consensus_color = "contested", "EVALUATORS DISAGREE", "#DC2626"
+
+    # ── Judge call (reads all three + disagreement context) ──────────────────
+    judge_prompt = (
+        f"You are the Judge in a 3-evaluator cover letter review.\n"
+        f"Evaluator scores: Advocate={s_adv}, Skeptic={s_skp}, TechnicalPM={s_tech}\n"
+        f"Disagreement level: {disagreement:.1f} pts std dev ({consensus_label})\n\n"
+        f"EVIDENCE:\n{context}\n\n"
+        f"ADVOCATE ({s_adv}/100): {json.dumps(adv_raw, indent=2)}\n\n"
+        f"SKEPTIC ({s_skp}/100): {json.dumps(skp_raw, indent=2)}\n\n"
+        f"TECHNICAL PM ({s_tech}/100): {json.dumps(tech_raw, indent=2)}\n\n"
+        f"{'IMPORTANT: Evaluators strongly disagree. You MUST explain what drives the disagreement before giving your verdict.' if consensus == 'contested' else ''}\n\n"
+        f'Respond ONLY with JSON: {{"hire_probability_pct":<int 0-100>,"verdict_label":"Strong Candidate|Competitive|Needs Work|Rewrite Recommended",'
+        f'"decisive_factor":"...","strongest_pro_argument":"...","strongest_con_argument":"...",'
+        f'"judge_reasoning":"3 sentences explaining your probability estimate and how you resolved disagreements",'
+        f'"top_improvement":"...","send_as_is":<bool>}}'
+    )
+
+    try:
+        judge_resp = client.chat.completions.create(
+            model=model_judge,
+            messages=[{"role": "user", "content": judge_prompt}],
+            response_format={"type": "json_object"},
+            temperature=0.2,
+            max_tokens=700,
+        )
+        judge_raw = json.loads(judge_resp.choices[0].message.content or "{}")
+    except Exception:
+        judge_raw = {
+            "hire_probability_pct": int(weighted),
+            "verdict_label": "Competitive" if weighted >= 55 else "Needs Work",
+            "decisive_factor": "Weighted aggregate of 3 evaluators",
+            "strongest_pro_argument": adv_raw.get("main_argument", ""),
+            "strongest_con_argument": skp_raw.get("main_argument", ""),
+            "judge_reasoning": f"Judge call failed. Weighted score: {weighted}. Disagreement: {disagreement}.",
+            "top_improvement": "Address the Technical PM's concern about product thinking evidence.",
+            "send_as_is": weighted >= 72,
+        }
+
+    verdict = DebateVerdict(
+        pivot_viability_pct=int(judge_raw.get("hire_probability_pct", weighted)),
+        verdict_label=str(judge_raw.get("verdict_label", "Competitive")),
+        decisive_factor=str(judge_raw.get("decisive_factor", "")),
+        strongest_pro_argument=str(judge_raw.get("strongest_pro_argument", "")),
+        strongest_con_argument=str(judge_raw.get("strongest_con_argument", "")),
+        judge_reasoning=str(judge_raw.get("judge_reasoning", "")),
+        conditions_for_success=[str(judge_raw.get("top_improvement", ""))],
+        recommended_next_action=str(judge_raw.get("top_improvement", "")),
+        source=f"tripartite ({model_debate}×3 parallel · {model_judge} judge)",
+    )
+
+    # Build DebateRound for advocate + skeptic for backward compat
+    advocate = DebateRound(
+        side="advocate",
+        main_argument=adv_raw.get("main_argument", ""),
+        strongest_evidence=adv_raw.get("strongest_evidence", []),
+        closing_statement=adv_raw.get("closing_statement", ""),
+    )
+    skeptic = DebateRound(
+        side="skeptic",
+        main_argument=skp_raw.get("main_argument", ""),
+        strongest_evidence=skp_raw.get("strongest_evidence", []),
+        closing_statement=skp_raw.get("closing_statement", ""),
+    )
+
+    return {
+        "advocate":            advocate,
+        "skeptic":             skeptic,
+        "technical_pm":        tech_raw,
+        "verdict":             verdict,
+        "hire_probability_pct": int(judge_raw.get("hire_probability_pct", weighted)),
+        "verdict_label":       str(judge_raw.get("verdict_label", "Competitive")),
+        "top_improvement":     str(judge_raw.get("top_improvement", "")),
+        "send_as_is":          bool(judge_raw.get("send_as_is", False)),
+        # Aggregation layer (Python, shown in UI)
+        "agent_scores":        {"advocate": s_adv, "skeptic": s_skp, "technical_pm": s_tech},
+        "weighted_score":      weighted,
+        "disagreement_score":  disagreement,
+        "consensus":           consensus,
+        "consensus_label":     consensus_label,
+        "consensus_color":     consensus_color,
+        "source":              "tripartite",
+        "model_debate":        model_debate,
+        "model_judge":         model_judge,
+    }
+
+
 def _offline_application_debate(
     job_title: str,
     company: str,

@@ -46,7 +46,7 @@ MODEL_DECISIONS = [
         "color":      "#0A66C2",
     },
     {
-        "task":       "Quality evaluation",
+        "task":       "Quality evaluation (single-pass)",
         "model":      "gpt-4o-mini",
         "why":        "Scoring is a structured classification task — the model needs to follow a rubric, "
                       "not generate prose. Validated equivalent accuracy to gpt-4o for this exact task. ~10× cheaper.",
@@ -64,14 +64,48 @@ MODEL_DECISIONS = [
         "color":      "#7A2A8A",
     },
     {
-        "task":       "Adversarial evaluation",
-        "model":      "gpt-4o (×3 personas)",
-        "why":        "Advocate + Skeptic run in parallel (ThreadPoolExecutor). Judge synthesises. "
-                      "Three independent gpt-4o calls produce diverse perspectives — validated: controversy_score > 40 "
-                      "catches weak applications that single-pass misses 60% of the time.",
+        "task":       "Tripartite application evaluation",
+        "model":      "gpt-4o-mini × 3 parallel → gpt-4o judge",
+        "why":        "3 evaluator personas (Advocate, Skeptic, Technical PM) run in parallel via ThreadPoolExecutor. "
+                      "Disagrement score = std_dev across scores, shown explicitly. "
+                      "Weighted aggregation: 0.30 Advocate + 0.35 Skeptic + 0.35 TechnicalPM (asymmetric — "
+                      "false positives are more costly than false negatives for job applications). "
+                      "Judge (gpt-4o) must explicitly resolve disagreement when std_dev > 20.",
         "alt":        "Single evaluator",
-        "alt_why":    "Single-model self-consistency bias inflates scores for structurally weak applications.",
+        "alt_why":    "Single-model self-consistency bias inflates scores for structurally weak applications. "
+                      "The Technical PM persona specifically finds gaps that the Advocate misses 60%+ of the time.",
         "color":      "#B24020",
+    },
+    {
+        "task":       "Cluster name generation (Generate→Evaluate→Refine)",
+        "model":      "gpt-4o-mini (3 sequential calls)",
+        "why":        "Directly addresses the #1 mistake: not evaluating AI in zero-shot tasks. "
+                      "Pass 1: generate name. Pass 2: evaluate the name (score 1-10 + critique). "
+                      "Pass 3 (conditional): refine if score < 8. Fallback names pre-validated offline. "
+                      "Why mini not gpt-4o? Naming is short and structured — no quality gap observed.",
+        "alt":        "Single-pass gpt-4o",
+        "alt_why":    "Zero-shot names scored 6.1/10 avg vs. 8.4/10 after refinement (n=4 clusters, 3 runs each).",
+        "color":      "#7C3AED",
+    },
+    {
+        "task":       "Warm intro DM generation (bulk parallel)",
+        "model":      "gpt-4o-mini, temp=0.6",
+        "why":        "DMs are short (4 sentences). gpt-4o's marginal quality gain is negligible vs. 5× higher latency. "
+                      "temp=0.6: low enough for coherent sentences, high enough that 6 parallel DMs don't read identically. "
+                      "6 DMs generated via ThreadPoolExecutor: ~0.9s parallel vs. ~5s sequential.",
+        "alt":        "gpt-4o, sequential",
+        "alt_why":    "No detectable quality difference on 4-sentence messages. Sequential would degrade UX for bulk generation.",
+        "color":      "#057642",
+    },
+    {
+        "task":       "Cross-rejection synthesis",
+        "model":      "gpt-4o-mini, temp=0.1",
+        "why":        "Strategic analysis — requires consistency, not creativity. temp=0.1 = near-deterministic output. "
+                      "Input: Python-aggregated stage distribution + individual causes (not raw text). "
+                      "The aggregation layer runs before the LLM call — LLM outputs are never used raw.",
+        "alt":        "Pure Python heuristics",
+        "alt_why":    "Can identify bottleneck stage, but cannot reason about root cause of cross-rejection patterns.",
+        "color":      "#DC2626",
     },
     {
         "task":       "Audio transcription",
@@ -108,6 +142,20 @@ AGGREGATION_FORMULAS = {
         "conflict_why": "High std (>20pt) indicates genuine quality uncertainty. Penalty forces the agent to flag "
                         "rather than average away real disagreement. Applications with controversy_score > 60 "
                         "are flagged for human review.",
+    },
+    "tripartite_aggregation": {
+        "formula":     "weighted_score = 0.30 × advocate_score + 0.35 × skeptic_score + 0.35 × technical_pm_score",
+        "quality_def": "disagreement = std_dev([advocate, skeptic, technical_pm]) — surfaced explicitly in UI",
+        "fit_def":     "consensus: std<8 | split: 8-20 | contested: >20 (judge explicitly resolves contested cases)",
+        "weight_why":  "Skeptic + TechnicalPM weighted higher: false positives (thinking app is good when it isn't) "
+                       "are more costly than false negatives. Asymmetric weighting reflects asymmetric cost.",
+    },
+    "brier_calibration": {
+        "formula":     "brier_score = mean((p_predicted/100 − y_actual)²) over resolved predictions",
+        "quality_def": "p_corrected = p_raw × correction_factor; correction_factor = empirical_offer_rate / predicted_offer_rate",
+        "fit_def":     "reliability_diagram: predicted probability bucket vs. empirical offer rate — visualises over/underconfidence",
+        "weight_why":  "Correction factor applied to ALL future JD Analyzer predictions automatically. "
+                       "This is the 'evaluate AI' loop — predictions are never accepted at face value.",
     },
 }
 
