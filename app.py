@@ -5956,56 +5956,63 @@ if not st.session_state.has_run:
         '</span>'
         '</div>'
 
-        # Pipeline visual
+        # Pipeline visual — CSS grid: 6 step cards + 5 arrows, all locked to one row
         '<div style="font-size:10px;font-weight:800;letter-spacing:0.1em;text-transform:uppercase;'
         'opacity:0.5;margin-bottom:10px">The pipeline</div>'
-        '<div style="display:flex;align-items:center;gap:0;flex-wrap:wrap;margin-bottom:28px">'
+        '<div style="display:grid;grid-template-columns:1fr 20px 1fr 20px 1fr 20px 1fr 20px 1fr 20px 1fr;'
+        'align-items:center;gap:0;margin-bottom:28px">'
 
         '<div style="background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);'
-        'border-radius:8px;padding:10px 16px;min-width:110px">'
-        f'<div style="display:flex;align-items:center;justify-content:center;margin-bottom:3px">{icon("file-text", 22, "rgba(255,255,255,0.9)")}</div>'
-        '<div style="font-size:12px;font-weight:800">Upload CV</div>'
-        '<div style="font-size:10px;opacity:0.6;margin-top:2px">skill extraction<br>O*NET mapping</div>'
+        'border-radius:8px;padding:10px 12px;display:flex;flex-direction:column;align-items:center;'
+        'justify-content:flex-start;min-height:82px;box-sizing:border-box">'
+        f'<div style="display:flex;align-items:center;justify-content:center;margin-bottom:5px;height:26px">{icon("file-text", 20, "rgba(255,255,255,0.9)")}</div>'
+        '<div style="font-size:11px;font-weight:800;text-align:center;line-height:1.25">Upload CV</div>'
+        '<div style="font-size:10px;opacity:0.6;margin-top:3px;text-align:center;line-height:1.3">skill extraction<br>O*NET mapping</div>'
         '</div>'
-        '<div style="font-size:18px;opacity:0.4;padding:0 6px">→</div>'
+        f'<div style="display:flex;align-items:center;justify-content:center;opacity:0.45">{icon("arrow-right", 14, "rgba(255,255,255,0.9)")}</div>'
 
         '<div style="background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);'
-        'border-radius:8px;padding:10px 16px;min-width:110px">'
-        f'<div style="display:flex;align-items:center;justify-content:center;margin-bottom:3px">{icon("search", 22, "rgba(255,255,255,0.9)")}</div>'
-        '<div style="font-size:12px;font-weight:800">Find / Paste Job</div>'
-        '<div style="font-size:10px;opacity:0.6;margin-top:2px">SerpAPI real jobs<br>or paste one JD</div>'
+        'border-radius:8px;padding:10px 12px;display:flex;flex-direction:column;align-items:center;'
+        'justify-content:flex-start;min-height:82px;box-sizing:border-box">'
+        f'<div style="display:flex;align-items:center;justify-content:center;margin-bottom:5px;height:26px">{icon("search", 20, "rgba(255,255,255,0.9)")}</div>'
+        '<div style="font-size:11px;font-weight:800;text-align:center;line-height:1.25">Find / Paste Job</div>'
+        '<div style="font-size:10px;opacity:0.6;margin-top:3px;text-align:center;line-height:1.3">SerpAPI real jobs<br>or paste one JD</div>'
         '</div>'
-        '<div style="font-size:18px;opacity:0.4;padding:0 6px">→</div>'
+        f'<div style="display:flex;align-items:center;justify-content:center;opacity:0.45">{icon("arrow-right", 14, "rgba(255,255,255,0.9)")}</div>'
 
         '<div style="background:rgba(255,255,255,0.18);border:1.5px solid rgba(255,255,255,0.5);'
-        'border-radius:8px;padding:10px 16px;min-width:130px">'
-        f'<div style="display:flex;align-items:center;justify-content:center;margin-bottom:3px">{icon("zap", 22, "rgba(255,255,255,0.9)")}</div>'
-        '<div style="font-size:12px;font-weight:800">Generate Portfolio</div>'
-        '<div style="font-size:10px;opacity:0.7;margin-top:2px">1–3 applications<br>parallel (gpt-4o)</div>'
+        'border-radius:8px;padding:10px 12px;display:flex;flex-direction:column;align-items:center;'
+        'justify-content:flex-start;min-height:82px;box-sizing:border-box">'
+        f'<div style="display:flex;align-items:center;justify-content:center;margin-bottom:5px;height:26px">{icon("zap", 20, "rgba(255,255,255,0.9)")}</div>'
+        '<div style="font-size:11px;font-weight:800;text-align:center;line-height:1.25">Generate Portfolio</div>'
+        '<div style="font-size:10px;opacity:0.7;margin-top:3px;text-align:center;line-height:1.3">1–3 apps<br>parallel (gpt-4o)</div>'
         '</div>'
-        '<div style="font-size:18px;opacity:0.4;padding:0 6px">→</div>'
+        f'<div style="display:flex;align-items:center;justify-content:center;opacity:0.45">{icon("arrow-right", 14, "rgba(255,255,255,0.9)")}</div>'
 
         '<div style="background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);'
-        'border-radius:8px;padding:10px 16px;min-width:110px">'
-        f'<div style="display:flex;align-items:center;justify-content:center;margin-bottom:3px">{icon("scale", 22, "rgba(255,255,255,0.9)")}</div>'
-        '<div style="font-size:12px;font-weight:800">Debate + Rank</div>'
-        '<div style="font-size:10px;opacity:0.6;margin-top:2px">adversarial test<br>hire probability %</div>'
+        'border-radius:8px;padding:10px 12px;display:flex;flex-direction:column;align-items:center;'
+        'justify-content:flex-start;min-height:82px;box-sizing:border-box">'
+        f'<div style="display:flex;align-items:center;justify-content:center;margin-bottom:5px;height:26px">{icon("scale", 20, "rgba(255,255,255,0.9)")}</div>'
+        '<div style="font-size:11px;font-weight:800;text-align:center;line-height:1.25">Debate + Rank</div>'
+        '<div style="font-size:10px;opacity:0.6;margin-top:3px;text-align:center;line-height:1.3">adversarial test<br>hire probability %</div>'
         '</div>'
-        '<div style="font-size:18px;opacity:0.4;padding:0 6px">→</div>'
+        f'<div style="display:flex;align-items:center;justify-content:center;opacity:0.45">{icon("arrow-right", 14, "rgba(255,255,255,0.9)")}</div>'
 
         '<div style="background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);'
-        'border-radius:8px;padding:10px 16px;min-width:110px">'
-        f'<div style="display:flex;align-items:center;justify-content:center;margin-bottom:3px">{icon("mic", 22, "rgba(255,255,255,0.9)")}</div>'
-        '<div style="font-size:12px;font-weight:800">Interview Prep</div>'
-        '<div style="font-size:10px;opacity:0.6;margin-top:2px">tailored questions<br>answer coaching</div>'
+        'border-radius:8px;padding:10px 12px;display:flex;flex-direction:column;align-items:center;'
+        'justify-content:flex-start;min-height:82px;box-sizing:border-box">'
+        f'<div style="display:flex;align-items:center;justify-content:center;margin-bottom:5px;height:26px">{icon("mic", 20, "rgba(255,255,255,0.9)")}</div>'
+        '<div style="font-size:11px;font-weight:800;text-align:center;line-height:1.25">Interview Prep</div>'
+        '<div style="font-size:10px;opacity:0.6;margin-top:3px;text-align:center;line-height:1.3">tailored questions<br>answer coaching</div>'
         '</div>'
-        '<div style="font-size:18px;opacity:0.4;padding:0 6px">→</div>'
+        f'<div style="display:flex;align-items:center;justify-content:center;opacity:0.45">{icon("arrow-right", 14, "rgba(255,255,255,0.9)")}</div>'
 
         '<div style="background:rgba(125,211,252,0.2);border:1.5px solid rgba(125,211,252,0.5);'
-        'border-radius:8px;padding:10px 16px;min-width:110px">'
-        f'<div style="display:flex;align-items:center;justify-content:center;margin-bottom:3px">{icon("calendar", 22, "rgba(125,211,252,0.9)")}</div>'
-        '<div style="font-size:12px;font-weight:800;color:#7DD3FC">Interview</div>'
-        '<div style="font-size:10px;color:rgba(125,211,252,0.8);margin-top:2px">the only goal<br>that matters</div>'
+        'border-radius:8px;padding:10px 12px;display:flex;flex-direction:column;align-items:center;'
+        'justify-content:flex-start;min-height:82px;box-sizing:border-box">'
+        f'<div style="display:flex;align-items:center;justify-content:center;margin-bottom:5px;height:26px">{icon("calendar", 20, "rgba(125,211,252,0.9)")}</div>'
+        '<div style="font-size:11px;font-weight:800;text-align:center;color:#7DD3FC;line-height:1.25">Interview</div>'
+        '<div style="font-size:10px;color:rgba(125,211,252,0.8);margin-top:3px;text-align:center;line-height:1.3">the only goal<br>that matters</div>'
         '</div>'
 
         '</div>'
@@ -6111,36 +6118,40 @@ if not st.session_state.has_run:
             st.session_state["has_run"] = True
             st.rerun()
 
-    # ── Architecture layer — 6 cards (3×2) ───────────────────────────────
-    st.markdown(
-        '<div style="font-size:10px;font-weight:800;letter-spacing:0.1em;text-transform:uppercase;'
-        'color:rgba(0,0,0,0.35);margin:22px 0 8px 0">What makes this technically non-trivial</div>',
-        unsafe_allow_html=True,
-    )
+    # ── Architecture layer — 6 cards (3×2 CSS Grid — guaranteed equal height) ──
     _arch_cards = [
-        ("🗄️", "Structured Data", "O*NET 894 occupations × 119 skill dimensions · IDF weighting · cosine similarity offline → O(1) runtime"),
-        ("🤖", "Dual-LLM Pattern", "gpt-4o generates quality-critical artifacts → gpt-4o-mini evaluates each. Validated: +14pt on cover letters vs. single-pass (n=3 zero-shot)"),
-        ("⚡", "Parallel Generation", "Find mode: ThreadPoolExecutor generates + evaluates 3 applications simultaneously. Advocate + Skeptic also run in parallel."),
-        ("🔁", "Agentic Loop", "gpt-4o orchestrator selects tools, chains steps, detects conflicts — multi-step reasoning, not prompt chaining"),
-        ("⚖️", "Adversarial Evaluation", "Advocate + Skeptic (parallel) → Judge synthesises → hire_prob %. LLM output never shown raw"),
-        ("📐", "Python Aggregation", "Two layers: (1) hire_prob = 0.65×quality + 0.35×fit for portfolio ranking · (2) controversy score + std penalty for multi-reviewer consensus — neither formula used raw"),
+        ("layers",    "#EEF3FB", "#0A66C2", False, "Structured Data",
+         "O*NET 894 occupations × 119 skill dimensions · IDF weighting · cosine similarity offline → O(1) runtime"),
+        ("cpu",       "#EEF3FB", "#0A66C2", False, "Dual-LLM Pattern",
+         "gpt-4o generates quality-critical artifacts → gpt-4o-mini evaluates each. Validated: +14pt on cover letters vs. single-pass (n=3 zero-shot)"),
+        ("zap",       "#EEF3FB", "#0A66C2", False, "Parallel Generation",
+         "ThreadPoolExecutor generates + evaluates 3 applications simultaneously. Advocate + Skeptic also run in parallel."),
+        ("refresh-cw","#EEF3FB", "#0A66C2", True,  "Agentic Loop",
+         "gpt-4o orchestrator selects tools, chains steps, detects conflicts — multi-step reasoning, not prompt chaining"),
+        ("scale",     "#EEF3FB", "#0A66C2", False, "Adversarial Evaluation",
+         "Advocate + Skeptic (parallel) → Judge synthesises → hire_prob %. LLM output never shown raw"),
+        ("activity",  "#EEF3FB", "#0A66C2", False, "Python Aggregation",
+         "Two layers: (1) hire_prob = 0.65×quality + 0.35×fit for portfolio ranking · (2) controversy score + std penalty for multi-reviewer consensus — neither formula used raw"),
     ]
-    _arch_r1 = st.columns(3, gap="small")
-    _arch_r2 = st.columns(3, gap="small")
-    for _hi, (_hicon, _hname, _hdesc) in enumerate(_arch_cards):
-        _arch_col = (_arch_r1 if _hi < 3 else _arch_r2)[_hi % 3]
-        with _arch_col:
-            _hborder = "#0A66C2" if _hname == "Agentic Loop" else "#C7D8F0"
-            _hbg = "#EEF3FB" if _hname == "Agentic Loop" else "#F8FAFF"
-            st.markdown(
-                f'<div style="background:{_hbg};border:1.5px solid {_hborder};border-radius:8px;'
-                f'padding:14px 12px;height:100%">'
-                f'<div style="font-size:18px;margin-bottom:6px">{_hicon}</div>'
-                f'<div style="font-size:12px;font-weight:800;color:#0A66C2;margin-bottom:5px">{_hname}</div>'
-                f'<div style="font-size:11px;color:rgba(0,0,0,0.55);line-height:1.5">{_hdesc}</div>'
-                f'</div>',
-                unsafe_allow_html=True,
-            )
+    _arch_html = (
+        '<div style="font-size:10px;font-weight:800;letter-spacing:0.1em;text-transform:uppercase;'
+        'color:rgba(0,0,0,0.35);margin:22px 0 10px 0">What makes this technically non-trivial</div>'
+        '<div style="display:grid;grid-template-columns:repeat(3,1fr);grid-auto-rows:1fr;gap:10px">'
+    )
+    for _ico, _bg, _col, _highlight, _name, _desc in _arch_cards:
+        _border = "#0A66C2" if _highlight else "#C7D8F0"
+        _card_bg = "#EEF3FB" if _highlight else "#F8FAFF"
+        _title_col = "#0A66C2"
+        _arch_html += (
+            f'<div style="background:{_card_bg};border:1.5px solid {_border};border-radius:8px;'
+            f'padding:14px 13px;display:flex;flex-direction:column;box-sizing:border-box">'
+            f'<div style="margin-bottom:8px">{icon_box(_ico, bg=_bg, color=_col, size=16, box_size=30, radius=6)}</div>'
+            f'<div style="font-size:12px;font-weight:800;color:{_title_col};margin-bottom:5px;line-height:1.2">{_name}</div>'
+            f'<div style="font-size:11px;color:rgba(0,0,0,0.55);line-height:1.5;flex:1">{_desc}</div>'
+            f'</div>'
+        )
+    _arch_html += '</div>'
+    st.markdown(_arch_html, unsafe_allow_html=True)
 
     st.caption("Upload your CV in the sidebar to personalise the pipeline · Pick current & target occupation · Then choose a mode above.")
     st.stop()
