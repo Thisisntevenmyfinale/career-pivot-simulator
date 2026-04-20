@@ -48,6 +48,11 @@ from src.pipeline_manager import (
     STATUS_LABELS, STATUS_COLORS, APPLICATION_STATUSES,
 )
 from src.company_intelligence import generate_company_brief, format_brief_as_markdown
+from src.advisor import synthesize_advisor_recommendation, generate_rejection_reframe
+from src.market_pulse import get_market_pulse, generate_warm_intro_sequence
+from src.pivot_brief import (
+    generate_pivot_brief, format_pivot_brief_as_markdown, generate_interview_war_room
+)
 from src.smart_apply import (
     generate_job_listings, generate_application_package, generate_pivot_peers,
     JobListing, ApplicationPackage, PivotPeer,
@@ -1390,6 +1395,20 @@ DEFAULT_STATE = {
     "qa_portfolio_jobs": None,     # List[Dict] — jobs fetched from SerpAPI / AI
     "qa_portfolio_packages": {},   # {idx: {"job":…,"package":…,"eval":…,"fit":…,"hire_prob":…}}
     "qa_portfolio_mode": "paste",  # "paste" | "find"
+    # AI Advisor (cross-module synthesis)
+    "advisor_result": None,        # synthesize_advisor_recommendation result
+    # Market Pulse
+    "market_pulse_result": None,   # get_market_pulse result
+    "market_pulse_role": "",       # role the pulse was run for
+    # Warm Intro Pathfinder
+    "warm_intro_result": None,     # generate_warm_intro_sequence result
+    # Pivot Brief
+    "pivot_brief_result": None,    # generate_pivot_brief result
+    # Interview War Room
+    "war_room_result": None,       # generate_interview_war_room result
+    "war_room_company": "",        # company the war room was built for
+    # Rejection Reframe (per rejection)
+    "rejection_reframe_result": None,
 }
 
 for key, value in DEFAULT_STATE.items():
@@ -1694,6 +1713,161 @@ if quick_apply:
         pass
 
     # ════════════════════════════════════════════════════════════════════════
+    # CAREER COMMAND CENTER — AI Advisor Layer
+    # Cross-module synthesis: reads all session state → one clear next action.
+    # This is the "what do I do right now?" that no other tool answers.
+    # ════════════════════════════════════════════════════════════════════════
+    _adv_pl = compute_pipeline_stats(st.session_state.pipeline_jobs or [])
+    _adv_cv = st.session_state.cv_profile or {}
+    _adv_has_data = bool(
+        st.session_state.pipeline_jobs or
+        st.session_state.cv_profile or
+        st.session_state.qa_package or
+        st.session_state.qa_portfolio_packages
+    )
+
+    if _adv_has_data:
+        # Show Command Center header
+        _adv_phase_colors = {
+            "Exploration": "#7A2A8A",
+            "Active Application": "#0A66C2",
+            "Interview Loop": "#057642",
+            "Negotiation": "#A05A00",
+        }
+
+        with st.container(border=True):
+            _adv_hc1, _adv_hc2 = st.columns([4, 1], gap="small")
+            with _adv_hc1:
+                st.markdown(
+                    '<div style="display:flex;align-items:center;gap:10px">'
+                    '<div style="font-size:18px">🧭</div>'
+                    '<div><div style="font-size:15px;font-weight:900;color:#1D2226">Career Command Center</div>'
+                    '<div style="font-size:11px;color:rgba(0,0,0,0.45)">AI reads your full session and tells you what to do next</div>'
+                    '</div></div>',
+                    unsafe_allow_html=True,
+                )
+            with _adv_hc2:
+                if st.button("Refresh Advisor", key="adv_refresh", use_container_width=True, help="Re-synthesize based on current session state"):
+                    st.session_state.advisor_result = None
+
+            # Auto-run advisor if we have data but no result
+            if not st.session_state.advisor_result and _qa_key:
+                with st.spinner("AI Advisor synthesising your session…"):
+                    _adv_gaps = []
+                    if st.session_state.cv_gap_df is not None:
+                        try:
+                            _adv_gaps = st.session_state.cv_gap_df.head(5)["skill"].tolist()
+                        except Exception:
+                            pass
+                    _adv_fit = None
+                    if st.session_state.cv_profile and st.session_state.has_run:
+                        try:
+                            _adv_core = build_cosine_core(True)
+                            _adv_fit = get_score_distribution(True, str(current)).get("percentile_of_user")
+                        except Exception:
+                            pass
+                    _adv_mock_score = None
+                    if st.session_state.mock_interview_report:
+                        _adv_mock_score = st.session_state.mock_interview_report.get("overall_score")
+                    st.session_state.advisor_result = synthesize_advisor_recommendation(
+                        fit_score=_adv_fit,
+                        target_role=str(target),
+                        current_role=str(current),
+                        top_skill_gaps=_adv_gaps or None,
+                        pipeline_stats=_adv_pl,
+                        pipeline_diagnosis=st.session_state.pipeline_diagnosis,
+                        rejection_analysis=st.session_state.pipeline_rejection_analysis,
+                        weeks_searching=st.session_state.pipeline_weeks_searching,
+                        avg_ats_score=_adv_pl.get("avg_ats_score"),
+                        last_ats_score=(st.session_state.ats_result or {}).get("ats_score") or
+                                       (st.session_state.qa_ats_paste or {}).get("ats_score"),
+                        has_cover_letter=bool(st.session_state.qa_package or st.session_state.qa_portfolio_packages),
+                        mock_interview_score=_adv_mock_score,
+                        mock_interview_complete=bool(st.session_state.mock_interview_report),
+                        has_offer=bool(st.session_state.negotiation_offer_analysis),
+                        offer_analyzed=bool(
+                            st.session_state.negotiation_offer_analysis and
+                            st.session_state.negotiation_offer_analysis.get("market_salary_mid")
+                        ),
+                        cv_uploaded=bool(st.session_state.cv_profile),
+                        model="gpt-4o-mini",
+                        api_key=_qa_key,
+                        prefer_online=True,
+                    )
+
+            _adv = st.session_state.advisor_result
+            if _adv:
+                _adv_phase = _adv.get("phase", "Exploration")
+                _adv_phase_col = _adv_phase_colors.get(_adv_phase, "#0A66C2")
+                _adv_momentum = _adv.get("momentum_score", 0)
+                _adv_mom_col = "#117A37" if _adv_momentum >= 65 else ("#A05A00" if _adv_momentum >= 35 else "#B71C1C")
+
+                # Phase + Momentum bar
+                st.markdown(
+                    f'<div style="display:flex;align-items:center;gap:16px;margin:10px 0 14px 0">'
+                    f'<div style="background:{_adv_phase_col};color:#fff;border-radius:20px;'
+                    f'padding:3px 12px;font-size:11px;font-weight:800">{_adv_phase}</div>'
+                    f'<div style="flex:1">'
+                    f'<div style="display:flex;justify-content:space-between;font-size:10px;'
+                    f'font-weight:700;color:rgba(0,0,0,0.5);margin-bottom:3px">'
+                    f'<span>Momentum</span><span style="color:{_adv_mom_col}">'
+                    f'{_adv.get("momentum_label","?")} · {_adv_momentum}/100</span></div>'
+                    f'<div style="background:rgba(0,0,0,0.07);height:6px;border-radius:3px;overflow:hidden">'
+                    f'<div style="background:{_adv_mom_col};height:6px;width:{_adv_momentum}%;'
+                    f'border-radius:3px"></div></div>'
+                    f'</div></div>',
+                    unsafe_allow_html=True,
+                )
+
+                # Status summary
+                st.markdown(
+                    f'<div style="font-size:12px;color:rgba(0,0,0,0.65);line-height:1.6;'
+                    f'margin-bottom:10px">{_adv.get("status_summary","")}</div>',
+                    unsafe_allow_html=True,
+                )
+
+                # Primary action — the one thing to do
+                st.markdown(
+                    f'<div style="background:#EEF3FB;border-left:4px solid #0A66C2;'
+                    f'border-radius:0 8px 8px 0;padding:10px 14px;margin-bottom:8px">'
+                    f'<div style="font-size:10px;font-weight:800;text-transform:uppercase;'
+                    f'letter-spacing:0.08em;color:#0A66C2;margin-bottom:4px">Primary Action</div>'
+                    f'<div style="font-size:13px;font-weight:800;color:#1D2226;margin-bottom:3px">'
+                    f'{_adv.get("primary_action","")}</div>'
+                    f'<div style="font-size:11px;color:rgba(0,0,0,0.55)">'
+                    f'{_adv.get("primary_action_why","")}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+
+                # Supporting actions + signals
+                _adv_sa = _adv.get("supporting_actions", [])
+                _adv_gs = _adv.get("green_signals", [])
+                _adv_ws = _adv.get("warning_signals", [])
+
+                _adv_sc1, _adv_sc2 = st.columns(2, gap="medium")
+                with _adv_sc1:
+                    if _adv_sa:
+                        st.markdown(
+                            '<div style="font-size:10px;font-weight:800;text-transform:uppercase;'
+                            'letter-spacing:0.06em;color:rgba(0,0,0,0.4);margin-bottom:6px">Also do</div>',
+                            unsafe_allow_html=True,
+                        )
+                        for _sa in _adv_sa[:3]:
+                            st.markdown(f"→ {_sa}")
+                with _adv_sc2:
+                    for _gs in _adv_gs[:2]:
+                        st.markdown(f'<span style="color:#057642">✓ {_gs}</span>', unsafe_allow_html=True)
+                    for _ws in _adv_ws[:2]:
+                        st.markdown(f'<span style="color:#B71C1C">⚠ {_ws}</span>', unsafe_allow_html=True)
+
+                if _adv.get("time_to_offer_estimate"):
+                    st.caption(f"Time to offer estimate: {_adv['time_to_offer_estimate']}")
+
+            elif not _qa_key:
+                st.info("Add OpenAI API key in Streamlit secrets to activate the AI Advisor.")
+
+    # ════════════════════════════════════════════════════════════════════════
     # APPLICATION PIPELINE CRM — Search OS
     # Tracks every application, every stage, every rejection.
     # With enough data: diagnoses bottlenecks, predicts time-to-offer.
@@ -1786,6 +1960,22 @@ if quick_apply:
                     st.session_state.pipeline_jobs = _pl_jobs
                     st.session_state.pipeline_diagnosis = None
                     st.session_state.pipeline_rejection_analysis = None
+                    st.session_state.advisor_result = None  # force advisor refresh
+                    # Trigger rejection reframe for emotional + technical support
+                    if _new_status == "rejected" and _qa_key:
+                        _rj = _pl_jobs[_upd_idx]
+                        st.session_state.rejection_reframe_result = generate_rejection_reframe(
+                            job_title=_rj.get("title", ""),
+                            company=_rj.get("company", ""),
+                            rejection_stage=_notes or "unknown",
+                            search_context=f"{current} → {target}",
+                            total_applications=len(_pl_jobs),
+                            model="gpt-4o-mini",
+                            api_key=_qa_key,
+                            prefer_online=True,
+                        )
+                    else:
+                        st.session_state.rejection_reframe_result = None
                     st.rerun()
 
             if _new_status == "rejected":
@@ -1793,6 +1983,30 @@ if quick_apply:
                     "Rejection stage/notes (optional)",
                     key="pl_rejection_notes",
                     placeholder="e.g. 'After first round — said they wanted more domain experience'",
+                )
+
+            # ── Rejection Reframe Engine ─────────────────────────────────
+            _reframe = st.session_state.rejection_reframe_result
+            if _reframe and _reframe.get("reframe"):
+                st.markdown(
+                    f'<div style="background:#FFF8F0;border:1px solid #F0C080;border-radius:10px;'
+                    f'padding:14px 18px;margin-top:8px">'
+                    f'<div style="font-size:11px;font-weight:800;text-transform:uppercase;'
+                    f'letter-spacing:0.06em;color:#A05A00;margin-bottom:8px">Rejection Reframe</div>'
+                    f'<div style="font-size:13px;line-height:1.65;color:#1D2226;margin-bottom:10px">'
+                    f'{_reframe.get("reframe","")}</div>'
+                    f'<div style="background:#fff;border-left:3px solid #C37D16;border-radius:0 6px 6px 0;'
+                    f'padding:8px 12px;margin-bottom:8px;font-size:12px;color:rgba(0,0,0,0.65)">'
+                    f'<strong>What the data says:</strong> {_reframe.get("statistical_context","")}</div>'
+                    f'<div style="font-size:12px;font-weight:700;color:#1D2226;margin-bottom:4px">'
+                    f'Technical diagnosis: {_reframe.get("technical_diagnosis","")}</div>'
+                    f'<div style="background:#EEF3FB;border-radius:6px;padding:8px 12px;'
+                    f'font-size:12px;color:#0A66C2;font-weight:700;margin-bottom:8px">'
+                    f'Next: {_reframe.get("next_action","")}</div>'
+                    f'<div style="font-size:11px;color:rgba(0,0,0,0.45);font-style:italic">'
+                    f'{_reframe.get("motivation_line","")}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
                 )
 
         # ── Manually add application ─────────────────────────────────────
@@ -1922,6 +2136,159 @@ if quick_apply:
             st.session_state.pipeline_jobs = []
             st.session_state.pipeline_diagnosis = None
             st.rerun()
+
+    # ════════════════════════════════════════════════════════════════════════
+    # JOB MARKET PULSE + WARM INTRO PATHFINDER
+    # ════════════════════════════════════════════════════════════════════════
+    _mp_col1, _mp_col2 = st.columns([1, 1], gap="medium")
+
+    with _mp_col1:
+        with st.expander("📈 Job Market Pulse — Is now a good time?", expanded=False):
+            st.markdown(
+                '<div style="font-size:11px;color:rgba(0,0,0,0.5);margin-bottom:8px">'
+                'Live market timing for your target role — hiring velocity, sector health, '
+                'top companies hiring now, salary momentum.'
+                '</div>',
+                unsafe_allow_html=True,
+            )
+            _mp_location = st.text_input(
+                "Location", value="United States", key="mp_location",
+                placeholder="e.g. Remote, New York, London",
+            )
+            _mp_sector = st.text_input(
+                "Sector (optional)", value="", key="mp_sector",
+                placeholder="e.g. Fintech, SaaS, Healthcare",
+            )
+            if st.button("Get Market Pulse", key="mp_run", type="primary", use_container_width=True):
+                with st.spinner("Analysing job market for your target role…"):
+                    st.session_state.market_pulse_result = get_market_pulse(
+                        target_role=str(target),
+                        sector=_mp_sector,
+                        location=_mp_location,
+                        current_month=4,
+                        current_year=2025,
+                        model="gpt-4o-mini",
+                        api_key=_qa_key or None,
+                        prefer_online=bool(_qa_key),
+                    )
+                    st.session_state.market_pulse_role = str(target)
+
+            _mp = st.session_state.market_pulse_result
+            if _mp:
+                _mp_ts = _mp.get("timing_score", 50)
+                _mp_tc = "#117A37" if _mp_ts >= 65 else ("#A05A00" if _mp_ts >= 35 else "#B71C1C")
+                _mp_vel_icons = {
+                    "accelerating": "🚀", "steady": "✅", "decelerating": "⚠️", "frozen": "🧊"
+                }
+                _mp_vel_icon = _mp_vel_icons.get(_mp.get("hiring_velocity", ""), "📊")
+
+                st.markdown(
+                    f'<div style="background:#F3F6F9;border-radius:8px;padding:12px 16px;margin-top:6px">'
+                    f'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">'
+                    f'<div style="font-size:13px;font-weight:800">{_mp_vel_icon} '
+                    f'{_mp.get("timing_verdict","")}</div>'
+                    f'<div style="font-size:22px;font-weight:900;color:{_mp_tc}">{_mp_ts}</div>'
+                    f'</div>'
+                    f'<div style="font-size:11px;color:rgba(0,0,0,0.55);margin-bottom:8px">'
+                    f'Hiring velocity: <strong>{_mp.get("hiring_velocity","?")}</strong> · '
+                    f'Sector: <strong>{_mp.get("sector_health","?")}</strong> · '
+                    f'Salary: <strong>{_mp.get("salary_momentum","?")}</strong></div>'
+                    f'<div style="font-size:11px;line-height:1.6;color:rgba(0,0,0,0.65);margin-bottom:8px">'
+                    f'{_mp.get("current_month_context","")}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+
+                if _mp.get("top_companies_hiring"):
+                    st.markdown("**Companies actively hiring:**")
+                    for _co in _mp["top_companies_hiring"][:4]:
+                        st.markdown(f"→ {_co}")
+
+                if _mp.get("sourcing_tip"):
+                    st.info(f"**Sourcing tip:** {_mp['sourcing_tip']}")
+
+                if _mp.get("demand_drivers") or _mp.get("risk_factors"):
+                    _mp_dc1, _mp_dc2 = st.columns(2)
+                    with _mp_dc1:
+                        for _dd in _mp.get("demand_drivers", [])[:2]:
+                            st.markdown(f'<span style="color:#057642;font-size:11px">▲ {_dd}</span>', unsafe_allow_html=True)
+                    with _mp_dc2:
+                        for _rf in _mp.get("risk_factors", [])[:2]:
+                            st.markdown(f'<span style="color:#B71C1C;font-size:11px">▼ {_rf}</span>', unsafe_allow_html=True)
+
+                st.caption(f"Verdict: {_mp.get('one_line_verdict','')} · *{_mp.get('source','')}*")
+
+    with _mp_col2:
+        with st.expander("🤝 Warm Intro Pathfinder — Network Activation", expanded=False):
+            st.markdown(
+                '<div style="font-size:11px;color:rgba(0,0,0,0.5);margin-bottom:8px">'
+                'Cold outreach: &lt;3% response rate. '
+                'Warm intro: 35-50%. This generates a 3-touch sequence to activate your network.'
+                '</div>',
+                unsafe_allow_html=True,
+            )
+            _wi_company = st.text_input("Target company", key="wi_company",
+                                        placeholder="e.g. Stripe, Anthropic, Linear")
+            _wi_conn = st.text_input("Connection name / description", key="wi_conn",
+                                     placeholder="e.g. Jane Smith (former colleague), 2nd-degree LinkedIn")
+            _wi_conn_type = st.selectbox(
+                "Connection type",
+                ["LinkedIn 2nd-degree", "Former colleague", "University alumni", "Conference contact", "Cold (no mutual)"],
+                key="wi_conn_type",
+            )
+            _wi_name = st.text_input("Your name (for personalisation)", key="wi_name",
+                                     placeholder="e.g. Alex Chen")
+            _wi_bg = st.text_area("Your background (1-2 sentences)", key="wi_bg", height=60,
+                                  placeholder="e.g. 5 years in finance analytics, transitioning to product management")
+
+            if st.button("Generate Outreach Sequence", key="wi_run", type="primary", use_container_width=True):
+                if _wi_company:
+                    with st.spinner("Crafting your 3-touch outreach sequence…"):
+                        st.session_state.warm_intro_result = generate_warm_intro_sequence(
+                            target_company=_wi_company,
+                            target_role=str(target),
+                            your_name=_wi_name,
+                            your_background=_wi_bg,
+                            mutual_connection=_wi_conn,
+                            connection_type=_wi_conn_type,
+                            model="gpt-4o-mini",
+                            api_key=_qa_key or None,
+                            prefer_online=bool(_qa_key),
+                        )
+                else:
+                    st.warning("Enter target company name first.")
+
+            _wi = st.session_state.warm_intro_result
+            if _wi and _wi.get("touch_1_message"):
+                st.markdown("**Touch 1 — Connection / First Email:**")
+                if _wi.get("touch_1_subject"):
+                    st.caption(f"Subject: {_wi['touch_1_subject']}")
+                st.text_area("Message 1", value=_wi["touch_1_message"], height=120,
+                             key="wi_msg1", label_visibility="collapsed")
+
+                if _wi.get("touch_2_message"):
+                    st.markdown("**Touch 2 — Follow-up (5-7 days later):**")
+                    st.text_area("Message 2", value=_wi["touch_2_message"], height=90,
+                                 key="wi_msg2", label_visibility="collapsed")
+
+                if _wi.get("touch_3_message"):
+                    st.markdown("**Touch 3 — The Ask:**")
+                    st.text_area("Message 3", value=_wi["touch_3_message"], height=100,
+                                 key="wi_msg3", label_visibility="collapsed")
+
+                if _wi.get("strategy_note"):
+                    st.info(_wi["strategy_note"])
+
+                _wi_dos = _wi.get("dos", [])
+                _wi_donts = _wi.get("donts", [])
+                if _wi_dos or _wi_donts:
+                    _wi_dc1, _wi_dc2 = st.columns(2)
+                    with _wi_dc1:
+                        for _d in _wi_dos[:3]:
+                            st.markdown(f'<span style="color:#057642;font-size:11px">✓ {_d}</span>', unsafe_allow_html=True)
+                    with _wi_dc2:
+                        for _d in _wi_donts[:3]:
+                            st.markdown(f'<span style="color:#B71C1C;font-size:11px">✗ {_d}</span>', unsafe_allow_html=True)
 
     # ── Next Action Engine ────────────────────────────────────────────────────
     # Reads session state → determines single most important next action.
@@ -4207,6 +4574,159 @@ if quick_apply:
                         key="neg_letter_dl",
                     )
 
+    # ── Interview War Room ───────────────────────────────────────────────────
+    # Pre-interview briefing: company intel + likely questions + STAR answers
+    # + questions to ask + salary anchor. Everything in one battle-ready doc.
+    if st.session_state.qa_package:
+        _iwr_parsed = st.session_state.qa_parsed or {}
+        _iwr_company = _iwr_parsed.get("company", "")
+        _iwr_role = _iwr_parsed.get("job_title", str(target))
+        _iwr_brief = st.session_state.company_briefs.get(_iwr_company)
+
+        with st.expander(
+            f"⚔️ Interview War Room — {'Ready' if st.session_state.war_room_result and st.session_state.war_room_company == _iwr_company else 'Build your pre-interview briefing'}",
+            expanded=bool(st.session_state.war_room_result and st.session_state.war_room_company == _iwr_company),
+        ):
+            st.markdown(
+                '<div style="font-size:11px;color:rgba(0,0,0,0.5);margin-bottom:10px">'
+                'Company context + predicted questions + STAR frameworks + salary anchor + smart questions to ask. '
+                'Walk in prepared, not hoping.'
+                '</div>',
+                unsafe_allow_html=True,
+            )
+            _iwr_round = st.selectbox(
+                "Interview round",
+                ["first round", "second round", "final round", "take-home case", "executive"],
+                key="iwr_round",
+            )
+
+            if st.button("Build War Room Briefing", key="iwr_build", type="primary", use_container_width=True):
+                with st.spinner("Building your pre-interview briefing (gpt-4o)…"):
+                    st.session_state.war_room_result = generate_interview_war_room(
+                        company_name=_iwr_company or "the company",
+                        role_title=_iwr_role,
+                        interview_round=_iwr_round,
+                        job_description=_iwr_parsed.get("cleaned_description", ""),
+                        current_role=str(current),
+                        target_role=str(target),
+                        company_brief=_iwr_brief,
+                        cv_summary=str(st.session_state.cv_profile or ""),
+                        model="gpt-4o",
+                        api_key=_qa_key or None,
+                        prefer_online=bool(_qa_key),
+                    )
+                    st.session_state.war_room_company = _iwr_company
+                st.rerun()
+
+            _iwr = st.session_state.war_room_result
+            if _iwr and st.session_state.war_room_company == _iwr_company:
+                st.markdown(
+                    f'<div style="background:#EEF3FB;border-radius:8px;padding:10px 14px;'
+                    f'font-size:12px;line-height:1.6;color:#1D2226;margin-bottom:10px">'
+                    f'{_iwr.get("interview_brief","")}</div>',
+                    unsafe_allow_html=True,
+                )
+
+                # Must-know facts
+                _iwr_facts = _iwr.get("must_know_facts", [])
+                if _iwr_facts:
+                    st.markdown("**Know these cold:**")
+                    for _f in _iwr_facts:
+                        st.markdown(f"→ {_f}")
+
+                # Opening + Closing statements
+                _iwr_os_col, _iwr_cs_col = st.columns(2, gap="medium")
+                with _iwr_os_col:
+                    if _iwr.get("opening_statement"):
+                        st.markdown("**Opening (Tell me about yourself):**")
+                        st.markdown(
+                            f'<div style="background:#F0FAF4;border-left:3px solid #057642;'
+                            f'border-radius:0 6px 6px 0;padding:8px 12px;font-size:11px;line-height:1.6">'
+                            f'{_iwr.get("opening_statement","")}</div>',
+                            unsafe_allow_html=True,
+                        )
+                with _iwr_cs_col:
+                    if _iwr.get("closing_statement"):
+                        st.markdown("**How to close:**")
+                        st.markdown(
+                            f'<div style="background:#F8FAFF;border-left:3px solid #0A66C2;'
+                            f'border-radius:0 6px 6px 0;padding:8px 12px;font-size:11px;line-height:1.6">'
+                            f'{_iwr.get("closing_statement","")}</div>',
+                            unsafe_allow_html=True,
+                        )
+
+                # Predicted questions with STAR frameworks
+                _iwr_qs = _iwr.get("likely_questions", [])
+                if _iwr_qs:
+                    st.markdown("**Predicted questions + how to answer:**")
+                    for _iq in _iwr_qs:
+                        with st.expander(f"❓ {_iq.get('question','')}", expanded=False):
+                            if _iq.get("why_asked"):
+                                st.caption(f"Why asked: {_iq['why_asked']}")
+                            if _iq.get("star_framework"):
+                                st.markdown(f"**Framework:** {_iq['star_framework']}")
+                            if _iq.get("answer_hint"):
+                                st.markdown(
+                                    f'<div style="background:#FFF8F0;border-left:3px solid #C37D16;'
+                                    f'border-radius:0 6px 6px 0;padding:6px 10px;font-size:12px">'
+                                    f'{_iq["answer_hint"]}</div>',
+                                    unsafe_allow_html=True,
+                                )
+
+                # Smart questions + salary strategy
+                _iwr_qask = _iwr.get("questions_to_ask", [])
+                _iwr_sal = _iwr.get("salary_anchor_strategy", "")
+                _iwr_rf = _iwr.get("red_flags_to_probe", [])
+
+                _iwr_qc1, _iwr_qc2 = st.columns(2, gap="medium")
+                with _iwr_qc1:
+                    if _iwr_qask:
+                        st.markdown("**Questions to ask them:**")
+                        for _qa_wr in _iwr_qask[:4]:
+                            st.markdown(f"→ {_qa_wr}")
+                    if _iwr_rf:
+                        st.markdown("**Red flags to probe:**")
+                        for _rf_wr in _iwr_rf[:3]:
+                            st.markdown(f'<span style="color:#B71C1C;font-size:11px">⚠ {_rf_wr}</span>', unsafe_allow_html=True)
+                with _iwr_qc2:
+                    if _iwr_sal:
+                        st.markdown("**Salary anchor strategy:**")
+                        st.markdown(
+                            f'<div style="background:#F0FAF4;border-left:3px solid #057642;'
+                            f'border-radius:0 6px 6px 0;padding:8px 12px;font-size:11px;line-height:1.6">'
+                            f'{_iwr_sal}</div>',
+                            unsafe_allow_html=True,
+                        )
+
+                # Download war room as markdown
+                _iwr_md_lines = [
+                    f"# Interview War Room: {_iwr_role} at {_iwr_company}",
+                    f"**Round:** {_iwr_round}\n",
+                    f"## Brief\n{_iwr.get('interview_brief','')}",
+                    "\n## Must-Know Facts",
+                ] + [f"- {f}" for f in _iwr_facts] + [
+                    "\n## Opening Statement",
+                    f"> {_iwr.get('opening_statement','')}",
+                    "\n## Predicted Questions",
+                ] + [
+                    f"\n**{i.get('question','')}**\n{i.get('star_framework','')} — {i.get('answer_hint','')}"
+                    for i in _iwr_qs
+                ] + [
+                    "\n## Questions to Ask",
+                ] + [f"- {q}" for q in _iwr_qask] + [
+                    "\n## Salary Strategy",
+                    _iwr_sal,
+                    "\n## Closing Statement",
+                    f"> {_iwr.get('closing_statement','')}",
+                ]
+                st.download_button(
+                    "⬇️ Download War Room (Markdown)",
+                    data="\n".join(_iwr_md_lines),
+                    file_name=f"war_room_{(_iwr_company or 'company').replace(' ','_').lower()}.md",
+                    mime="text/markdown",
+                    key="iwr_download",
+                )
+
     # ── Phase 5: Interview prep ──────────────────────────────────────────────
     if st.session_state.qa_package:
         _qa_p3 = st.session_state.qa_parsed or {}
@@ -4390,6 +4910,148 @@ if quick_apply:
                 "including skill gap analysis, adversarial debate, learning plan, and Readiness Score."
             )
 
+    # ── Pivot Brief — The Shareable Dossier ─────────────────────────────────
+    # Synthesises everything into one narrative document candidates can share.
+    with st.expander("📋 The Pivot Brief — Your shareable career pivot dossier", expanded=False):
+        st.markdown(
+            '<div style="font-size:11px;color:rgba(0,0,0,0.5);margin-bottom:10px">'
+            'One document that answers every pivot question before the interview asks it. '
+            'Your narrative, your unfair advantage, your 30-60-90 plan, your objection handlers.'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+        _pb_cv = st.session_state.cv_profile or {}
+        _pb_name = st.text_input("Your name (for the brief)", key="pb_name",
+                                 placeholder="e.g. Alex Chen")
+        _pb_motivation = st.text_area(
+            "What drove this pivot? (optional — 1-2 sentences)",
+            key="pb_motivation", height=60,
+            placeholder="e.g. After 6 years in finance, I realised the highest-leverage version of my analytical skills is in the product that helps others make decisions — not just one spreadsheet at a time.",
+        )
+        _pb_targets = st.text_input("Target companies (comma-separated)", key="pb_targets",
+                                    placeholder="e.g. Stripe, Figma, Linear, Notion")
+        _pb_upskilling = st.text_input("Currently upskilling in (comma-separated)", key="pb_upskilling",
+                                       placeholder="e.g. SQL, Google PM Certificate, Figma")
+
+        if st.button("Generate Pivot Brief", key="pb_generate", type="primary", use_container_width=True):
+            with st.spinner("Crafting your pivot narrative (gpt-4o)…"):
+                _pb_gaps = []
+                _pb_transferable = []
+                if st.session_state.cv_gap_df is not None:
+                    try:
+                        _pb_gaps = st.session_state.cv_gap_df.head(5)["skill"].tolist()
+                    except Exception:
+                        pass
+                if _pb_cv.get("top_skills"):
+                    _pb_transferable = _pb_cv["top_skills"][:6]
+                elif _pb_cv.get("skills_mapped_count"):
+                    _pb_transferable = list((_pb_cv.get("skill_vector") or {}).keys())[:6]
+
+                _pb_companies = [c.strip() for c in (_pb_targets or "").split(",") if c.strip()]
+                _pb_upskilling_list = [u.strip() for u in (_pb_upskilling or "").split(",") if u.strip()]
+
+                st.session_state.pivot_brief_result = generate_pivot_brief(
+                    current_role=str(current),
+                    target_role=str(target),
+                    years_experience=float(_pb_cv.get("years_experience", 0) or 0),
+                    top_transferable_skills=_pb_transferable or None,
+                    top_skill_gaps=_pb_gaps or None,
+                    candidate_name=_pb_name,
+                    upskilling_in_progress=_pb_upskilling_list or None,
+                    key_achievements=_pb_cv.get("key_achievements") or None,
+                    target_companies=_pb_companies or None,
+                    pivot_motivation=_pb_motivation,
+                    model="gpt-4o",
+                    api_key=_qa_key or None,
+                    prefer_online=bool(_qa_key),
+                )
+            st.rerun()
+
+        _pb = st.session_state.pivot_brief_result
+        if _pb and _pb.get("pivot_narrative"):
+            # One-line brand
+            st.markdown(
+                f'<div style="background:#EEF3FB;border-radius:8px;padding:10px 14px;'
+                f'font-size:13px;font-weight:700;color:#0A66C2;margin-bottom:12px">'
+                f'"{_pb.get("one_line_brand","")}"</div>',
+                unsafe_allow_html=True,
+            )
+
+            # LinkedIn Headline
+            st.markdown(f"**LinkedIn Headline:** `{_pb.get('linkedin_headline','')}`")
+
+            # Pivot narrative
+            st.markdown("**The Pivot Story:**")
+            st.markdown(
+                f'<div style="background:#F8FAFF;border-left:3px solid #0A66C2;'
+                f'border-radius:0 8px 8px 0;padding:10px 14px;font-size:12px;'
+                f'line-height:1.7">{_pb.get("pivot_narrative","")}</div>',
+                unsafe_allow_html=True,
+            )
+
+            # Unfair advantage + transferable story
+            _pb_c1, _pb_c2 = st.columns(2, gap="medium")
+            with _pb_c1:
+                st.markdown("**Your Unfair Advantage:**")
+                st.markdown(
+                    f'<div style="background:#F0FAF4;border-left:3px solid #057642;'
+                    f'border-radius:0 6px 6px 0;padding:8px 12px;font-size:11px;'
+                    f'line-height:1.6">{_pb.get("unfair_advantage","")}</div>',
+                    unsafe_allow_html=True,
+                )
+            with _pb_c2:
+                st.markdown("**How Your Background Maps:**")
+                st.markdown(
+                    f'<div style="font-size:11px;line-height:1.6;color:rgba(0,0,0,0.65)">'
+                    f'{_pb.get("transferable_story","")}</div>',
+                    unsafe_allow_html=True,
+                )
+
+            # Elevator pitch
+            st.markdown("**30-Second Elevator Pitch:**")
+            st.text_area("Elevator pitch", value=_pb.get("elevator_pitch",""),
+                         height=80, key="pb_pitch", label_visibility="collapsed")
+
+            # 30-60-90
+            _pb_t = _pb.get("thirty_sixty_ninety", {})
+            if any(_pb_t.values()):
+                st.markdown("**30-60-90 Day Plan:**")
+                _pb_dc1, _pb_dc2, _pb_dc3 = st.columns(3, gap="small")
+                for _pb_col, _pb_key, _pb_label in [
+                    (_pb_dc1, "day_30", "Day 30"),
+                    (_pb_dc2, "day_60", "Day 60"),
+                    (_pb_dc3, "day_90", "Day 90"),
+                ]:
+                    with _pb_col:
+                        st.markdown(
+                            f'<div style="background:#F3F6F9;border-radius:6px;padding:8px 10px">'
+                            f'<div style="font-size:10px;font-weight:800;text-transform:uppercase;'
+                            f'letter-spacing:0.06em;color:#0A66C2;margin-bottom:4px">{_pb_label}</div>'
+                            f'<div style="font-size:11px;line-height:1.5">{_pb_t.get(_pb_key,"")}</div>'
+                            f'</div>',
+                            unsafe_allow_html=True,
+                        )
+
+            # Objection handlers
+            _pb_objections = _pb.get("objection_handlers", [])
+            if _pb_objections:
+                st.markdown("**Handling the Tough Questions:**")
+                for _obj in _pb_objections:
+                    with st.expander(f"❓ {_obj.get('objection','')}"):
+                        st.markdown(_obj.get("response", ""))
+
+            # Download
+            st.download_button(
+                "⬇️ Download Pivot Brief (Markdown)",
+                data=format_pivot_brief_as_markdown(
+                    _pb, str(current), str(target),
+                    candidate_name=_pb_name,
+                ),
+                file_name="pivot_brief.md",
+                mime="text/markdown",
+                key="pb_download",
+            )
+
     st.stop()
 
 # ============================================================
@@ -4474,6 +5136,63 @@ if not st.session_state.has_run:
         '</div>',
         unsafe_allow_html=True,
     )
+
+    # ── Career Command Center (shown when data exists) ────────────────────
+    _lp_pl_jobs = st.session_state.pipeline_jobs or []
+    _lp_pl_stats = compute_pipeline_stats(_lp_pl_jobs)
+    _lp_has_data = bool(
+        _lp_pl_jobs or st.session_state.cv_profile or
+        st.session_state.qa_package or st.session_state.qa_portfolio_packages
+    )
+
+    if _lp_has_data and st.session_state.advisor_result:
+        _lp_adv = st.session_state.advisor_result
+        _lp_phase = _lp_adv.get("phase", "Exploration")
+        _lp_mom = _lp_adv.get("momentum_score", 0)
+        _lp_mom_col = "#117A37" if _lp_mom >= 65 else ("#A05A00" if _lp_mom >= 35 else "#B71C1C")
+        _lp_phase_col = {
+            "Exploration": "#7A2A8A", "Active Application": "#0A66C2",
+            "Interview Loop": "#057642", "Negotiation": "#A05A00"
+        }.get(_lp_phase, "#0A66C2")
+
+        st.markdown(
+            f'<div style="background:#fff;border:1px solid rgba(0,0,0,0.1);border-radius:12px;'
+            f'padding:20px 24px;margin-bottom:16px">'
+            f'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">'
+            f'<div style="font-size:15px;font-weight:900;color:#1D2226">🧭 Career Command Center</div>'
+            f'<div style="background:{_lp_phase_col};color:#fff;border-radius:20px;'
+            f'padding:3px 12px;font-size:11px;font-weight:800">{_lp_phase}</div>'
+            f'</div>'
+            f'<div style="display:flex;gap:20px;margin-bottom:14px">'
+            # Momentum
+            f'<div style="flex:1;background:#F3F6F9;border-radius:8px;padding:10px 14px">'
+            f'<div style="font-size:10px;font-weight:800;text-transform:uppercase;'
+            f'letter-spacing:0.05em;color:rgba(0,0,0,0.4);margin-bottom:4px">Momentum</div>'
+            f'<div style="font-size:22px;font-weight:900;color:{_lp_mom_col}">{_lp_mom}</div>'
+            f'<div style="font-size:10px;color:{_lp_mom_col}">{_lp_adv.get("momentum_label","")}</div>'
+            f'</div>'
+            # Pipeline
+            f'<div style="flex:1;background:#F3F6F9;border-radius:8px;padding:10px 14px">'
+            f'<div style="font-size:10px;font-weight:800;text-transform:uppercase;'
+            f'letter-spacing:0.05em;color:rgba(0,0,0,0.4);margin-bottom:4px">Pipeline</div>'
+            f'<div style="font-size:22px;font-weight:900;color:#0A66C2">{_lp_pl_stats.get("total",0)}</div>'
+            f'<div style="font-size:10px;color:rgba(0,0,0,0.5)">'
+            f'{_lp_pl_stats.get("response_rate",0)}% response · {_lp_pl_stats.get("offers",0)} offers</div>'
+            f'</div>'
+            # Time estimate
+            f'<div style="flex:2;background:#F0FAF4;border-left:3px solid #057642;'
+            f'border-radius:0 8px 8px 0;padding:10px 14px">'
+            f'<div style="font-size:10px;font-weight:800;text-transform:uppercase;'
+            f'letter-spacing:0.05em;color:#057642;margin-bottom:4px">Next Action</div>'
+            f'<div style="font-size:12px;font-weight:700;color:#1D2226;line-height:1.4">'
+            f'{_lp_adv.get("primary_action","")}</div>'
+            f'</div>'
+            f'</div>'
+            f'<div style="font-size:11px;color:rgba(0,0,0,0.5);font-style:italic">'
+            f'Time to offer: {_lp_adv.get("time_to_offer_estimate","unknown")}</div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
 
     # ── CTA buttons — direct entry, no sidebar required ───────────────────
     _cta_c1, _cta_c2 = st.columns(2, gap="large")
