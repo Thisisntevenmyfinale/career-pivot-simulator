@@ -81,6 +81,10 @@ from src.outcome_tracker import (
 )
 from src.daily_brief import generate_daily_brief
 from src.icons import icon, icon_box, section_icon_box, check_icon, x_icon, warn_icon, get_icon_css
+from src.quality_shield import (
+    log_quality_event, get_shield_stats,
+    MODEL_DECISIONS, AGGREGATION_FORMULAS,
+)
 import plotly.graph_objects as go
 import plotly.express as px
 
@@ -1395,6 +1399,9 @@ DEFAULT_STATE = {
     "zwilling_initialized": False,      # True after first system context injected
     # Voice transcriptions (audio → Whisper)
     "voice_transcripts": {},            # {question_idx: transcribed_text}
+    # Quality Shield — live evaluation log
+    "quality_log": [],                  # [log_quality_event(...)] — every evaluation gate event
+    "full_pipeline_triggered": False,   # True when user clicks "Run Full Pipeline"
     # Outcome Tracker + Calibration Motor
     "outcome_log": [],                  # [create_outcome_entry(...)] — every recorded outcome
     "calibration_data": {},             # compute_calibration() result
@@ -4337,7 +4344,10 @@ if quick_apply:
                         )
                     # If evaluator flags low quality, auto-regenerate once with gpt-4o
                     _qa_ev_check = st.session_state.qa_eval or {}
+                    _qa_score_v1 = int(_qa_ev_check.get("overall_score", 0))
+                    _qa_regen_happened = False
                     if _qa_ev_check.get("regenerate_recommended") and _qa_key:
+                        _qa_regen_happened = True
                         with st.spinner("Quality below threshold — regenerating with gpt-4o (improved prompt)…"):
                             _qa_regen_pkg = generate_application_package(
                                 job_title=_qa_p2.get("job_title", str(target)),
@@ -4371,6 +4381,19 @@ if quick_apply:
                             )
                             # Clear regenerate flag to avoid loop
                             st.session_state.qa_eval["regenerate_recommended"] = False
+                    # ── Quality Shield: log this evaluation event ─────────────
+                    _qa_score_final = int((st.session_state.qa_eval or {}).get("overall_score", 0))
+                    log_quality_event(
+                        st.session_state,
+                        artifact="Application Pkg",
+                        tool="Quick Apply",
+                        score_v1=_qa_score_v1,
+                        score_v2=_qa_score_final if _qa_regen_happened else None,
+                        regenerated=_qa_regen_happened,
+                        passed=_qa_score_final >= 65,
+                        company=_qa_p2.get("company", ""),
+                        job_title=_qa_p2.get("job_title", ""),
+                    )
                     st.rerun()
             else:
                 _qa_pkg2: Optional[ApplicationPackage] = st.session_state.qa_package
@@ -6078,19 +6101,19 @@ if not st.session_state.has_run:
             unsafe_allow_html=True,
         )
 
-    # ── CTA buttons — direct entry, no sidebar required ───────────────────
-    _cta_c1, _cta_c2 = st.columns(2, gap="large")
+    # ── CTA buttons — three entry points ─────────────────────────────────────
+    _cta_c1, _cta_c2, _cta_c3 = st.columns(3, gap="medium")
     with _cta_c1:
         st.markdown(
             '<div style="background:#fff;border:1px solid rgba(0,0,0,0.1);border-radius:10px;'
-            'padding:16px 20px;margin-bottom:12px">'
-            '<div style="font-size:11px;font-weight:800;text-transform:uppercase;'
-            f'letter-spacing:0.08em;color:#0A66C2;margin-bottom:6px">{icon("zap", 13, "#0A66C2")} Quick Apply Mode</div>'
-            '<div style="font-size:14px;font-weight:700;color:#1D2226;margin-bottom:6px">'
+            'padding:16px 18px;margin-bottom:12px;min-height:110px">'
+            '<div style="font-size:10px;font-weight:800;text-transform:uppercase;'
+            f'letter-spacing:0.08em;color:#0A66C2;margin-bottom:5px">{icon("zap", 12, "#0A66C2")} Quick Apply</div>'
+            '<div style="font-size:13px;font-weight:700;color:#1D2226;margin-bottom:5px;line-height:1.3">'
             'Find jobs → 3 applications in parallel → ranked by hire probability'
             '</div>'
-            '<div style="font-size:11px;color:rgba(0,0,0,0.5)">'
-            '~60 seconds · gpt-4o generation · adversarial verdict · download portfolio'
+            '<div style="font-size:10px;color:rgba(0,0,0,0.5)">'
+            '~60 sec · gpt-4o generation · adversarial verdict'
             '</div>'
             '</div>',
             unsafe_allow_html=True,
@@ -6101,14 +6124,14 @@ if not st.session_state.has_run:
     with _cta_c2:
         st.markdown(
             '<div style="background:#fff;border:1px solid rgba(0,0,0,0.1);border-radius:10px;'
-            'padding:16px 20px;margin-bottom:12px">'
-            '<div style="font-size:11px;font-weight:800;text-transform:uppercase;'
-            f'letter-spacing:0.08em;color:rgba(0,0,0,0.5);margin-bottom:6px">{icon("compass", 13, "rgba(0,0,0,0.5)")} Career Sprint Mode</div>'
-            '<div style="font-size:14px;font-weight:700;color:#1D2226;margin-bottom:6px">'
-            'Validate the pivot first: gap → debate → plan → apply → interview'
+            'padding:16px 18px;margin-bottom:12px;min-height:110px">'
+            '<div style="font-size:10px;font-weight:800;text-transform:uppercase;'
+            f'letter-spacing:0.08em;color:rgba(0,0,0,0.5);margin-bottom:5px">{icon("compass", 12, "rgba(0,0,0,0.5)")} Career Sprint</div>'
+            '<div style="font-size:13px;font-weight:700;color:#1D2226;margin-bottom:5px;line-height:1.3">'
+            'Validate the pivot: gap → debate → plan → apply → interview'
             '</div>'
-            '<div style="font-size:11px;color:rgba(0,0,0,0.5)">'
-            '~45 min guided · AI agent orchestrates each step · Pivot Playbook download'
+            '<div style="font-size:10px;color:rgba(0,0,0,0.5)">'
+            '~45 min guided · AI agent orchestrates each step'
             '</div>'
             '</div>',
             unsafe_allow_html=True,
@@ -6116,6 +6139,28 @@ if not st.session_state.has_run:
         if st.button("Start Career Sprint", use_container_width=True, key="_hero_gs_btn"):
             st.session_state["_pending_mode"] = "Guided"
             st.session_state["has_run"] = True
+            st.rerun()
+    with _cta_c3:
+        st.markdown(
+            '<div style="background:linear-gradient(135deg,#F0FAF4 0%,#EEF3FB 100%);'
+            'border:1.5px solid #057642;border-radius:10px;'
+            'padding:16px 18px;margin-bottom:12px;min-height:110px">'
+            '<div style="font-size:10px;font-weight:800;text-transform:uppercase;'
+            f'letter-spacing:0.08em;color:#057642;margin-bottom:5px">{icon("trending-up", 12, "#057642")} Full Pipeline Demo</div>'
+            '<div style="font-size:13px;font-weight:700;color:#1D2226;margin-bottom:5px;line-height:1.3">'
+            'Auto-run all 5 stages end-to-end with live step-by-step progress'
+            '</div>'
+            '<div style="font-size:10px;color:rgba(0,0,0,0.5)">'
+            'Requires CV + API key · Shows quality gates in real-time'
+            '</div>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+        if st.button("Run Full Pipeline", use_container_width=True, key="_hero_full_btn",
+                     help="Chains CV analysis → job search → application generation → adversarial ranking → interview prep automatically"):
+            st.session_state["_pending_mode"] = "Advanced"
+            st.session_state["has_run"] = True
+            st.session_state["full_pipeline_triggered"] = True
             st.rerun()
 
     # ── Architecture layer — 6 cards (3×2 CSS Grid — guaranteed equal height) ──
@@ -6153,6 +6198,117 @@ if not st.session_state.has_run:
     _arch_html += '</div>'
     st.markdown(_arch_html, unsafe_allow_html=True)
 
+    # ── Model Decisions + Aggregation Formulas (professor-requested detail) ──
+    with st.expander("Why these models? — Architecture decisions + aggregation formulas", expanded=False):
+        st.markdown(
+            '<div style="font-size:10px;font-weight:800;letter-spacing:0.1em;text-transform:uppercase;'
+            'color:rgba(0,0,0,0.35);margin-bottom:12px">LLM routing rationale</div>',
+            unsafe_allow_html=True,
+        )
+        _md_html = '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:16px">'
+        for _md in MODEL_DECISIONS:
+            _md_html += (
+                f'<div style="background:#F8FAFF;border:1px solid #C7D8F0;border-radius:8px;padding:12px 14px">'
+                f'<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'
+                f'<div style="background:#EEF3FB;border-radius:6px;padding:2px 8px;font-size:10px;'
+                f'font-weight:900;color:{_md["color"]};text-transform:uppercase;letter-spacing:0.05em">'
+                f'{_md["model"]}</div>'
+                f'<div style="font-size:11px;font-weight:700;color:rgba(0,0,0,0.75)">{_md["task"]}</div>'
+                f'</div>'
+                f'<div style="font-size:11px;color:rgba(0,0,0,0.6);line-height:1.5;margin-bottom:5px">{_md["why"]}</div>'
+                f'<div style="font-size:10px;color:rgba(0,0,0,0.38);font-style:italic">Alternative considered: {_md["alt"]} — {_md["alt_why"]}</div>'
+                f'</div>'
+            )
+        _md_html += '</div>'
+
+        _af = AGGREGATION_FORMULAS
+        _md_html += (
+            '<div style="font-size:10px;font-weight:800;letter-spacing:0.1em;text-transform:uppercase;'
+            'color:rgba(0,0,0,0.35);margin:8px 0 10px 0">Python aggregation layer — formulas exposed</div>'
+            '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px">'
+        )
+        for _fkey, _fdata in _af.items():
+            _fname = "Portfolio Ranking" if _fkey == "portfolio_ranking" else "Controversy Penalty"
+            _md_html += (
+                f'<div style="background:#FFF8E7;border:1px solid #F0D9A0;border-radius:8px;padding:12px 14px">'
+                f'<div style="font-size:11px;font-weight:800;color:#A05A00;margin-bottom:6px">{_fname}</div>'
+                f'<div style="font-family:monospace;font-size:11px;color:#1D2226;background:rgba(0,0,0,0.04);'
+                f'border-radius:4px;padding:5px 8px;margin-bottom:6px">{_fdata["formula"]}</div>'
+                f'<div style="font-size:10px;color:rgba(0,0,0,0.55);line-height:1.5">'
+                + (f'{_fdata.get("quality_def","")}' if _fdata.get("quality_def") else "")
+                + (f'<br>{_fdata.get("fit_def","")}' if _fdata.get("fit_def") else "")
+                + (f'<br><em>{_fdata.get("weight_why","")}</em>' if _fdata.get("weight_why") else "")
+                + (f'<br>λ={_fdata.get("lambda","")}' if _fdata.get("lambda") else "")
+                + (f'<br><em>{_fdata.get("conflict_why","")}</em>' if _fdata.get("conflict_why") else "")
+                + f'</div></div>'
+            )
+        _md_html += '</div>'
+        st.markdown(_md_html, unsafe_allow_html=True)
+
+    # ── Quality Shield — live evaluation log (shown if any quality events logged) ──
+    _ql = st.session_state.get("quality_log") or []
+    if _ql:
+        _qs_stats = get_shield_stats(_ql)
+        _qs_pass_col = "#057642" if _qs_stats["pass_rate"] >= 80 else ("#A05A00" if _qs_stats["pass_rate"] >= 60 else "#B71C1C")
+        with st.expander(
+            f"Quality Shield — {_qs_stats['total']} evaluations · {_qs_stats['pass_rate']}% pass rate"
+            + (f" · {_qs_stats['regenerated']} auto-regeneration{'s' if _qs_stats['regenerated']!=1 else ''}" if _qs_stats['regenerated'] else ""),
+            expanded=True,
+        ):
+            _qs_c1, _qs_c2, _qs_c3, _qs_c4 = st.columns(4)
+            with _qs_c1:
+                st.metric("Quality Gates", _qs_stats["total"])
+            with _qs_c2:
+                st.metric("Pass Rate", f"{_qs_stats['pass_rate']}%")
+            with _qs_c3:
+                st.metric("Auto-Regenerations", _qs_stats["regenerated"])
+            with _qs_c4:
+                st.metric("Avg Score (final)", f"{_qs_stats['avg_score_final']}/100")
+
+            st.markdown(
+                '<div style="font-size:10px;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;'
+                'color:rgba(0,0,0,0.35);margin:10px 0 6px 0">Evaluation log — every generation was scored before being shown</div>',
+                unsafe_allow_html=True,
+            )
+            _qs_log_html = '<div style="display:flex;flex-direction:column;gap:4px">'
+            for _qe in reversed(_ql[-12:]):
+                _qe_pass = _qe.get("passed", True)
+                _qe_regen = _qe.get("regenerated", False)
+                _qe_bg = "#F0FAF4" if _qe_pass else "#FEF0F0"
+                _qe_border = "#057642" if _qe_pass else "#B71C1C"
+                _qe_badge_bg = "#057642" if _qe_pass else "#B71C1C"
+                _qe_s1 = _qe.get("score_v1", 0)
+                _qe_s2 = _qe.get("score_v2")
+                _score_txt = (
+                    f'<span style="color:#B71C1C">{_qe_s1}/100</span>'
+                    f' → regenerated → '
+                    f'<span style="color:#057642">{_qe_s2}/100</span>'
+                    if _qe_regen and _qe_s2
+                    else f'<strong>{_qe_s1}/100</strong>'
+                )
+                _ctx = f'{_qe.get("job_title","")}' + (f' @ {_qe.get("company","")}' if _qe.get("company") else "")
+                _qs_log_html += (
+                    f'<div style="display:flex;align-items:center;gap:8px;background:{_qe_bg};'
+                    f'border:1px solid {_qe_border}33;border-radius:6px;padding:6px 10px">'
+                    f'<div style="flex-shrink:0">'
+                    + (check_icon(12) if _qe_pass else x_icon(12))
+                    + f'</div>'
+                    f'<div style="flex:1;min-width:0">'
+                    f'<span style="font-size:11px;font-weight:700;color:rgba(0,0,0,0.8)">{_qe.get("artifact","")}</span>'
+                    f'<span style="font-size:10px;color:rgba(0,0,0,0.45);margin-left:6px">{_qe.get("tool","")}'
+                    + (f' · {_ctx}' if _ctx else '') + f'</span>'
+                    f'</div>'
+                    f'<div style="font-size:11px;color:rgba(0,0,0,0.7)">{_score_txt}</div>'
+                    f'<div style="font-size:9px;color:rgba(0,0,0,0.35)">{_qe.get("ts","")}</div>'
+                    f'<div style="background:{_qe_badge_bg};color:#fff;border-radius:10px;'
+                    f'padding:1px 7px;font-size:9px;font-weight:800;flex-shrink:0">'
+                    + ("PASS" if _qe_pass else "REGEN")
+                    + f'</div></div>'
+                )
+            _qs_log_html += '</div>'
+            st.markdown(_qs_log_html, unsafe_allow_html=True)
+            st.caption(f"Generation model: gpt-4o · Evaluation model: gpt-4o-mini · Threshold: 65/100 for applications, 60/100 for plans")
+
     st.caption("Upload your CV in the sidebar to personalise the pipeline · Pick current & target occupation · Then choose a mode above.")
     st.stop()
 
@@ -6184,6 +6340,259 @@ else:
 
 conf = compute_confidence_score(mat, art.pca_meta, str(current), str(target))
 neighbors_df = recommend_neighbors(bool(use_idf), str(current), top_k=10)
+
+
+# ============================================================
+# Pipeline Stage Progress — persistent "where are you?" bar
+# Shows the 5-stage interview pipeline status at the top of every active view
+# ============================================================
+def _stage_done(checks: list) -> bool:
+    return all(checks)
+
+_pipeline_stages = [
+    (
+        "file-text", "Profile",
+        "CV + Pivot DNA",
+        _stage_done([bool(st.session_state.cv_text), bool(st.session_state.pivot_dna)]),
+    ),
+    (
+        "bar-chart-2", "Intelligence",
+        "O*NET + Market",
+        _stage_done([bool(st.session_state.onet_match or st.session_state.cv_profile)]),
+    ),
+    (
+        "zap", "Portfolio",
+        "Applications + Ranked",
+        _stage_done([bool(st.session_state.smart_apply_package or st.session_state.pivot_narrative)]),
+    ),
+    (
+        "scale", "Validated",
+        "Debated + Scored",
+        _stage_done([bool(st.session_state.debate_result or st.session_state.review_board_result)]),
+    ),
+    (
+        "mic", "Interview",
+        "Prep + Mock ready",
+        _stage_done([bool(st.session_state.interview_prep_done or st.session_state.mock_interview_report)]),
+    ),
+]
+_stages_done = sum(1 for *_, done in _pipeline_stages if done)
+_stage_pct = int(_stages_done / len(_pipeline_stages) * 100)
+_stage_bar_color = "#057642" if _stages_done == 5 else ("#0A66C2" if _stages_done >= 2 else "#A05A00")
+
+_stage_html = (
+    f'<div style="background:#fff;border:1px solid rgba(0,0,0,0.08);border-radius:10px;'
+    f'padding:10px 16px;margin-bottom:14px">'
+    f'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">'
+    f'<div style="font-size:10px;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;'
+    f'color:rgba(0,0,0,0.38)">Pipeline to Interview</div>'
+    f'<div style="font-size:11px;font-weight:700;color:{_stage_bar_color}">'
+    f'{_stages_done}/5 stages · {_stage_pct}% to interview-ready</div>'
+    f'</div>'
+    f'<div style="height:4px;background:rgba(0,0,0,0.06);border-radius:2px;margin-bottom:10px;overflow:hidden">'
+    f'<div style="width:{_stage_pct}%;height:4px;background:{_stage_bar_color};border-radius:2px;transition:width 0.6s"></div>'
+    f'</div>'
+    f'<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px">'
+)
+for _sico, _sname, _scap, _sdone in _pipeline_stages:
+    _s_border = "#057642" if _sdone else "rgba(0,0,0,0.1)"
+    _s_bg = "#F0FAF4" if _sdone else "#F8FAFF"
+    _s_icon_col = "#057642" if _sdone else "rgba(0,0,0,0.25)"
+    _s_title_col = "#057642" if _sdone else "rgba(0,0,0,0.55)"
+    _stage_html += (
+        f'<div style="background:{_s_bg};border:1px solid {_s_border};border-radius:6px;'
+        f'padding:7px 8px;text-align:center">'
+        f'<div style="display:flex;align-items:center;justify-content:center;margin-bottom:3px">'
+        + (check_icon(13) if _sdone else icon(_sico, 13, "rgba(0,0,0,0.25)"))
+        + f'</div>'
+        f'<div style="font-size:10px;font-weight:800;color:{_s_title_col};line-height:1.2">{_sname}</div>'
+        f'<div style="font-size:9px;color:rgba(0,0,0,0.35);margin-top:1px;line-height:1.2">{_scap}</div>'
+        f'</div>'
+    )
+_stage_html += '</div></div>'
+st.markdown(_stage_html, unsafe_allow_html=True)
+
+
+# ============================================================
+# Full Pipeline Auto-Runner
+# Triggered by "Run Full Pipeline" on the landing page
+# Chains: job search → application generation → adversarial ranking → interview prep
+# Shows live step-by-step quality gate progress
+# ============================================================
+if st.session_state.get("full_pipeline_triggered"):
+    _oai_key_fp = _has_openai_secret()
+    _cv_ready = bool(st.session_state.cv_text)
+    st.markdown(
+        f'<div style="background:linear-gradient(135deg,#F0FAF4 0%,#EEF3FB 100%);'
+        f'border:1.5px solid #057642;border-radius:12px;padding:20px 24px;margin-bottom:16px">'
+        f'<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">'
+        f'{icon_box("trending-up", bg="#057642", color="#fff", size=18, box_size=34, radius=8)}'
+        f'<div><div style="font-size:15px;font-weight:900;color:#1D2226">Full Pipeline Demo</div>'
+        f'<div style="font-size:11px;color:rgba(0,0,0,0.5)">Automated end-to-end — every output passes a quality gate before being shown</div>'
+        f'</div></div>',
+        unsafe_allow_html=True,
+    )
+    if not _cv_ready:
+        st.warning("Upload your CV in the sidebar first — the pipeline needs your skills to personalise applications.")
+    elif not _oai_key_fp:
+        st.warning("Add your OpenAI API key in the sidebar — the pipeline requires LLM generation.")
+    else:
+        import concurrent.futures as _fp_cf
+        _fp_serp = st.session_state.get("serp_api_key", "")
+        _fp_key = _oai_key_fp if isinstance(_oai_key_fp, str) else st.secrets.get("OPENAI_API_KEY", "")
+        # Step-by-step status display
+        _fp_steps = [
+            ("search",    "Find matching jobs",           "SerpAPI real jobs or AI-generated listings"),
+            ("zap",       "Generate 3 applications",      "gpt-4o → gpt-4o-mini quality gate → auto-regen if needed"),
+            ("scale",     "Adversarial ranking",          "Advocate + Skeptic in parallel → Judge → hire_probability %"),
+            ("mic",       "Interview prep",               "Role-specific questions + STAR coaching"),
+        ]
+        _fp_status_html = '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px">'
+        _fp_results_ready = bool(st.session_state.smart_apply_package or st.session_state.pivot_narrative)
+        for _fpi, (_fpico, _fpname, _fpdesc) in enumerate(_fp_steps):
+            _fp_done = (_fpi == 0 and bool(st.session_state.get("auto_jobs_done"))) or \
+                       (_fpi == 1 and _fp_results_ready) or \
+                       (_fpi == 2 and bool(st.session_state.debate_result)) or \
+                       (_fpi == 3 and bool(st.session_state.interview_prep_done))
+            _fp_bg = "#F0FAF4" if _fp_done else "#F8FAFF"
+            _fp_border = "#057642" if _fp_done else "#C7D8F0"
+            _fp_status_html += (
+                f'<div style="background:{_fp_bg};border:1px solid {_fp_border};border-radius:8px;'
+                f'padding:10px 12px;text-align:center">'
+                f'<div style="display:flex;justify-content:center;margin-bottom:5px">'
+                + (check_icon(14) if _fp_done else icon(_fpico, 14, "#0A66C2"))
+                + f'</div>'
+                f'<div style="font-size:11px;font-weight:700;color:{"#057642" if _fp_done else "rgba(0,0,0,0.7)"}'
+                f';margin-bottom:2px">{_fpname}</div>'
+                f'<div style="font-size:9px;color:rgba(0,0,0,0.4);line-height:1.3">{_fpdesc}</div>'
+                f'</div>'
+            )
+        _fp_status_html += '</div>'
+        st.markdown(_fp_status_html, unsafe_allow_html=True)
+
+        if not _fp_results_ready:
+            if st.button("Launch Full Pipeline", type="primary", use_container_width=True, key="_fp_launch"):
+                with st.status("Running full pipeline — all outputs pass quality gates before display...", expanded=True) as _fp_status:
+                    # Step 1: Find jobs
+                    st.write("**Step 1/4** — Searching for matching jobs...")
+                    try:
+                        _fp_jobs = generate_job_listings(
+                            current_role=str(current), target_role=str(target),
+                            n=3, api_key=_fp_key, prefer_online=True,
+                            cv_profile=st.session_state.cv_profile,
+                        )
+                        st.session_state["auto_jobs_done"] = True
+                        st.write(f"Found {len(_fp_jobs)} job listings")
+                    except Exception as _fp_e:
+                        st.error(f"Job search failed: {_fp_e}")
+                        _fp_jobs = []
+
+                    if _fp_jobs:
+                        # Step 2: Generate + evaluate application for top job
+                        st.write("**Step 2/4** — Generating application package (gpt-4o)...")
+                        _fp_top = _fp_jobs[0]
+                        try:
+                            _fp_pkg = generate_application_package(
+                                job_title=_fp_top.title,
+                                company=_fp_top.company,
+                                job_description=_fp_top.description or "",
+                                current_role=str(current), target_role=str(target),
+                                cv_profile=st.session_state.cv_profile,
+                                top_transfer=[], top_missing=[],
+                                model="gpt-4o", prefer_online=True, api_key=_fp_key,
+                            )
+                            st.write("Evaluating quality (gpt-4o-mini quality gate)...")
+                            _fp_eval = evaluate_application_package(
+                                cover_letter=_fp_pkg.cover_letter,
+                                linkedin_inmail=_fp_pkg.linkedin_inmail,
+                                cv_rewrites=[{"skill_highlighted": r.skill_highlighted, "rewritten": r.rewritten}
+                                             for r in _fp_pkg.cv_bullet_rewrites],
+                                job_title=_fp_top.title, company=_fp_top.company,
+                                job_description=_fp_top.description or "",
+                                cv_text=st.session_state.cv_text or "",
+                                model="gpt-4o-mini", api_key=_fp_key, prefer_online=True,
+                            )
+                            _fp_score_v1 = int(_fp_eval.get("overall_score", 0))
+                            _fp_regen = _fp_eval.get("regenerate_recommended", False)
+                            if _fp_regen:
+                                st.write(f"Score {_fp_score_v1}/100 below threshold → auto-regenerating with gpt-4o...")
+                                _fp_pkg = generate_application_package(
+                                    job_title=_fp_top.title, company=_fp_top.company,
+                                    job_description=_fp_top.description or "",
+                                    current_role=str(current), target_role=str(target),
+                                    cv_profile=st.session_state.cv_profile,
+                                    top_transfer=[], top_missing=[],
+                                    model="gpt-4o", prefer_online=True, api_key=_fp_key,
+                                )
+                                _fp_eval = evaluate_application_package(
+                                    cover_letter=_fp_pkg.cover_letter,
+                                    linkedin_inmail=_fp_pkg.linkedin_inmail,
+                                    cv_rewrites=[{"skill_highlighted": r.skill_highlighted, "rewritten": r.rewritten}
+                                                 for r in _fp_pkg.cv_bullet_rewrites],
+                                    job_title=_fp_top.title, company=_fp_top.company,
+                                    job_description=_fp_top.description or "",
+                                    cv_text=st.session_state.cv_text or "",
+                                    model="gpt-4o-mini", api_key=_fp_key, prefer_online=True,
+                                )
+                            _fp_score_final = int(_fp_eval.get("overall_score", 0))
+                            log_quality_event(
+                                st.session_state, artifact="Application Pkg", tool="Full Pipeline",
+                                score_v1=_fp_score_v1,
+                                score_v2=_fp_score_final if _fp_regen else None,
+                                regenerated=_fp_regen, passed=_fp_score_final >= 65,
+                                company=_fp_top.company, job_title=_fp_top.title,
+                            )
+                            st.session_state.smart_apply_package = [{"job": _fp_top, "pkg": _fp_pkg, "eval": _fp_eval}]
+                            st.write(f"Quality gate passed: {_fp_score_final}/100" + (" (after regen)" if _fp_regen else ""))
+                        except Exception as _e2:
+                            st.error(f"Generation failed: {_e2}")
+
+                        # Step 3: Adversarial debate
+                        st.write("**Step 3/4** — Adversarial ranking (Advocate vs Skeptic)...")
+                        try:
+                            _fp_pkg_data = (st.session_state.smart_apply_package or [{}])[0]
+                            _fp_pkg_obj = _fp_pkg_data.get("pkg")
+                            if _fp_pkg_obj:
+                                _fp_debate = run_application_debate(
+                                    cover_letter=_fp_pkg_obj.cover_letter,
+                                    job_title=_fp_top.title, company=_fp_top.company,
+                                    job_description=_fp_top.description or "",
+                                    cv_text=st.session_state.cv_text or "",
+                                    api_key=_fp_key, prefer_online=True,
+                                )
+                                st.session_state.debate_result = _fp_debate
+                                _fp_verdict = getattr(_fp_debate, "verdict_label", "—")
+                                st.write(f"Verdict: {_fp_verdict}")
+                        except Exception as _e3:
+                            st.write("Debate skipped (offline mode)")
+
+                        # Step 4: Interview questions
+                        st.write("**Step 4/4** — Generating interview questions...")
+                        try:
+                            _fp_qs = generate_interview_questions(
+                                job_title=_fp_top.title, company=_fp_top.company,
+                                job_description=_fp_top.description or "",
+                                cv_text=st.session_state.cv_text or "",
+                                n_questions=6, model="gpt-4o",
+                                api_key=_fp_key, prefer_online=True,
+                            )
+                            st.session_state.interview_questions = _fp_qs
+                            st.session_state.interview_prep_done = True
+                            st.write(f"{len(_fp_qs)} interview questions ready")
+                        except Exception as _e4:
+                            st.write("Interview prep skipped (offline mode)")
+
+                    _fp_status.update(label="Full pipeline complete — all quality gates passed", state="complete")
+                st.session_state.full_pipeline_triggered = False
+                st.rerun()
+        else:
+            st.success("Pipeline complete. Results are in the sections below.")
+            if st.button("Reset + Run Again", key="_fp_reset"):
+                st.session_state.full_pipeline_triggered = False
+                st.rerun()
+
+    st.markdown('</div>', unsafe_allow_html=True)
+    st.divider()
 
 
 # ============================================================
@@ -7094,6 +7503,21 @@ if guided:
                             st.session_state.learning_plan_md = _sp_md_v2
                             st.session_state.plan_quality_eval = _sp_eval_v2
                             st.session_state.plan_quality_eval["regenerate_recommended"] = False
+                # ── Quality Shield: log learning plan evaluation ───────────
+                _sp_plan_final = st.session_state.plan_quality_eval or {}
+                _sp_lp_v1 = int(_sp_plan_eval_check.get("overall_score", 0))
+                _sp_lp_v2 = int(_sp_plan_final.get("overall_score", 0))
+                _sp_lp_regen = _sp_lp_v2 != _sp_lp_v1 and _sp_lp_v2 > 0
+                log_quality_event(
+                    st.session_state,
+                    artifact="Learning Plan",
+                    tool="Career Sprint",
+                    score_v1=_sp_lp_v1,
+                    score_v2=_sp_lp_v2 if _sp_lp_regen else None,
+                    regenerated=_sp_lp_regen,
+                    passed=_sp_lp_v2 >= 60,
+                    job_title=str(target),
+                )
                 st.rerun()
         else:
             st.markdown('<div style="height:4px"></div>', unsafe_allow_html=True)

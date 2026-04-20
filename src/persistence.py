@@ -40,6 +40,7 @@ PERSISTENT_KEYS = [
     "cohort_intelligence",
     "cohort_pivot_key",
     "pipeline_jobs",
+    "quality_log",
     "outcome_log",
     "calibration_data",
     "momentum_streak_days",
