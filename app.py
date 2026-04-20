@@ -1585,6 +1585,9 @@ with st.sidebar:
         unsafe_allow_html=True,
     )
 
+    # Apply pending mode switch from landing page CTA buttons (must happen before widget renders)
+    if st.session_state.get("_pending_mode"):
+        st.session_state["mode_radio"] = st.session_state.pop("_pending_mode")
     mode = st.radio("Mode", options=["Guided", "Quick Apply", "Advanced"], key="mode_radio", horizontal=True)
     guided = mode == "Guided"
     quick_apply = mode == "Quick Apply"
@@ -5793,7 +5796,7 @@ if not st.session_state.has_run:
             unsafe_allow_html=True,
         )
         if st.button("⚡ Start Quick Apply →", use_container_width=True, type="primary", key="_hero_qa_btn"):
-            st.session_state["mode_radio"] = "Quick Apply"
+            st.session_state["_pending_mode"] = "Quick Apply"
             st.rerun()
     with _cta_c2:
         st.markdown(
@@ -5811,7 +5814,7 @@ if not st.session_state.has_run:
             unsafe_allow_html=True,
         )
         if st.button("🧭 Start Career Sprint →", use_container_width=True, key="_hero_gs_btn"):
-            st.session_state["mode_radio"] = "Guided"
+            st.session_state["_pending_mode"] = "Guided"
             st.session_state["has_run"] = True
             st.rerun()
 
