@@ -80,6 +80,7 @@ from src.outcome_tracker import (
     get_funnel_stats, OUTCOME_STAGES, STAGE_LABELS, STAGE_COLORS,
 )
 from src.daily_brief import generate_daily_brief
+from src.icons import icon, icon_box, section_icon_box, check_icon, x_icon, warn_icon, get_icon_css
 import plotly.graph_objects as go
 import plotly.express as px
 
@@ -330,6 +331,23 @@ st.markdown("""
 .li-phase-text{
   font-size:11px;font-weight:800;letter-spacing:0.10em;text-transform:uppercase;
   color:rgba(0,0,0,0.38);white-space:nowrap;
+}
+
+/* ── Lucide icon system ── */
+:root {
+  --icon-primary:   #0A66C2;
+  --icon-success:   #057642;
+  --icon-warning:   #A05A00;
+  --icon-danger:    #B71C1C;
+  --icon-muted:     rgba(0,0,0,0.45);
+}
+.li-icon {
+  display:inline-flex;align-items:center;justify-content:center;
+  vertical-align:middle;flex-shrink:0;
+}
+.li-icon-box {
+  width:36px;height:36px;border-radius:8px;
+  display:flex;align-items:center;justify-content:center;flex-shrink:0;
 }
 </style>
 <nav class="li-topnav">
@@ -1707,7 +1725,7 @@ with st.sidebar:
     with cv_col_a:
         _cv_ready = bool((st.session_state.cv_text or "").strip())
         if st.button(
-            "✓ Analyse my profile",
+            "Analyse my profile",
             use_container_width=True,
             disabled=not _cv_ready,
             help="Upload or paste your CV first",
@@ -1744,7 +1762,7 @@ with st.sidebar:
     if st.session_state.cv_profile:
         p = st.session_state.cv_profile
         st.markdown(
-            f'<span class="status-pill status-ok">✓ Profile loaded · {p.get("skills_mapped_count", 0)} skills mapped</span>',
+            f'<span class="status-pill status-ok">{check_icon(12)} Profile loaded · {p.get("skills_mapped_count", 0)} skills mapped</span>',
             unsafe_allow_html=True,
         )
 
@@ -1791,7 +1809,7 @@ with st.sidebar:
                 f'<div style="background:#F0FAF4;border:1px solid #B7E0C8;border-radius:6px;'
                 f'padding:8px 10px;margin-top:4px">'
                 f'<div style="font-size:10px;font-weight:800;color:#057642;text-transform:uppercase;'
-                f'letter-spacing:0.06em;margin-bottom:3px">🧬 Pivot DNA Active</div>'
+                f'letter-spacing:0.06em;margin-bottom:3px">{icon("dna", 11, "#057642")} Pivot DNA Active</div>'
                 f'<div style="font-size:11px;color:rgba(0,0,0,0.65);line-height:1.4">'
                 f'{_dna.get("writing_persona","").title()} · '
                 f'{st.session_state.voice_profile.get("sentence_style","balanced") if st.session_state.voice_profile else "balanced"} style · '
@@ -1813,8 +1831,8 @@ with st.sidebar:
             unsafe_allow_html=True,
         )
         _run_btn_label = (
-            "🧭 Start Career Sprint →" if guided else
-            "🔬 Open Advanced Analysis →"
+            "Start Career Sprint →" if guided else
+            "Open Advanced Analysis →"
         )
         if st.button(_run_btn_label, use_container_width=True, type="primary"):
             st.session_state.has_run = True
@@ -1966,7 +1984,7 @@ if quick_apply:
             with _adv_hc1:
                 st.markdown(
                     '<div style="display:flex;align-items:center;gap:10px">'
-                    '<div style="font-size:18px">🧭</div>'
+                    f'<div style="display:flex;align-items:center;justify-content:center">{icon("compass", 20, "#1D2226")}</div>'
                     '<div><div style="font-size:15px;font-weight:900;color:#1D2226">Career Command Center</div>'
                     '<div style="font-size:11px;color:rgba(0,0,0,0.45)">AI reads your full session and tells you what to do next</div>'
                     '</div></div>',
@@ -2083,9 +2101,9 @@ if quick_apply:
                             st.markdown(f"→ {_sa}")
                 with _adv_sc2:
                     for _gs in _adv_gs[:2]:
-                        st.markdown(f'<span style="color:#057642">✓ {_gs}</span>', unsafe_allow_html=True)
+                        st.markdown(f'<span style="color:#057642">{check_icon(12)} {_gs}</span>', unsafe_allow_html=True)
                     for _ws in _adv_ws[:2]:
-                        st.markdown(f'<span style="color:#B71C1C">⚠ {_ws}</span>', unsafe_allow_html=True)
+                        st.markdown(f'<span style="color:#B71C1C">{warn_icon(12)} {_ws}</span>', unsafe_allow_html=True)
 
                 if _adv.get("time_to_offer_estimate"):
                     st.caption(f"Time to offer estimate: {_adv['time_to_offer_estimate']}")
@@ -2143,7 +2161,7 @@ if quick_apply:
 
     with _cohort_col:
         with st.expander(
-            "👥 Cohort Intelligence — What people in your exact situation did",
+            "Cohort Intelligence — What people in your exact situation did",
             expanded=bool(st.session_state.cohort_intelligence),
         ):
             st.markdown(
@@ -2197,12 +2215,12 @@ if quick_apply:
                 if _ch.get("what_worked"):
                     st.markdown("**What worked for successful pivoters:**")
                     for _cw in _ch["what_worked"][:3]:
-                        st.markdown(f'<span style="color:#057642;font-size:12px">✓ {_cw}</span>', unsafe_allow_html=True)
+                        st.markdown(f'<span style="color:#057642;font-size:12px">{check_icon(12)} {_cw}</span>', unsafe_allow_html=True)
 
                 if _ch.get("what_failed"):
                     st.markdown("**Common failure patterns:**")
                     for _cf in _ch["what_failed"][:3]:
-                        st.markdown(f'<span style="color:#B71C1C;font-size:12px">✗ {_cf}</span>', unsafe_allow_html=True)
+                        st.markdown(f'<span style="color:#B71C1C;font-size:12px">{x_icon(12)} {_cf}</span>', unsafe_allow_html=True)
 
                 if _ch.get("biggest_misconception"):
                     st.info(f"**Biggest misconception:** {_ch['biggest_misconception']}")
@@ -2295,7 +2313,7 @@ if quick_apply:
     _pl_stats = compute_pipeline_stats(_pl_jobs)
 
     with st.expander(
-        f"📊 Application Pipeline — {_pl_stats['total']} tracked · "
+        f"Application Pipeline — {_pl_stats['total']} tracked · "
         f"{_pl_stats['response_rate']}% response rate · "
         f"{'On track' if _pl_stats['response_rate'] >= 20 else ('Watch this' if _pl_stats['response_rate'] >= 10 else 'Bottleneck detected') if _pl_stats['total'] >= 3 else 'Log applications to unlock diagnosis'}",
         expanded=bool(_pl_jobs),
@@ -2474,7 +2492,7 @@ if quick_apply:
             st.markdown(
                 '<div style="font-size:11px;font-weight:800;text-transform:uppercase;'
                 'letter-spacing:0.06em;color:rgba(0,0,0,0.45);margin:8px 0 6px 0">'
-                '⚡ Signal-Adaptive Engine — Pattern Detected</div>',
+                f'{icon("zap", 12, "rgba(0,0,0,0.45)")} Signal-Adaptive Engine — Pattern Detected</div>',
                 unsafe_allow_html=True,
             )
             for _sug in _sa_suggestions:
@@ -2594,7 +2612,7 @@ if quick_apply:
         with _save_c1:
             if _pl_jobs:
                 st.download_button(
-                    "⬇️ Save Pipeline (JSON)",
+                    "Save Pipeline (JSON)",
                     data=pipeline_to_json(_pl_jobs),
                     file_name="job_pipeline.json",
                     mime="application/json",
@@ -2907,10 +2925,10 @@ if quick_apply:
                     _wi_dc1, _wi_dc2 = st.columns(2)
                     with _wi_dc1:
                         for _d in _wi_dos[:3]:
-                            st.markdown(f'<span style="color:#057642;font-size:11px">✓ {_d}</span>', unsafe_allow_html=True)
+                            st.markdown(f'<span style="color:#057642;font-size:11px">{check_icon(11)} {_d}</span>', unsafe_allow_html=True)
                     with _wi_dc2:
                         for _d in _wi_donts[:3]:
-                            st.markdown(f'<span style="color:#B71C1C;font-size:11px">✗ {_d}</span>', unsafe_allow_html=True)
+                            st.markdown(f'<span style="color:#B71C1C;font-size:11px">{x_icon(11)} {_d}</span>', unsafe_allow_html=True)
 
     # ── Next Action Engine ────────────────────────────────────────────────────
     # Reads session state → determines single most important next action.
@@ -3070,7 +3088,7 @@ if quick_apply:
         f'<div style="display:flex;gap:16px;font-size:11px">'
         + (f'<div style="color:rgba(0,0,0,0.55)">{_rdy_checks}</div>' if _rdy_checks else "")
         + (f'<div style="color:{_rdy_color};font-weight:700">→ {_rdy_next}</div>' if _rdy_next != "Complete!" else
-           f'<div style="color:#057642;font-weight:700">✓ Ready to apply</div>')
+           f'<div style="color:#057642;font-weight:700">{check_icon(12)} Ready to apply</div>')
         + f'</div></div>',
         unsafe_allow_html=True,
     )
@@ -3189,7 +3207,7 @@ if quick_apply:
     with _qa_path_col1:
         _qa_paste_selected = st.session_state.qa_portfolio_mode == "paste"
         if st.button(
-            "📋 I have a specific job" + (" ←" if _qa_paste_selected else ""),
+            "I have a specific job" + (" ←" if _qa_paste_selected else ""),
             use_container_width=True,
             type="primary" if _qa_paste_selected else "secondary",
             key="qa_mode_paste",
@@ -3199,7 +3217,7 @@ if quick_apply:
     with _qa_path_col2:
         _qa_find_selected = st.session_state.qa_portfolio_mode == "find"
         if st.button(
-            "🔭 Find my best opportunities" + (" ←" if _qa_find_selected else ""),
+            "Find my best opportunities" + (" ←" if _qa_find_selected else ""),
             use_container_width=True,
             type="primary" if _qa_find_selected else "secondary",
             key="qa_mode_find",
@@ -3262,7 +3280,7 @@ if quick_apply:
             )
 
             if st.button(
-                "⚡ Launch Interview Pipeline",
+                "Launch Interview Pipeline",
                 key="qa_launch_pipeline",
                 type="primary",
                 use_container_width=True,
@@ -3272,7 +3290,7 @@ if quick_apply:
                 with st.status("Running your Interview Pipeline…", expanded=True) as _auto_status:
 
                     # STEP 1: Job Discovery
-                    st.write(f"🔭 **Step 1/5** — Finding {str(target)} jobs…")
+                    st.write(f"**Step 1/5** — Finding {str(target)} jobs…")
                     _auto_jobs: List[Dict] = []
                     if _qa_serp_key:
                         _rj2 = search_real_jobs(
@@ -3294,7 +3312,7 @@ if quick_apply:
                         ]
                     st.session_state.qa_portfolio_jobs = _auto_jobs
                     _auto_src = "live (SerpAPI)" if _qa_serp_key and _auto_jobs and _auto_jobs[0].get("is_real") else "AI-generated"
-                    st.write(f"✓ Found **{len(_auto_jobs)} jobs** ({_auto_src})")
+                    st.write(f"Found **{len(_auto_jobs)} jobs** ({_auto_src})")
 
                     # STEP 2: Score + select top 3
                     st.write("📐 **Step 2/5** — Scoring all jobs by O*NET fit…")
@@ -3323,7 +3341,7 @@ if quick_apply:
                     )
 
                     # STEP 3: Parallel application generation
-                    st.write(f"⚡ **Step 3/5** — Generating 3 applications in parallel (gpt-4o × 3)…")
+                    st.write("**Step 3/5** — Generating 3 applications in parallel (gpt-4o × 3)…")
                     import concurrent.futures as _auto_cf
 
                     def _auto_worker(idx_job2):
@@ -3380,10 +3398,10 @@ if quick_apply:
                     st.session_state.qa_debate = _auto_debate
                     _auto_hire_pct = _auto_debate.get("hire_probability_pct", 60)
                     _auto_vlabel = _auto_debate.get("verdict_label", "Competitive")
-                    st.write(f"✓ Adversarial verdict: **{_auto_hire_pct}% hire probability** — {_auto_vlabel}")
+                    st.write(f"Adversarial verdict: **{_auto_hire_pct}% hire probability** — {_auto_vlabel}")
 
                     # STEP 5: Interview prep for top job
-                    st.write("🎤 **Step 5/5** — Generating tailored interview questions…")
+                    st.write("**Step 5/5** — Generating tailored interview questions…")
                     _auto_qs = generate_interview_questions(
                         target_role=_best_job.get("title", str(target)),
                         job_description=_best_job.get("description", ""),
@@ -3402,7 +3420,7 @@ if quick_apply:
                         "cleaned_description": _best_job.get("description", ""),
                         "key_requirements": [],
                     }
-                    st.write(f"✓ {len(_auto_qs)} interview questions generated")
+                    st.write(f"{len(_auto_qs)} interview questions generated")
 
                     _auto_best_title = _best_job.get("title", str(target))
                     _auto_best_co = _best_job.get("company", "")
@@ -3491,7 +3509,7 @@ if quick_apply:
                 _f1_c1, _f1_c2 = st.columns([1, 2])
                 with _f1_c1:
                     if st.button(
-                        "🔍 Find jobs" if _qa_serp_key else "🤖 Generate job listings",
+                        "Find jobs" if _qa_serp_key else "Generate job listings",
                         key="qa_pf_find", type="primary", use_container_width=True,
                     ):
                         if _qa_serp_key:
@@ -3537,7 +3555,7 @@ if quick_apply:
                 st.markdown(
                     f'<div style="background:#F0FAF4;border-left:3px solid #057642;border-radius:0 8px 8px 0;'
                     f'padding:8px 12px;font-size:12px;color:rgba(0,0,0,0.7);margin-bottom:8px">'
-                    f'✓ Found {len(_qa_pf_jobs_list)} {"live" if _is_real else "AI-generated"} '
+                    f'{check_icon(11)} Found {len(_qa_pf_jobs_list)} {"live" if _is_real else "AI-generated"} '
                     f'{str(target)} positions · Select up to 3 to generate your portfolio'
                     f'</div>',
                     unsafe_allow_html=True,
@@ -3580,7 +3598,7 @@ if quick_apply:
                     with _pf_info_col:
                         _pf_done_badge = (
                             f'<span style="font-size:10px;font-weight:700;background:#F0FAF4;'
-                            f'color:#057642;border-radius:10px;padding:2px 8px;margin-left:6px">✓ generated</span>'
+                            f'color:#057642;border-radius:10px;padding:2px 8px;margin-left:6px">{check_icon(11)} generated</span>'
                         ) if _pf_already_done else ""
                         st.markdown(
                             f'<div style="display:flex;align-items:center;gap:10px;padding:6px 0;'
@@ -3603,7 +3621,7 @@ if quick_apply:
                 _pf_btn_c1, _pf_btn_c2 = st.columns([1, 2])
                 with _pf_btn_c1:
                     if st.button(
-                        f"⚡ Generate portfolio ({len(_pf_new_selected)} applications)",
+                        f"Generate portfolio ({len(_pf_new_selected)} applications)",
                         key="qa_pf_generate",
                         type="primary",
                         use_container_width=True,
@@ -3713,9 +3731,9 @@ if quick_apply:
                     )
                     _pf_rank_bg = "linear-gradient(135deg,#F0FAF4,#E8F5EE)" if _pf_rank == 0 else "#FAFAFA"
                     _pf_rank_label = (
-                        "🥇 Apply here first" if _pf_rank == 0 else
-                        "🥈 Apply here second" if _pf_rank == 1 else
-                        "🥉 Third priority"
+                        "Apply here first" if _pf_rank == 0 else
+                        "Apply here second" if _pf_rank == 1 else
+                        "Third priority"
                     )
 
                     st.markdown(
@@ -3751,7 +3769,7 @@ if quick_apply:
                     if _pf_pkg2 and not _pf_err:
                         with st.expander(f"View application: {_pf_jt2} @ {_pf_co2}"):
                             _pf_tab_cl, _pf_tab_cv, _pf_tab_inmail = st.tabs(
-                                ["Cover Letter", "CV Rewrites", "💬 InMail"]
+                                ["Cover Letter", "CV Rewrites", "InMail"]
                             )
                             with _pf_tab_cl:
                                 st.text_area(
@@ -3826,7 +3844,7 @@ if quick_apply:
                                         st.markdown(
                                             "**Matched:** " + " ".join([
                                                 f'<span style="background:#E7F6EC;color:#117A37;font-size:10px;'
-                                                f'font-weight:700;border-radius:10px;padding:2px 8px;margin:1px">✓ {k}</span>'
+                                                f'font-weight:700;border-radius:10px;padding:2px 8px;margin:1px">{check_icon(10)} {k}</span>'
                                                 for k in _qas_m[:12]
                                             ]),
                                             unsafe_allow_html=True,
@@ -3835,7 +3853,7 @@ if quick_apply:
                                         st.markdown(
                                             "**Missing (critical):** " + " ".join([
                                                 f'<span style="background:#FEECEC;color:#B71C1C;font-size:10px;'
-                                                f'font-weight:700;border-radius:10px;padding:2px 8px;margin:1px">✗ {k}</span>'
+                                                f'font-weight:700;border-radius:10px;padding:2px 8px;margin:1px">{x_icon(10)} {k}</span>'
                                                 for k in _qas_mc[:8]
                                             ]),
                                             unsafe_allow_html=True,
@@ -3920,7 +3938,7 @@ if quick_apply:
                     unsafe_allow_html=True,
                 )
                 st.download_button(
-                    "⬇️ Download Application Portfolio",
+                    "Download Application Portfolio",
                     data=_pf_md.encode("utf-8"),
                     file_name=_pf_fname,
                     mime="text/markdown",
@@ -3992,7 +4010,7 @@ if quick_apply:
             st.markdown(
                 f'<div style="background:#F0FAF4;border-left:3px solid #057642;border-radius:0 8px 8px 0;'
                 f'padding:10px 14px;font-size:12px;color:rgba(0,0,0,0.7);margin-bottom:6px">'
-                f'✓ Parsed: <strong>{_qa_p.get("job_title","")}</strong>'
+                f'{check_icon(11)} Parsed: <strong>{_qa_p.get("job_title","")}</strong>'
                 + (f' at <strong>{_qa_p.get("company","")}</strong>' if _qa_p.get("company") else "")
                 + (f' · {_qa_p.get("location","")}' if _qa_p.get("location") else "")
                 + f'</div>',
@@ -4179,7 +4197,7 @@ if quick_apply:
                                 f'<div style="font-size:13px;font-weight:800;color:#057642;margin-bottom:4px">'
                                 f'{_proof["project_title"]}</div>'
                                 f'<div style="font-size:11px;color:rgba(0,0,0,0.5);margin-bottom:8px">'
-                                f'⏱ {_proof.get("time_estimate_hours","?")}h · {_proof.get("artifact_format","?")} · {_proof.get("difficulty","?")}</div>'
+                                f'{icon("clock", 12, "rgba(0,0,0,0.5)")} {_proof.get("time_estimate_hours","?")}h · {_proof.get("artifact_format","?")} · {_proof.get("difficulty","?")}</div>'
                                 f'<div style="font-size:12px;line-height:1.6;color:#1D2226;margin-bottom:8px">'
                                 f'{_proof.get("what_you_build","")}</div>'
                                 f'</div>',
@@ -4213,7 +4231,7 @@ if quick_apply:
                                 f"\n## Interview Usage\n\"{_proof.get('how_to_use_in_interview','')}\"",
                             ]
                             st.download_button(
-                                "⬇️ Download Project Brief",
+                                "Download Project Brief",
                                 data="\n".join(_proof_md_parts),
                                 file_name=f"proof_{_proof_skill.replace(' ','_')[:20].lower()}.md",
                                 mime="text/markdown",
@@ -4241,7 +4259,7 @@ if quick_apply:
 
             if not _qa_pkg_done:
                 if st.button(
-                    "🚀 Generate application package",
+                    "Generate application package",
                     key="qa_gen_pkg", type="primary", use_container_width=True,
                 ):
                     _qa_core2 = build_cosine_core(bool(use_idf))
@@ -4362,7 +4380,7 @@ if quick_apply:
                 st.markdown(
                     f'<div style="background:#F0FAF4;border-left:3px solid #057642;border-radius:0 8px 8px 0;'
                     f'padding:10px 14px;font-size:12px;color:rgba(0,0,0,0.7);margin-bottom:10px">'
-                    f'✓ Application generated'
+                    f'{check_icon(11)} Application generated'
                     + (f' · Quality: <strong style="color:{_qa_ev_c}">{_qa_ev_score}/100</strong>' if _qa_ev_score else "")
                     + (f' — {_qa_ev2.get("one_line_verdict","")}' if _qa_ev2.get("one_line_verdict") else "")
                     + f'</div>',
@@ -4377,7 +4395,7 @@ if quick_apply:
                     with _qa_tab_cl:
                         st.text_area("Cover letter", value=_qa_pkg2.cover_letter, height=300,
                                      disabled=False, key="qa_cl_text")
-                        st.download_button("⬇️ Copy cover letter",
+                        st.download_button("Download cover letter",
                                            data=_qa_pkg2.cover_letter.encode(),
                                            file_name="cover_letter.txt", mime="text/plain")
                     with _qa_tab_cv:
@@ -4395,7 +4413,7 @@ if quick_apply:
                         st.text_area("LinkedIn InMail",
                                      value=_qa_pkg2.linkedin_inmail, height=200,
                                      disabled=False, key="qa_inmail_text")
-                        st.download_button("⬇️ Copy InMail",
+                        st.download_button("Download InMail",
                                            data=_qa_pkg2.linkedin_inmail.encode(),
                                            file_name="linkedin_inmail.txt", mime="text/plain")
                     with _qa_tab_score:
@@ -4536,7 +4554,7 @@ if quick_apply:
 
                         if not _ab:
                             if st.button(
-                                "🔬 Run A/B strategy test (generates 2 cover letters)",
+                                "Run A/B strategy test (generates 2 cover letters)",
                                 key="qa_ab_run", type="primary", use_container_width=True,
                                 disabled=not bool(_qa_key),
                             ):
@@ -4653,7 +4671,7 @@ if quick_apply:
                             pass
                         if not _qa_ats_paste:
                             if st.button(
-                                "🔍 Run ATS Compatibility Scan",
+                                "Run ATS Compatibility Scan",
                                 key="qa_ats_paste_btn",
                                 type="primary", use_container_width=True,
                             ):
@@ -4700,7 +4718,7 @@ if quick_apply:
                                 st.markdown(
                                     "**Matched keywords:** " + " ".join([
                                         f'<span style="background:#E7F6EC;color:#117A37;font-size:11px;'
-                                        f'font-weight:700;border-radius:10px;padding:2px 8px;margin:2px">✓ {k}</span>'
+                                        f'font-weight:700;border-radius:10px;padding:2px 8px;margin:2px">{check_icon(10)} {k}</span>'
                                         for k in _qap_matched[:15]
                                     ]),
                                     unsafe_allow_html=True,
@@ -4711,7 +4729,7 @@ if quick_apply:
                                 st.markdown(
                                     "**Missing — critical:** " + " ".join([
                                         f'<span style="background:#FEECEC;color:#B71C1C;font-size:11px;'
-                                        f'font-weight:700;border-radius:10px;padding:2px 8px;margin:2px">✗ {k}</span>'
+                                        f'font-weight:700;border-radius:10px;padding:2px 8px;margin:2px">{x_icon(10)} {k}</span>'
                                         for k in _qap_crit[:10]
                                     ]),
                                     unsafe_allow_html=True,
@@ -4922,7 +4940,7 @@ if quick_apply:
                             )
                             for _ev in _qa_adv.strongest_evidence[:3]:
                                 st.markdown(f'<div style="font-size:11px;color:rgba(0,0,0,0.65);'
-                                            f'margin-bottom:3px">✓ {_ev}</div>',
+                                            f'margin-bottom:3px">{check_icon(11)} {_ev}</div>',
                                             unsafe_allow_html=True)
                             if _qa_adv.closing_statement:
                                 st.markdown(
@@ -4941,7 +4959,7 @@ if quick_apply:
                             )
                             for _ev in _qa_skp.strongest_evidence[:3]:
                                 st.markdown(f'<div style="font-size:11px;color:rgba(0,0,0,0.65);'
-                                            f'margin-bottom:3px">✗ {_ev}</div>',
+                                            f'margin-bottom:3px">{x_icon(11)} {_ev}</div>',
                                             unsafe_allow_html=True)
                             if _qa_skp.closing_statement:
                                 st.markdown(
@@ -5080,11 +5098,11 @@ if quick_apply:
                         f'<div style="font-size:12px;color:rgba(0,0,0,0.65);font-style:italic;margin-bottom:10px">'
                         f'{_neg_analysis.get("one_line_verdict","")}</div>'
                         + "".join([
-                            f'<div style="font-size:11px;color:#057642;margin-bottom:3px">✓ {lp}</div>'
+                            f'<div style="font-size:11px;color:#057642;margin-bottom:3px">{check_icon(11)} {lp}</div>'
                             for lp in _neg_analysis.get("key_leverage_points", [])[:3]
                         ])
                         + "".join([
-                            f'<div style="font-size:11px;color:#A05A00;margin-bottom:3px">⚠ {rf}</div>'
+                            f'<div style="font-size:11px;color:#A05A00;margin-bottom:3px">{warn_icon(11)} {rf}</div>'
                             for rf in _neg_analysis.get("risk_factors", [])[:2]
                         ])
                         + f'<div style="font-size:10px;color:rgba(0,0,0,0.35);margin-top:6px">'
@@ -5142,7 +5160,7 @@ if quick_apply:
                     if _neg_just:
                         st.markdown("**Your justification points:**")
                         for _jp in _neg_just:
-                            st.markdown(f"✓ {_jp}")
+                            st.markdown(f"— {_jp}")
 
                     _neg_obj = _neg_script.get("objection_responses", [])
                     if _neg_obj:
@@ -5289,7 +5307,7 @@ if quick_apply:
                         height=280, key="neg_letter_display",
                     )
                     st.download_button(
-                        "⬇️ Download letter",
+                        "Download letter",
                         data=st.session_state.negotiation_counter_letter.encode(),
                         file_name="counter_offer_letter.txt",
                         mime="text/plain",
@@ -5306,7 +5324,7 @@ if quick_apply:
         _iwr_brief = st.session_state.company_briefs.get(_iwr_company)
 
         with st.expander(
-            f"⚔️ Interview War Room — {'Ready' if st.session_state.war_room_result and st.session_state.war_room_company == _iwr_company else 'Build your pre-interview briefing'}",
+            f"Interview War Room — {'Ready' if st.session_state.war_room_result and st.session_state.war_room_company == _iwr_company else 'Build your pre-interview briefing'}",
             expanded=bool(st.session_state.war_room_result and st.session_state.war_room_company == _iwr_company),
         ):
             st.markdown(
@@ -5382,7 +5400,7 @@ if quick_apply:
                 if _iwr_qs:
                     st.markdown("**Predicted questions + how to answer:**")
                     for _iq in _iwr_qs:
-                        with st.expander(f"❓ {_iq.get('question','')}", expanded=False):
+                        with st.expander(f"Q: {_iq.get('question','')}", expanded=False):
                             if _iq.get("why_asked"):
                                 st.caption(f"Why asked: {_iq['why_asked']}")
                             if _iq.get("star_framework"):
@@ -5409,7 +5427,7 @@ if quick_apply:
                     if _iwr_rf:
                         st.markdown("**Red flags to probe:**")
                         for _rf_wr in _iwr_rf[:3]:
-                            st.markdown(f'<span style="color:#B71C1C;font-size:11px">⚠ {_rf_wr}</span>', unsafe_allow_html=True)
+                            st.markdown(f'<span style="color:#B71C1C;font-size:11px">{warn_icon(11)} {_rf_wr}</span>', unsafe_allow_html=True)
                 with _iwr_qc2:
                     if _iwr_sal:
                         st.markdown("**Salary anchor strategy:**")
@@ -5442,7 +5460,7 @@ if quick_apply:
                     f"> {_iwr.get('closing_statement','')}",
                 ]
                 st.download_button(
-                    "⬇️ Download War Room (Markdown)",
+                    "Download War Room (Markdown)",
                     data="\n".join(_iwr_md_lines),
                     file_name=f"war_room_{(_iwr_company or 'company').replace(' ','_').lower()}.md",
                     mime="text/markdown",
@@ -5521,7 +5539,7 @@ if quick_apply:
                     if _hmd.get("what_they_value"):
                         st.markdown("**What they value:**")
                         for _hv in _hmd["what_they_value"][:4]:
-                            st.markdown(f'<span style="color:#057642;font-size:12px">✓ {_hv}</span>', unsafe_allow_html=True)
+                            st.markdown(f'<span style="color:#057642;font-size:12px">{check_icon(12)} {_hv}</span>', unsafe_allow_html=True)
                     if _hmd.get("interview_likely_focus"):
                         st.markdown("**Interview focus areas:**")
                         for _hif in _hmd["interview_likely_focus"][:3]:
@@ -5530,11 +5548,11 @@ if quick_apply:
                     if _hmd.get("language_to_use"):
                         st.markdown("**Language that resonates:**")
                         for _hu in _hmd["language_to_use"][:4]:
-                            st.markdown(f'<span style="color:#0A66C2;font-size:12px">✓ "{_hu}"</span>', unsafe_allow_html=True)
+                            st.markdown(f'<span style="color:#0A66C2;font-size:12px">{check_icon(12)} "{_hu}"</span>', unsafe_allow_html=True)
                     if _hmd.get("language_to_avoid"):
                         st.markdown("**Language to avoid:**")
                         for _ha in _hmd["language_to_avoid"][:3]:
-                            st.markdown(f'<span style="color:#B71C1C;font-size:12px">✗ "{_ha}"</span>', unsafe_allow_html=True)
+                            st.markdown(f'<span style="color:#B71C1C;font-size:12px">{x_icon(12)} "{_ha}"</span>', unsafe_allow_html=True)
 
                 if _hmd.get("cover_letter_hook"):
                     st.markdown(
@@ -5725,7 +5743,7 @@ if quick_apply:
         _pf_psc_id = f"paste_{_pf_company[:20].replace(' ','_')}"
         _pf_psc_checks = st.session_state.presend_checks.get(_pf_psc_id, {})
         _pf_psc_items = [
-            ("pkg_ok",    "Application package generated ✓", True),
+            ("pkg_ok",    "Application package generated", True),
             ("ats_ok",    f"ATS score checked ({(st.session_state.qa_ats_paste or {}).get('ats_score','?')}/100)", bool(st.session_state.qa_ats_paste)),
             ("debate_ok", f"Hiring verdict: {st.session_state.qa_debate.get('verdict_label','?') if st.session_state.qa_debate else 'not run'}", bool(st.session_state.qa_debate)),
             ("intel_ok",  "Company intel read", bool(st.session_state.company_briefs.get(_pf_company))),
@@ -5745,7 +5763,7 @@ if quick_apply:
             f'<div style="font-size:11px;color:rgba(0,0,0,0.5)">'
             + " · ".join([
                 f'<span style="color:{"#057642" if _pf_psc_checks.get(_k, _auto) else "#B71C1C"}">'
-                f'{"✓" if _pf_psc_checks.get(_k, _auto) else "✗"} {_l[:20]}</span>'
+                f'{check_icon(11) if _pf_psc_checks.get(_k, _auto) else x_icon(11)} {_l[:20]}</span>'
                 for _k, _l, _auto in _pf_psc_items
             ]) +
             f'</div></div>',
@@ -5755,7 +5773,7 @@ if quick_apply:
         _qa_dl_col, _qa_switch_col = st.columns([1, 2])
         with _qa_dl_col:
             st.download_button(
-                label="⬇️ Download application package",
+                label="Download application package",
                 data=_qa_md.encode("utf-8"),
                 file_name=_qa_fname,
                 mime="text/markdown",
@@ -5896,12 +5914,12 @@ if quick_apply:
             if _pb_objections:
                 st.markdown("**Handling the Tough Questions:**")
                 for _obj in _pb_objections:
-                    with st.expander(f"❓ {_obj.get('objection','')}"):
+                    with st.expander(f"Objection: {_obj.get('objection','')}"):
                         st.markdown(_obj.get("response", ""))
 
             # Download
             st.download_button(
-                "⬇️ Download Pivot Brief (Markdown)",
+                "Download Pivot Brief (Markdown)",
                 data=format_pivot_brief_as_markdown(
                     _pb, str(current), str(target),
                     candidate_name=_pb_name,
@@ -5945,7 +5963,7 @@ if not st.session_state.has_run:
 
         '<div style="background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);'
         'border-radius:8px;padding:10px 16px;min-width:110px">'
-        '<div style="font-size:18px;margin-bottom:3px">📄</div>'
+        f'<div style="display:flex;align-items:center;justify-content:center;margin-bottom:3px">{icon("file-text", 22, "rgba(255,255,255,0.9)")}</div>'
         '<div style="font-size:12px;font-weight:800">Upload CV</div>'
         '<div style="font-size:10px;opacity:0.6;margin-top:2px">skill extraction<br>O*NET mapping</div>'
         '</div>'
@@ -5953,7 +5971,7 @@ if not st.session_state.has_run:
 
         '<div style="background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);'
         'border-radius:8px;padding:10px 16px;min-width:110px">'
-        '<div style="font-size:18px;margin-bottom:3px">🔭</div>'
+        f'<div style="display:flex;align-items:center;justify-content:center;margin-bottom:3px">{icon("search", 22, "rgba(255,255,255,0.9)")}</div>'
         '<div style="font-size:12px;font-weight:800">Find / Paste Job</div>'
         '<div style="font-size:10px;opacity:0.6;margin-top:2px">SerpAPI real jobs<br>or paste one JD</div>'
         '</div>'
@@ -5961,7 +5979,7 @@ if not st.session_state.has_run:
 
         '<div style="background:rgba(255,255,255,0.18);border:1.5px solid rgba(255,255,255,0.5);'
         'border-radius:8px;padding:10px 16px;min-width:130px">'
-        '<div style="font-size:18px;margin-bottom:3px">⚡</div>'
+        f'<div style="display:flex;align-items:center;justify-content:center;margin-bottom:3px">{icon("zap", 22, "rgba(255,255,255,0.9)")}</div>'
         '<div style="font-size:12px;font-weight:800">Generate Portfolio</div>'
         '<div style="font-size:10px;opacity:0.7;margin-top:2px">1–3 applications<br>parallel (gpt-4o)</div>'
         '</div>'
@@ -5969,7 +5987,7 @@ if not st.session_state.has_run:
 
         '<div style="background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);'
         'border-radius:8px;padding:10px 16px;min-width:110px">'
-        '<div style="font-size:18px;margin-bottom:3px">⚖️</div>'
+        f'<div style="display:flex;align-items:center;justify-content:center;margin-bottom:3px">{icon("scale", 22, "rgba(255,255,255,0.9)")}</div>'
         '<div style="font-size:12px;font-weight:800">Debate + Rank</div>'
         '<div style="font-size:10px;opacity:0.6;margin-top:2px">adversarial test<br>hire probability %</div>'
         '</div>'
@@ -5977,7 +5995,7 @@ if not st.session_state.has_run:
 
         '<div style="background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);'
         'border-radius:8px;padding:10px 16px;min-width:110px">'
-        '<div style="font-size:18px;margin-bottom:3px">🎤</div>'
+        f'<div style="display:flex;align-items:center;justify-content:center;margin-bottom:3px">{icon("mic", 22, "rgba(255,255,255,0.9)")}</div>'
         '<div style="font-size:12px;font-weight:800">Interview Prep</div>'
         '<div style="font-size:10px;opacity:0.6;margin-top:2px">tailored questions<br>answer coaching</div>'
         '</div>'
@@ -5985,7 +6003,7 @@ if not st.session_state.has_run:
 
         '<div style="background:rgba(125,211,252,0.2);border:1.5px solid rgba(125,211,252,0.5);'
         'border-radius:8px;padding:10px 16px;min-width:110px">'
-        '<div style="font-size:18px;margin-bottom:3px">📅</div>'
+        f'<div style="display:flex;align-items:center;justify-content:center;margin-bottom:3px">{icon("calendar", 22, "rgba(125,211,252,0.9)")}</div>'
         '<div style="font-size:12px;font-weight:800;color:#7DD3FC">Interview</div>'
         '<div style="font-size:10px;color:rgba(125,211,252,0.8);margin-top:2px">the only goal<br>that matters</div>'
         '</div>'
@@ -6018,7 +6036,7 @@ if not st.session_state.has_run:
             f'<div style="background:#fff;border:1px solid rgba(0,0,0,0.1);border-radius:12px;'
             f'padding:20px 24px;margin-bottom:16px">'
             f'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">'
-            f'<div style="font-size:15px;font-weight:900;color:#1D2226">🧭 Career Command Center</div>'
+            f'<div style="display:flex;align-items:center;gap:8px;font-size:15px;font-weight:900;color:#1D2226">{icon("compass", 18, "#1D2226")} Career Command Center</div>'
             f'<div style="background:{_lp_phase_col};color:#fff;border-radius:20px;'
             f'padding:3px 12px;font-size:11px;font-weight:800">{_lp_phase}</div>'
             f'</div>'
@@ -6060,7 +6078,7 @@ if not st.session_state.has_run:
             '<div style="background:#fff;border:1px solid rgba(0,0,0,0.1);border-radius:10px;'
             'padding:16px 20px;margin-bottom:12px">'
             '<div style="font-size:11px;font-weight:800;text-transform:uppercase;'
-            'letter-spacing:0.08em;color:#0A66C2;margin-bottom:6px">⚡ Quick Apply Mode</div>'
+            f'letter-spacing:0.08em;color:#0A66C2;margin-bottom:6px">{icon("zap", 13, "#0A66C2")} Quick Apply Mode</div>'
             '<div style="font-size:14px;font-weight:700;color:#1D2226;margin-bottom:6px">'
             'Find jobs → 3 applications in parallel → ranked by hire probability'
             '</div>'
@@ -6078,7 +6096,7 @@ if not st.session_state.has_run:
             '<div style="background:#fff;border:1px solid rgba(0,0,0,0.1);border-radius:10px;'
             'padding:16px 20px;margin-bottom:12px">'
             '<div style="font-size:11px;font-weight:800;text-transform:uppercase;'
-            'letter-spacing:0.08em;color:rgba(0,0,0,0.5);margin-bottom:6px">🧭 Career Sprint Mode</div>'
+            f'letter-spacing:0.08em;color:rgba(0,0,0,0.5);margin-bottom:6px">{icon("compass", 13, "rgba(0,0,0,0.5)")} Career Sprint Mode</div>'
             '<div style="font-size:14px;font-weight:700;color:#1D2226;margin-bottom:6px">'
             'Validate the pivot first: gap → debate → plan → apply → interview'
             '</div>'
@@ -6352,7 +6370,7 @@ with st.container(border=True):
             f'padding:14px 18px;margin:16px 0 4px 0;">'
             f'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">'
             f'<div style="font-size:10px;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;color:#0A66C2">'
-            f'📋 Pivot Intelligence Brief</div>'
+            f'{icon("clipboard", 12, "#0A66C2")} Pivot Intelligence Brief</div>'
             f'<div style="font-size:18px;font-weight:900;color:{_brief_readiness_color}">{_readiness}'
             f'<span style="font-size:11px;font-weight:600;color:rgba(0,0,0,0.35)">/100</span></div>'
             f'</div>'
@@ -6448,7 +6466,7 @@ if not guided:
         f'<div style="display:flex;justify-content:space-between;margin-top:4px">'
         f'<div style="font-size:9px;color:rgba(0,0,0,0.35)">{_n_phases_done}/{len(_journey_phases)} phases complete</div>'
         f'<div style="font-size:9px;font-weight:700;color:{_readiness_bar_color}">'
-        + ("Interview-ready ✓" if _journey_pct == 100 else f"{100 - _journey_pct}% to interview-ready")
+        + ("Interview-ready" if _journey_pct == 100 else f"{100 - _journey_pct}% to interview-ready")
         + f'</div>'
         f'</div>'
         f'</div>',
@@ -6517,7 +6535,7 @@ if guided:
         f'<div style="font-size:12px;font-weight:900;color:#0A66C2;letter-spacing:-0.2px">Career Pivot Sprint</div>'
         f'<div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.06em;'
         f'background:#EEF3FB;border:1px solid #0A66C2;color:#0A66C2;border-radius:12px;'
-        f'padding:2px 8px;white-space:nowrap">🔁 gpt-4o Agent</div>'
+        f'padding:2px 8px;white-space:nowrap">{icon("cpu", 11, "#0A66C2")} gpt-4o Agent</div>'
         f'</div>'
         f'<div style="font-size:11px;color:rgba(0,0,0,0.4);margin-top:1px">'
         f'~{_sp_time_total} min total · {sum(_sp_done)}/5 steps complete</div>'
@@ -6807,7 +6825,7 @@ if guided:
         with _ag_hdr_col:
             st.markdown(
                 '<div style="display:flex;align-items:center;gap:8px">'
-                '<div style="font-size:14px;font-weight:800;color:rgba(0,0,0,0.88)">🔁 AI Agent Analysis</div>'
+                f'<div style="display:flex;align-items:center;gap:6px;font-size:14px;font-weight:800;color:rgba(0,0,0,0.88)">{icon("cpu", 16, "#0A66C2")} AI Agent Analysis</div>'
                 '<div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.06em;'
                 'background:#EEF3FB;border:1px solid #0A66C2;color:#0A66C2;border-radius:10px;padding:2px 7px">'
                 'gpt-4o · tool calls · multi-step</div>'
@@ -6819,7 +6837,7 @@ if guided:
             )
         with _ag_btn_col:
             _ag_disabled = not bool(_ag_key) or st.session_state.get("agent_running", False)
-            _ag_btn_label = "🔁 Re-run Agent" if _ag_result else "🔁 Run Agent Analysis"
+            _ag_btn_label = "Re-run Agent" if _ag_result else "Run Agent Analysis"
             if st.button(_ag_btn_label, key="sp_run_agent_inline", use_container_width=True,
                          type="primary", disabled=_ag_disabled):
                 st.session_state["agent_running"] = True
@@ -6939,7 +6957,7 @@ if guided:
             st.markdown(
                 f'<div style="background:#F0FAF4;border-left:3px solid #057642;border-radius:0 8px 8px 0;'
                 f'padding:10px 14px;font-size:12px;color:rgba(0,0,0,0.65);margin-bottom:8px">'
-                f'✓ Learning plan generated'
+                f'{check_icon(11)} Learning plan generated'
                 + (f' · Quality score: <strong style="color:{_ps_color}">{_ps}/100</strong>' if _ps else "")
                 + f'</div>',
                 unsafe_allow_html=True,
@@ -7095,7 +7113,7 @@ if guided:
                 st.markdown(
                     f'<div style="background:#F0FAF4;border-left:3px solid #057642;border-radius:0 8px 8px 0;'
                     f'padding:10px 14px;font-size:12px;color:rgba(0,0,0,0.65);margin-bottom:8px">'
-                    f'✓ Verdict: <strong style="color:{_vc}">{_v_sp.verdict_label}</strong> ({_vib}% viability) · '
+                    f'{check_icon(11)} Verdict: <strong style="color:{_vc}">{_v_sp.verdict_label}</strong> ({_vib}% viability) · '
                     f'{_v_sp.decisive_factor}</div>',
                     unsafe_allow_html=True,
                 )
@@ -7166,7 +7184,7 @@ if guided:
             st.markdown(
                 f'<div style="background:#F0FAF4;border-left:3px solid #057642;border-radius:0 8px 8px 0;'
                 f'padding:10px 14px;font-size:12px;color:rgba(0,0,0,0.65);margin-bottom:8px">'
-                f'✓ Application generated'
+                f'{check_icon(11)} Application generated'
                 + (f' for {_pkg_sp.job_title} at {_pkg_sp.company}' if _pkg_sp else "")
                 + (f' · Quality: <strong style="color:{_pe_color}">{_pe_score}/100</strong>' if _pe_score else "")
                 + f'</div>',
@@ -7195,7 +7213,7 @@ if guided:
                     _find_col, _ = st.columns([2, 1])
                     with _find_col:
                         if st.button(
-                            "🔍 Find real jobs" if _serp_key_sp else "🎯 Generate job listings",
+                            "Find real jobs" if _serp_key_sp else "Generate job listings",
                             key="sp_find_jobs", use_container_width=True, type="primary",
                         ):
                             with st.spinner("Searching for jobs…"):
@@ -7259,7 +7277,7 @@ if guided:
                                 st.session_state.pkg_quality_eval = _pkg_eval_sp
                                 st.rerun()
                     if _is_real_sp if _sp_jobs else False:
-                        st.caption("🔗 These are real live jobs — Apply button opens the actual posting")
+                        st.caption("These are real live jobs — Apply button opens the actual posting")
         else:
             st.markdown('<div style="height:4px"></div>', unsafe_allow_html=True)
 
@@ -7288,7 +7306,7 @@ if guided:
             st.markdown(
                 f'<div style="background:#F0FAF4;border-left:3px solid #057642;border-radius:0 8px 8px 0;'
                 f'padding:10px 14px;font-size:12px;color:rgba(0,0,0,0.65);margin-bottom:8px">'
-                f'✓ Interview prep complete'
+                f'{check_icon(11)} Interview prep complete'
                 + (f' · Readiness: <strong style="color:{_iac}">{_itv_avg_sp}/100</strong>' if _itv_avg_sp else "")
                 + f'</div>',
                 unsafe_allow_html=True,
@@ -7412,7 +7430,7 @@ if guided:
                 st.markdown(
                     f'<div style="background:#F0FAF4;border-left:3px solid #0A66C2;border-radius:0 8px 8px 0;'
                     f'padding:10px 14px;font-size:12px;color:rgba(0,0,0,0.65);margin-bottom:8px">'
-                    f'✓ LinkedIn profile optimised'
+                    f'{check_icon(11)} LinkedIn profile optimised'
                     + (f' · Profile score: <strong style="color:{_li_sc_c}">{_li_sc}/100</strong>' if _li_sc else "")
                     + f'</div>',
                     unsafe_allow_html=True,
@@ -7484,7 +7502,7 @@ if guided:
             '<div style="background:linear-gradient(135deg,#057642 0%,#0A8C52 100%);'
             'border-radius:12px;padding:24px 28px;margin-top:8px">'
             '<div style="text-align:center;margin-bottom:18px">'
-            '<div style="font-size:28px;margin-bottom:6px">🎉</div>'
+            f'<div style="display:flex;align-items:center;justify-content:center;margin-bottom:6px">{icon("star", 28, "#A05A00")}</div>'
             '<div style="font-size:20px;font-weight:900;color:#fff;margin-bottom:4px">'
             'Sprint complete — you\'re interview-ready</div>'
             '<div style="font-size:12px;color:rgba(255,255,255,0.65)">'
@@ -7648,7 +7666,7 @@ if guided:
         _dl_col, _rm_col = st.columns([1, 2])
         with _dl_col:
             st.download_button(
-                label="⬇️ Download Pivot Playbook",
+                label="Download Pivot Playbook",
                 data=_playbook_md.encode("utf-8"),
                 file_name=_pb_fname,
                 mime="text/markdown",
@@ -8023,8 +8041,7 @@ with _tab_plan:
     # ============================================================
     with st.container(border=True):
         st.markdown(
-            '<div class="li-tool-header">'
-            '<div class="li-tool-icon" style="background:#EEF3FB">SK</div>'
+            f'<div class="li-tool-header">{section_icon_box("skills")}'
             '<div><div class="li-tool-title">AI Learning Plan</div>'
             '<div class="li-tool-cap">Personalised upskilling roadmap based on your skill gaps</div></div>'
             '</div>',
@@ -8102,7 +8119,7 @@ with _tab_plan:
                 _pverdict = _plan_eval.get("one_line_verdict", "")
                 _pregen = (
                     '<span style="background:#FFF3CD;color:#856404;font-size:10px;font-weight:700;'
-                    'border-radius:8px;padding:2px 8px;margin-left:6px">⚠ Regenerate recommended</span>'
+                    f'border-radius:8px;padding:2px 8px;margin-left:6px">{warn_icon(11)} Regenerate recommended</span>'
                     if _plan_eval.get("regenerate_recommended") else ""
                 )
                 _pdim_pills = "".join([
@@ -8134,8 +8151,7 @@ with _tab_plan:
     with st.container(border=True):
         _si_personal = bool(_cv_profile and _cv_profile.get("years_experience", 0) > 0)
         st.markdown(
-            '<div class="li-tool-header">'
-            '<div class="li-tool-icon" style="background:#FFF8E7">$</div>'
+            f'<div class="li-tool-header">{section_icon_box("salary")}'
             '<div><div class="li-tool-title">Salary Impact Estimator</div>'
             '<div class="li-tool-cap">Compensation trajectory — entry level vs. senior, with break-even timeline</div></div>'
             '</div>',
@@ -8293,8 +8309,7 @@ with _tab_validate:
     # ============================================================
     with st.container(border=True):
         st.markdown(
-            '<div class="li-tool-header">'
-            '<div class="li-tool-icon" style="background:#FEF0F0">VS</div>'
+            f'<div class="li-tool-header">{section_icon_box("validate")}'
             '<div><div class="li-tool-title">Adversarial Pivot Debate</div>'
             '<div class="li-tool-cap">Advocate vs. Skeptic vs. Judge · probability-style verdict</div></div>'
             '</div>',
@@ -8422,12 +8437,12 @@ with _tab_validate:
                 if verdict.conditions_for_success:
                     st.markdown("**This pivot succeeds if:**")
                     for c in verdict.conditions_for_success:
-                        st.markdown(f"✓ {c}")
+                        st.markdown(f"— {c}")
             with cond_b:
                 if verdict.conditions_for_failure:
                     st.markdown("**This pivot fails if:**")
                     for c in verdict.conditions_for_failure:
-                        st.markdown(f"✗ {c}")
+                        st.markdown(f"{x_icon(12)} {c}", unsafe_allow_html=True)
 
             if verdict.recommended_next_action:
                 st.markdown(
@@ -8445,8 +8460,7 @@ with _tab_validate:
     # ============================================================
     with st.container(border=True):
         st.markdown(
-            '<div class="li-tool-header">'
-            '<div class="li-tool-icon" style="background:#EEF3FB">AR</div>'
+            f'<div class="li-tool-header">{section_icon_box("architecture")}'
             '<div><div class="li-tool-title">Decision Board</div>'
             '<div class="li-tool-cap">Competing strategies · expert personas · consensus · what could flip the recommendation</div></div>'
             '</div>',
@@ -9109,7 +9123,7 @@ with _tab_execute:
         )
         if _sa_personal:
             st.markdown(
-                '<span class="status-pill status-ok">✓ Personalised to your CV profile</span>',
+                f'<span class="status-pill status-ok">{check_icon(12)} Personalised to your CV profile</span>',
                 unsafe_allow_html=True,
             )
             st.markdown("<div style='margin-bottom:4px'></div>", unsafe_allow_html=True)
@@ -9154,7 +9168,7 @@ with _tab_execute:
                 _serp_key = str(st.secrets.get("SERP_API_KEY", "")).strip()
             except Exception:
                 pass
-            _real_jobs_btn_label = "🌐 Search live jobs" if _serp_key else "🌐 Live jobs (add SERP_API_KEY)"
+            _real_jobs_btn_label = "Search live jobs" if _serp_key else "Live jobs (add SERP_API_KEY)"
             if st.button(_real_jobs_btn_label, use_container_width=True, key="sa_real_jobs", disabled=not bool(_serp_key)):
                 with st.spinner("Searching live job boards (LinkedIn · Indeed · Glassdoor)…"):
                     _raw_jobs = search_real_jobs(
@@ -9211,8 +9225,8 @@ with _tab_execute:
             for i, job in enumerate(sa_jobs):
                 _match_color = "#117A37" if job.match_score >= 72 else ("#A05A00" if job.match_score >= 52 else "#0A66C2")
                 _match_bar_w = job.match_score
-                _easy = '<span class="li-job-tag li-job-tag-easy">⚡ Easy Apply</span>' if job.is_easy_apply else ""
-                _net = (f'<span class="li-network-note">👥 {job.network_connections} connection{"s" if job.network_connections > 1 else ""} work here</span>'
+                _easy = f'<span class="li-job-tag li-job-tag-easy">{icon("zap", 11, "#0A66C2")} Easy Apply</span>' if job.is_easy_apply else ""
+                _net = (f'<span class="li-network-note">{icon("users", 12, "#0A66C2")} {job.network_connections} connection{"s" if job.network_connections > 1 else ""} work here</span>'
                         if job.network_connections > 0 else "")
                 _real_badge = (
                     f'<span style="background:#057642;color:#fff;font-size:9px;font-weight:800;'
@@ -9343,10 +9357,10 @@ with _tab_execute:
                             )
                             if _ci_brief.get("green_flags"):
                                 for _gf in _ci_brief["green_flags"][:2]:
-                                    st.markdown(f'<span style="color:#117A37;font-size:11px">✓ {_gf}</span>', unsafe_allow_html=True)
+                                    st.markdown(f'<span style="color:#117A37;font-size:11px">{check_icon(11)} {_gf}</span>', unsafe_allow_html=True)
                             if _ci_brief.get("red_flags"):
                                 for _rf in _ci_brief["red_flags"][:2]:
-                                    st.markdown(f'<span style="color:#B71C1C;font-size:11px">⚠ {_rf}</span>', unsafe_allow_html=True)
+                                    st.markdown(f'<span style="color:#B71C1C;font-size:11px">{warn_icon(11)} {_rf}</span>', unsafe_allow_html=True)
                             if _ci_brief.get("cover_letter_hook"):
                                 st.markdown(
                                     f'<div style="background:#EEF3FB;border-radius:6px;padding:8px 12px;margin-top:6px;font-size:11px">'
@@ -9425,7 +9439,7 @@ with _tab_execute:
                     apply_col_a, apply_col_b = st.columns([2, 3])
                 with apply_col_a:
                     if st.button(
-                        f"{'⚡ Easy Apply' if job.is_easy_apply else '📄 Generate Application Package'}",
+                        f"{'Easy Apply' if job.is_easy_apply else 'Generate Application Package'}",
                         key=f"sa_apply_{i}",
                         use_container_width=True,
                     ):
@@ -9472,7 +9486,7 @@ with _tab_execute:
                 if _is_real and _apply_link:
                     with apply_col_b:
                         st.link_button(
-                            "🔗 Apply Now",
+                            "Apply Now",
                             url=_apply_link,
                             use_container_width=True,
                         )
@@ -9491,7 +9505,7 @@ with _tab_execute:
                         _verdict = _pkg_eval.get("one_line_verdict", "")
                         _regen_note = (
                             '<span style="background:#FFF3CD;color:#856404;font-size:10px;font-weight:700;'
-                            'border-radius:8px;padding:2px 8px;margin-left:6px">⚠ Regenerate recommended</span>'
+                            f'border-radius:8px;padding:2px 8px;margin-left:6px">{warn_icon(11)} Regenerate recommended</span>'
                             if _pkg_eval.get("regenerate_recommended") else ""
                         )
                         _dim_pills = "".join([
@@ -9524,7 +9538,7 @@ with _tab_execute:
                     )
 
                     pkg_tab1, pkg_tab2, pkg_tab3, pkg_tab4 = st.tabs(
-                        ["Cover Letter", "CV Rewrites", "LinkedIn InMail", "🎯 Interview Prep"]
+                        ["Cover Letter", "CV Rewrites", "LinkedIn InMail", "Interview Prep"]
                     )
 
                     with pkg_tab1:
@@ -9558,7 +9572,7 @@ with _tab_execute:
                                 f'<div class="li-cv-before"><strong style="font-size:10px;text-transform:uppercase;color:rgba(0,0,0,0.45)">Before</strong><br>{rewrite.original}</div>'
                                 f'<div class="li-cv-after"><strong style="font-size:10px;text-transform:uppercase;color:#117A37">After</strong><br>{rewrite.rewritten}</div>'
                                 f'</div>'
-                                f'<div style="font-size:11px;color:rgba(0,0,0,0.5);margin-top:4px;font-style:italic">💡 {rewrite.why}</div>'
+                                f'<div style="font-size:11px;color:rgba(0,0,0,0.5);margin-top:4px;font-style:italic">{icon("zap", 11, "rgba(0,0,0,0.4)")} {rewrite.why}</div>'
                                 f'</div>',
                                 unsafe_allow_html=True,
                             )
@@ -9595,7 +9609,7 @@ with _tab_execute:
 
                     # ── Model A/B Comparison ─────────────────────────────────
                     with st.expander(
-                        "🔬 Model A/B Comparison — gpt-4o vs gpt-4o-mini quality test",
+                        "Model A/B Comparison — gpt-4o vs gpt-4o-mini quality test",
                         expanded=False,
                     ):
                         st.markdown(
@@ -9832,7 +9846,7 @@ with _tab_execute:
                                     + "".join([
                                         f'<span style="display:inline-block;background:#E7F6EC;color:#117A37;'
                                         f'font-size:11px;font-weight:700;border-radius:12px;padding:3px 10px;'
-                                        f'margin:2px 3px 2px 0">✓ {kw}</span>'
+                                        f'margin:2px 3px 2px 0">{check_icon(10)} {kw}</span>'
                                         for kw in _ats_matched[:15]
                                     ]),
                                     unsafe_allow_html=True,
@@ -9846,7 +9860,7 @@ with _tab_execute:
                                     + "".join([
                                         f'<span style="display:inline-block;background:#FEECEC;color:#B71C1C;'
                                         f'font-size:11px;font-weight:700;border-radius:12px;padding:3px 10px;'
-                                        f'margin:2px 3px 2px 0">✗ {kw}</span>'
+                                        f'margin:2px 3px 2px 0">{x_icon(10)} {kw}</span>'
                                         for kw in _ats_miss_crit[:10]
                                     ]),
                                     unsafe_allow_html=True,
@@ -10001,7 +10015,7 @@ with _tab_execute:
         st.divider()
         st.markdown(
             '<div style="font-size:16px;font-weight:800;color:rgba(0,0,0,0.88);margin-bottom:4px">'
-            '👥 People who made this pivot</div>'
+            f'{icon("users", 13, "rgba(0,0,0,0.55)")} People who made this pivot</div>'
             '<div style="font-size:13px;color:rgba(0,0,0,0.55);margin-bottom:14px">'
             'Anonymised success stories from professionals who transitioned from '
             f'{current} → {target}</div>',
@@ -10052,7 +10066,7 @@ with _tab_execute:
                     f'      </div>'
                     f'      <span class="li-peer-timing">{peer.months_to_pivot} months</span>'
                     f'    </div>'
-                    f'    <div class="li-peer-milestone">🔑 {peer.key_milestone}</div>'
+                    f'    <div class="li-peer-milestone">{icon("star", 12, "#A05A00")} {peer.key_milestone}</div>'
                     f'    <div class="li-peer-quote">"{peer.testimonial}"</div>'
                     f'    <div class="li-degree">{degree_label}</div>'
                     f'  </div>'
@@ -10068,8 +10082,7 @@ with _tab_execute:
     with st.container(border=True):
         _pn_personal = bool(st.session_state.cv_profile and st.session_state.cv_profile.get("extracted_role"))
         st.markdown(
-            '<div class="li-tool-header">'
-            '<div class="li-tool-icon" style="background:#F3EEF9">CV</div>'
+            f'<div class="li-tool-header">{section_icon_box("cv")}'
             '<div><div class="li-tool-title">Pivot Narrative Generator</div>'
             '<div class="li-tool-cap">Cover letter · elevator pitch · LinkedIn About · interview talking points</div></div>'
             '</div>',
@@ -10081,7 +10094,7 @@ with _tab_execute:
         )
         if _pn_personal:
             st.markdown(
-                '<span class="status-pill status-ok">✓ Personal mode — output tailored to your CV</span>',
+                f'<span class="status-pill status-ok">{check_icon(12)} Personal mode — output tailored to your CV</span>',
                 unsafe_allow_html=True,
             )
             st.markdown("<div style='margin-bottom:6px'></div>", unsafe_allow_html=True)
@@ -10198,8 +10211,7 @@ with _tab_execute:
     with st.container(border=True):
         _li_opt_personal = bool((st.session_state.cv_text or "").strip())
         st.markdown(
-            '<div class="li-tool-header">'
-            '<div class="li-tool-icon" style="background:#EEF3FB">LI</div>'
+            f'<div class="li-tool-header">{section_icon_box("linkedin")}'
             '<div><div class="li-tool-title">LinkedIn Profile Optimizer</div>'
             '<div class="li-tool-cap">Headline · About section · Experience rewrites · Skills list — ready to paste into LinkedIn</div></div>'
             '</div>',
@@ -10215,7 +10227,7 @@ with _tab_execute:
         _li_gen_btn_col, _li_info_col = st.columns([2, 3])
         with _li_gen_btn_col:
             _li_gen_btn = st.button(
-                "✨ Generate LinkedIn Profile",
+                "Generate LinkedIn Profile",
                 use_container_width=True,
                 key="li_gen_btn",
             )
@@ -10374,7 +10386,7 @@ with _tab_execute:
                     _s_col2, _i_col2 = st.columns(2)
                     with _s_col2:
                         for _s in _li_ev.get("strengths", []):
-                            st.markdown(f"✓ {_s}")
+                            st.markdown(f"— {_s}")
                     with _i_col2:
                         for _imp in _li_ev.get("improvements", []):
                             st.markdown(f"→ {_imp}")
@@ -10420,8 +10432,7 @@ with _tab_execute:
     with st.container(border=True):
         _jp_personal = bool(st.session_state.cv_profile and st.session_state.cv_profile.get("extracted_role"))
         st.markdown(
-            '<div class="li-tool-header">'
-            '<div class="li-tool-icon" style="background:#EEF3FB">ROI</div>'
+            f'<div class="li-tool-header">{section_icon_box("roi")}'
             '<div><div class="li-tool-title">Job Posting Analyzer</div>'
             '<div class="li-tool-cap">Instant match score · advantage/gap breakdown · application readiness verdict</div></div>'
             '</div>',
@@ -10758,7 +10769,7 @@ with _tab_execute:
     _dl_col1, _dl_col2, _dl_col3 = st.columns([2, 2, 3])
     with _dl_col1:
         st.download_button(
-            label="📥 Download Pivot Playbook",
+            label="Download Pivot Playbook",
             data=_full_playbook,
             file_name=f"pivot_playbook_{str(current)[:15].replace(' ','_')}_{str(target)[:15].replace(' ','_')}.md",
             mime="text/markdown",
@@ -10767,7 +10778,7 @@ with _tab_execute:
         )
     with _dl_col2:
         st.download_button(
-            label="📊 Download Skill Gap CSV",
+            label="Download Skill Gap CSV",
             data=gap_df.to_csv(index=False) if not gap_df.empty else "skill,gap\n",
             file_name=f"skill_gap_{str(current)[:12].replace(' ','_')}.csv",
             mime="text/csv",
@@ -10794,8 +10805,7 @@ with _tab_execute:
     # ============================================================
     with st.container(border=True):
         st.markdown(
-            '<div class="li-tool-header">'
-            '<div class="li-tool-icon" style="background:#EEF3FB">AI</div>'
+            f'<div class="li-tool-header">{section_icon_box("ai")}'
             '<div><div class="li-tool-title">Career Intelligence Agent</div>'
             '<div class="li-tool-cap">Autonomous AI that decides which tools to call, in what order, and when it has enough evidence</div></div>'
             '</div>',
@@ -10811,7 +10821,7 @@ with _tab_execute:
             st.markdown(
                 '<div style="font-size:11px;font-weight:800;letter-spacing:0.08em;'
                 'text-transform:uppercase;color:#0A66C2;margin-bottom:14px">'
-                '🏗 Architecture layers — every LLM call is explicit and justified'
+                f'{icon("layers", 12, "rgba(0,0,0,0.55)")} Architecture layers — every LLM call is explicit and justified'
                 '</div>',
                 unsafe_allow_html=True,
             )
@@ -11100,7 +11110,7 @@ with _tab_execute:
             st.markdown(
                 '<div style="font-size:11px;font-weight:800;letter-spacing:0.08em;'
                 'text-transform:uppercase;color:#B24020;margin-bottom:10px">'
-                '⚠️ Accuracy Considerations — what to trust and what not to</div>',
+                f'{warn_icon(12)} Accuracy Considerations — what to trust and what not to</div>',
                 unsafe_allow_html=True,
             )
             _acc_items = [
@@ -11366,7 +11376,7 @@ with _tab_execute:
         with agent_tab_run:
             # ── Action area: button + secondary link ──────────────
             run_agent_btn = st.button(
-                "🚀 Run Career Intelligence Agent",
+                "Run Career Intelligence Agent",
                 disabled=st.session_state.agent_running,
             )
             if st.session_state.agent_result or st.session_state.agent_steps:
@@ -11497,7 +11507,7 @@ with _tab_execute:
                 for s in tool_steps:
                     if s.kind == "thinking" and s.thinking_text:
                         st.markdown(
-                            f'<div class="thinking-block">💭 {s.thinking_text}</div>',
+                            f'<div class="thinking-block">{icon("message-square", 13, "#5F6B7A")} {s.thinking_text}</div>',
                             unsafe_allow_html=True,
                         )
 
@@ -11508,7 +11518,7 @@ with _tab_execute:
                         tool_name = s.tool_name or ""
                         result_data = s.tool_result
                         icon = TOOL_ICONS.get(tool_name, "🔧")
-                        timer = f'<span class="tool-timer">⏱ {s.elapsed_ms:.0f} ms</span>' if s.elapsed_ms else ""
+                        timer = f'<span class="tool-timer">{icon("clock", 11, "rgba(0,0,0,0.45)")} {s.elapsed_ms:.0f} ms</span>' if s.elapsed_ms else ""
 
                         st.markdown(
                             f'<div class="tool-card-header">'
@@ -11565,7 +11575,7 @@ with _tab_execute:
                                     st.markdown(f"✅ **{ad.get('reviewer', '?')}** — {ad.get('score', 0):.0f}/100")
                                     st.caption((ad.get("key_reason") or "")[:150])
                                 with ic2:
-                                    st.markdown(f"❌ **{cr.get('reviewer', '?')}** — {cr.get('score', 0):.0f}/100")
+                                    st.markdown(f"Error: **{cr.get('reviewer', '?')}** — {cr.get('score', 0):.0f}/100")
                                     st.caption((cr.get("killer_objection") or "")[:150])
                                 for cond in result_data.get("resolution_conditions", []):
                                     st.markdown(f"→ {cond}")
@@ -11621,7 +11631,7 @@ with _tab_interview:
         unsafe_allow_html=True,
     )
     st.markdown(
-        '<div class="li-tool-header"><div class="li-tool-icon" style="background:#EEF3FB">IC</div><div><div class="li-tool-title">AI Interview Coach</div></div></div>'
+        f'<div class="li-tool-header">{section_icon_box("interview")}<div><div class="li-tool-title">AI Interview Coach</div></div></div>'
         '<div class="li-tool-cap">Role-specific questions · Answer scoring · Coached rewrites · Interview Readiness score</div>',
         unsafe_allow_html=True,
     )
@@ -11647,8 +11657,8 @@ with _tab_interview:
     _ctx_parts = []
     if _itv_company:     _ctx_parts.append(f"**Role:** {_itv_job_title} at {_itv_company}")
     else:                _ctx_parts.append(f"**Target role:** {_itv_job_title}")
-    if _itv_jd:          _ctx_parts.append("Job description available ✓")
-    if _itv_cv.strip():  _ctx_parts.append("CV loaded ✓")
+    if _itv_jd:          _ctx_parts.append("Job description available")
+    if _itv_cv.strip():  _ctx_parts.append("CV loaded")
 
     st.caption("  ·  ".join(_ctx_parts))
 
@@ -11662,7 +11672,7 @@ with _tab_interview:
     _itv_col_btn, _itv_col_info = st.columns([2, 3])
     with _itv_col_btn:
         _itv_gen_btn = st.button(
-            "🎯 Generate Interview Questions",
+            "Generate Interview Questions",
             use_container_width=True,
             help="AI generates 6 role-specific questions based on the job description and your CV.",
         )
@@ -11758,7 +11768,7 @@ with _tab_interview:
                 f'<span style="font-size:11px;padding:2px 9px;border-radius:20px;font-weight:700;'
                 f'background:{_dc}15;color:{_dc};border:1px solid {_dc}40">{_q_diff}</span>'
                 + ('<span style="font-size:10px;padding:2px 8px;border-radius:20px;'
-                   'background:#E7F6EC;color:#117A37;border:1px solid #A8DDB8">✓ Evaluated</span>' if _eval else "")
+                   f'background:#E7F6EC;color:#117A37;border:1px solid #A8DDB8">{check_icon(11)} Evaluated</span>' if _eval else "")
                 + f'</div>'
                 f'<div style="font-size:14px;font-weight:700;color:#1D2226;line-height:1.5;margin-bottom:6px">{_q_text}</div>'
                 f'<div style="font-size:11px;color:rgba(0,0,0,0.45);font-style:italic">What they\'re testing: {_q_why}</div>'
@@ -11824,12 +11834,12 @@ with _tab_interview:
                 label_visibility="collapsed",
             )
             if _voice_transcript and _saved_answer == _voice_transcript:
-                st.caption("🎙️ Auto-filled from voice transcription — edit as needed before evaluating")
+                st.caption("Auto-filled from voice transcription — edit as needed before evaluating")
 
             _eval_col, _ = st.columns([2, 3])
             with _eval_col:
                 _eval_btn = st.button(
-                    f"⚡ Evaluate & Coach  Q{_qi+1}",
+                    f"Evaluate & Coach Q{_qi+1}",
                     key=f"itv_eval_{_qi}",
                     use_container_width=True,
                     disabled=not bool(_answer_input.strip()),
@@ -11885,7 +11895,7 @@ with _tab_interview:
                     with _s_col:
                         st.markdown("**What works**")
                         for _s in _eval.get("strengths", []):
-                            st.markdown(f"✓ {_s}")
+                            st.markdown(f"— {_s}")
                     with _i_col:
                         st.markdown("**Improve**")
                         for _imp in _eval.get("improvements", []):
@@ -11920,7 +11930,7 @@ with _tab_interview:
                 f'<div style="background:{_final_color}18;border:2px solid {_final_color}55;'
                 f'border-radius:10px;padding:16px 20px;margin-top:8px;text-align:center">'
                 f'<div style="font-size:11px;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;'
-                f'color:{_final_color};margin-bottom:4px">🎤 Interview Readiness: {_itv_overall}/100</div>'
+                f'color:{_final_color};margin-bottom:4px">{icon("mic", 13, _final_color)} Interview Readiness: {_itv_overall}/100</div>'
                 f'<div style="font-size:13px;color:rgba(0,0,0,0.75)">{_final_verdict}</div>'
                 f'</div>',
                 unsafe_allow_html=True,
@@ -11930,7 +11940,7 @@ with _tab_interview:
         # Empty state
         st.markdown(
             '<div style="text-align:center;padding:48px 24px;color:rgba(0,0,0,0.4)">'
-            '<div style="font-size:40px;margin-bottom:12px">🎤</div>'
+            f'<div style="display:flex;align-items:center;justify-content:center;margin-bottom:12px">{icon("mic", 40, "rgba(0,0,0,0.25)")}</div>'
             '<div style="font-size:15px;font-weight:600;margin-bottom:6px">AI Interview Coach</div>'
             '<div style="font-size:13px">Click "Generate Interview Questions" to get 6 tailored questions.<br>'
             'Type your draft answers and get scored + coached rewrites.<br>'
@@ -11942,8 +11952,7 @@ with _tab_interview:
     # ── Mock Interview Simulator ───────────────────────────────────────────────
     st.divider()
     st.markdown(
-        '<div class="li-tool-header">'
-        '<div class="li-tool-icon" style="background:#F3EEF9">MK</div>'
+        f'<div class="li-tool-header">{section_icon_box("mock")}'
         '<div><div class="li-tool-title">Live Mock Interview</div>'
         '<div class="li-tool-cap">Real-time conversational interview · gpt-4o plays the interviewer · dynamic follow-ups · post-interview report</div></div>'
         '</div>',
@@ -11969,7 +11978,7 @@ with _tab_interview:
             '<div style="background:#F8F3FD;border:1px solid #D4B8F0;border-radius:10px;'
             'padding:16px 20px;margin-bottom:12px">'
             '<div style="font-size:12px;color:rgba(0,0,0,0.6);line-height:1.7">'
-            '🎭 <strong>How it works:</strong> gpt-4o plays a senior interviewer at your target company. '
+            f'{icon("mic", 14, "rgba(0,0,0,0.55)")} <strong>How it works:</strong> gpt-4o plays a senior interviewer at your target company. '
             'It asks one question at a time and follows up dynamically based on your answer — '
             'just like a real interview. After 6 exchanges, you get a full performance report '
             'with scores across 5 dimensions and a coached rewrite of your weakest answer.'
@@ -12017,7 +12026,7 @@ with _tab_interview:
                 st.caption(
                     f"Context: **{_itv_job_title}**"
                     + (f" at {_itv_company}" if _itv_company else "")
-                    + (" · CV loaded ✓" if _itv_cv.strip() else " · Upload CV for personalised questions")
+                    + (" · CV loaded" if _itv_cv.strip() else " · Upload CV for personalised questions")
                 )
 
     elif _mock_active:
@@ -12196,8 +12205,7 @@ with _tab_interview:
     # ──────────────────────────────────────────────────────────────────────────
     st.divider()
     st.markdown(
-        '<div class="li-tool-header">'
-        '<div class="li-tool-icon" style="background:#F0F4FF">PZ</div>'
+        f'<div class="li-tool-header">{section_icon_box("zwilling")}'
         '<div><div class="li-tool-title">Pivot-Zwilling · Your Career Twin</div>'
         '<div class="li-tool-cap">Persistent AI companion · Knows your CV, scores, and pivot path · Honest strategic coaching between sessions</div></div>'
         '</div>',
@@ -12285,7 +12293,7 @@ with _tab_interview:
             '<div style="background:#F0F4FF;border:1px solid #C4D3F8;border-radius:10px;'
             'padding:16px 20px;margin-bottom:12px">'
             '<div style="font-size:13px;color:#1D2226;line-height:1.7">'
-            '🪞 <strong>I\'m your Pivot-Zwilling</strong> — a strategic AI that knows your full profile.<br>'
+            f'{icon("user", 14, "rgba(0,0,0,0.55)")} <strong>I\'m your Pivot-Zwilling</strong> — a strategic AI that knows your full profile.<br>'
             'Ask me anything: <em>"Am I ready to apply?"</em> · <em>"Which gap is blocking me most?"</em> · '
             '<em>"Roast my pivot pitch"</em> · <em>"What should I do today?"</em>'
             '</div></div>',
