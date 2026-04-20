@@ -53,6 +53,13 @@ from src.market_pulse import get_market_pulse, generate_warm_intro_sequence
 from src.pivot_brief import (
     generate_pivot_brief, format_pivot_brief_as_markdown, generate_interview_war_room
 )
+from src.pivot_dna import (
+    analyze_writing_voice, build_pivot_dna, get_voice_injection_prompt,
+    get_cohort_intelligence, generate_skill_proof, generate_hiring_manager_dossier,
+)
+from src.roi_calculator import (
+    compute_application_roi, rank_applications_by_roi, get_portfolio_roi_summary,
+)
 from src.smart_apply import (
     generate_job_listings, generate_application_package, generate_pivot_peers,
     JobListing, ApplicationPackage, PivotPeer,
@@ -1409,6 +1416,25 @@ DEFAULT_STATE = {
     "war_room_company": "",        # company the war room was built for
     # Rejection Reframe (per rejection)
     "rejection_reframe_result": None,
+    # Pivot DNA — persistent voice profile
+    "pivot_dna": None,             # build_pivot_dna result
+    "voice_profile": None,         # analyze_writing_voice result (deterministic)
+    # Cohort Intelligence
+    "cohort_intelligence": None,   # get_cohort_intelligence result
+    "cohort_pivot_key": "",        # "current→target" to detect stale data
+    # Proof-of-Skill Generator
+    "skill_proofs": {},            # {skill_name: generate_skill_proof result}
+    # Hiring Manager Dossier
+    "hm_dossier": None,            # generate_hiring_manager_dossier result
+    "hm_dossier_name": "",         # manager name dossier was built for
+    # Application ROI
+    "roi_results": {},             # {company+title: compute_application_roi result}
+    # Momentum Engine
+    "momentum_streak_days": 0,
+    "momentum_last_date": "",
+    "momentum_journal": [],        # List[str] — weekly summary entries
+    # Pre-Send Checklist
+    "presend_checks": {},          # {job_id: {check: bool}}
 }
 
 for key, value in DEFAULT_STATE.items():
@@ -1685,6 +1711,64 @@ with st.sidebar:
             unsafe_allow_html=True,
         )
 
+        # ── Auto-build voice profile (deterministic — instant) ────────────
+        _cv_txt = st.session_state.cv_text or ""
+        if _cv_txt and not st.session_state.voice_profile:
+            st.session_state.voice_profile = analyze_writing_voice(_cv_txt)
+
+        # ── Pivot DNA button ──────────────────────────────────────────────
+        _dna_built = bool(st.session_state.pivot_dna)
+        _dna_key = f"{current}→{selected_target}"
+        _dna_stale = st.session_state.get("_dna_pivot_key", "") != _dna_key
+
+        if _dna_stale and _dna_built:
+            st.session_state.pivot_dna = None
+            st.session_state["_dna_pivot_key"] = _dna_key
+            _dna_built = False
+
+        if not _dna_built:
+            if st.button("🧬 Build Pivot DNA", use_container_width=True,
+                         help="Extracts your voice + strongest transferable argument — injected into all future outputs"):
+                _dna_api = ""
+                try:
+                    _dna_api = str(st.secrets.get("OPENAI_API_KEY", "")).strip()
+                except Exception:
+                    pass
+                with st.spinner("Extracting your unique voice…"):
+                    st.session_state.pivot_dna = build_pivot_dna(
+                        cv_text=_cv_txt,
+                        current_role=str(current),
+                        target_role=str(selected_target),
+                        years_experience=float(p.get("years_experience", 0) or 0),
+                        top_skills=p.get("top_skills") or [],
+                        voice_profile=st.session_state.voice_profile,
+                        model="gpt-4o-mini",
+                        api_key=_dna_api or None,
+                        prefer_online=bool(_dna_api),
+                    )
+                    st.session_state["_dna_pivot_key"] = _dna_key
+                st.rerun()
+        else:
+            _dna = st.session_state.pivot_dna
+            st.markdown(
+                f'<div style="background:#F0FAF4;border:1px solid #B7E0C8;border-radius:6px;'
+                f'padding:8px 10px;margin-top:4px">'
+                f'<div style="font-size:10px;font-weight:800;color:#057642;text-transform:uppercase;'
+                f'letter-spacing:0.06em;margin-bottom:3px">🧬 Pivot DNA Active</div>'
+                f'<div style="font-size:11px;color:rgba(0,0,0,0.65);line-height:1.4">'
+                f'{_dna.get("writing_persona","").title()} · '
+                f'{st.session_state.voice_profile.get("sentence_style","balanced") if st.session_state.voice_profile else "balanced"} style · '
+                f'{st.session_state.voice_profile.get("formality","formal") if st.session_state.voice_profile else "formal"} tone'
+                f'</div>'
+                f'<div style="font-size:10px;color:rgba(0,0,0,0.4);margin-top:3px">'
+                f'All outputs calibrated to your voice</div>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+            if st.button("Rebuild DNA", key="rebuild_dna", use_container_width=True, type="secondary"):
+                st.session_state.pivot_dna = None
+                st.rerun()
+
     st.divider()
     if not quick_apply:
         st.markdown(
@@ -1867,6 +1951,199 @@ if quick_apply:
             elif not _qa_key:
                 st.info("Add OpenAI API key in Streamlit secrets to activate the AI Advisor.")
 
+    # ── Portfolio ROI Summary (deterministic — always shown when data exists)
+    _roi_all = list(st.session_state.roi_results.values())
+    if _roi_all:
+        _roi_summary = get_portfolio_roi_summary(_roi_all, _adv_pl)
+        _roi_high = _roi_summary.get("high_roi_count", 0)
+        _roi_avg_pct = _roi_summary.get("avg_ei_pct", 0)
+        _roi_exp = _roi_summary.get("expected_interviews_total", 0)
+        _roi_sum_col = "#117A37" if _roi_avg_pct >= 25 else ("#A05A00" if _roi_avg_pct >= 12 else "#B71C1C")
+
+        st.markdown(
+            f'<div style="background:#F3F6F9;border-radius:8px;padding:10px 16px;margin-top:8px;'
+            f'display:flex;align-items:center;gap:20px">'
+            f'<div style="font-size:10px;font-weight:800;text-transform:uppercase;'
+            f'letter-spacing:0.06em;color:rgba(0,0,0,0.4)">Portfolio ROI</div>'
+            f'<div style="display:flex;gap:16px;flex:1">'
+            f'<div style="text-align:center">'
+            f'<div style="font-size:18px;font-weight:900;color:{_roi_sum_col}">{_roi_avg_pct:.0f}%</div>'
+            f'<div style="font-size:10px;color:rgba(0,0,0,0.45)">Avg interview prob.</div>'
+            f'</div>'
+            f'<div style="text-align:center">'
+            f'<div style="font-size:18px;font-weight:900;color:#0A66C2">{_roi_exp:.1f}</div>'
+            f'<div style="font-size:10px;color:rgba(0,0,0,0.45)">Expected interviews</div>'
+            f'</div>'
+            f'<div style="text-align:center">'
+            f'<div style="font-size:18px;font-weight:900;color:#057642">{_roi_high}</div>'
+            f'<div style="font-size:10px;color:rgba(0,0,0,0.45)">High-ROI roles</div>'
+            f'</div>'
+            f'</div>'
+            f'<div style="font-size:11px;color:rgba(0,0,0,0.55);max-width:300px;line-height:1.4">'
+            f'{_roi_summary.get("top_recommendation","")}</div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+
+    # ════════════════════════════════════════════════════════════════════════
+    # COHORT INTELLIGENCE + MOMENTUM ENGINE
+    # What people in your exact situation actually experienced.
+    # + Behavioral science against the psychological crash.
+    # ════════════════════════════════════════════════════════════════════════
+    _cohort_key = f"{current}→{target}"
+    _cohort_stale = st.session_state.get("cohort_intelligence") and \
+                    st.session_state.get("cohort_pivot_key") != _cohort_key
+
+    if _cohort_stale:
+        st.session_state.cohort_intelligence = None
+
+    _cohort_col, _momentum_col = st.columns([3, 2], gap="medium")
+
+    with _cohort_col:
+        with st.expander(
+            "👥 Cohort Intelligence — What people in your exact situation did",
+            expanded=bool(st.session_state.cohort_intelligence),
+        ):
+            st.markdown(
+                '<div style="font-size:11px;color:rgba(0,0,0,0.5);margin-bottom:8px">'
+                'Real benchmarks for your specific pivot path — not industry averages. '
+                'Timeline, application counts, what worked, what didn\'t.'
+                '</div>',
+                unsafe_allow_html=True,
+            )
+            if st.button("Get Cohort Benchmarks", key="cohort_run", type="primary", use_container_width=True,
+                         disabled=not bool(_qa_key)):
+                with st.spinner(f"Analysing {current} → {target} cohort data…"):
+                    _cv_p = st.session_state.cv_profile or {}
+                    st.session_state.cohort_intelligence = get_cohort_intelligence(
+                        current_role=str(current),
+                        target_role=str(target),
+                        years_experience=float(_cv_p.get("years_experience", 0) or 0),
+                        model="gpt-4o-mini",
+                        api_key=_qa_key or None,
+                        prefer_online=bool(_qa_key),
+                    )
+                    st.session_state.cohort_pivot_key = _cohort_key
+                st.rerun()
+
+            if not _qa_key:
+                st.caption("Add OpenAI API key to unlock cohort benchmarks.")
+
+            _ch = st.session_state.cohort_intelligence
+            if _ch:
+                # Key metrics row
+                _ch_c1, _ch_c2, _ch_c3 = st.columns(3, gap="small")
+                for _chcol, _chval, _chlabel, _chcolor in [
+                    (_ch_c1, f"{_ch.get('median_timeline_weeks','?')}w", "Median Timeline", "#0A66C2"),
+                    (_ch_c2, str(_ch.get("median_applications","?")), "Median Apps", "#7A2A8A"),
+                    (_ch_c3, f"{_ch.get('warm_intro_rate','?')}%", "Via Warm Intro", "#057642"),
+                ]:
+                    with _chcol:
+                        st.markdown(
+                            f'<div style="background:#F3F6F9;border-radius:6px;padding:8px;text-align:center">'
+                            f'<div style="font-size:20px;font-weight:900;color:{_chcolor}">{_chval}</div>'
+                            f'<div style="font-size:10px;color:rgba(0,0,0,0.5);font-weight:700">{_chlabel}</div>'
+                            f'</div>',
+                            unsafe_allow_html=True,
+                        )
+
+                if _ch.get("most_common_entry_companies"):
+                    st.markdown("**Where this pivot typically lands:**")
+                    for _cc in _ch["most_common_entry_companies"][:3]:
+                        st.markdown(f"→ {_cc}")
+
+                if _ch.get("what_worked"):
+                    st.markdown("**What worked for successful pivoters:**")
+                    for _cw in _ch["what_worked"][:3]:
+                        st.markdown(f'<span style="color:#057642;font-size:12px">✓ {_cw}</span>', unsafe_allow_html=True)
+
+                if _ch.get("what_failed"):
+                    st.markdown("**Common failure patterns:**")
+                    for _cf in _ch["what_failed"][:3]:
+                        st.markdown(f'<span style="color:#B71C1C;font-size:12px">✗ {_cf}</span>', unsafe_allow_html=True)
+
+                if _ch.get("biggest_misconception"):
+                    st.info(f"**Biggest misconception:** {_ch['biggest_misconception']}")
+
+                if _ch.get("fastest_path"):
+                    st.markdown(
+                        f'<div style="background:#EEF3FB;border-left:3px solid #0A66C2;'
+                        f'border-radius:0 6px 6px 0;padding:8px 12px;font-size:12px;margin-top:6px">'
+                        f'<strong>Fastest path:</strong> {_ch["fastest_path"]}</div>',
+                        unsafe_allow_html=True,
+                    )
+
+                if _ch.get("your_week_estimate"):
+                    st.caption(f"Your timeline estimate: {_ch['your_week_estimate']} · Confidence: {_ch.get('confidence','?')}")
+
+    with _momentum_col:
+        with st.expander("🔥 Momentum Engine — Your search streak", expanded=True):
+            # Track daily activity
+            from datetime import date as _date_cls
+            _today_str = str(_date_cls.today())
+            _last_day = st.session_state.momentum_last_date
+            _streak = st.session_state.momentum_streak_days
+
+            _pl_jobs_now = st.session_state.pipeline_jobs or []
+            _activity_today = bool(
+                st.session_state.get("_momentum_activity_today", False) or
+                (st.session_state.qa_package and _today_str == st.session_state.get("_last_apply_date",""))
+            )
+
+            # Streak logic
+            if _last_day == _today_str:
+                pass  # already counted today
+            elif _activity_today:
+                _streak += 1
+                st.session_state.momentum_streak_days = _streak
+                st.session_state.momentum_last_date = _today_str
+
+            # Streak display
+            _streak_col = "#117A37" if _streak >= 7 else ("#A05A00" if _streak >= 3 else "#0A66C2")
+            _streak_label = "On Fire 🔥" if _streak >= 14 else ("Strong 💪" if _streak >= 7 else ("Building ↗" if _streak >= 3 else "Just Started"))
+            st.markdown(
+                f'<div style="text-align:center;padding:10px 0">'
+                f'<div style="font-size:42px;font-weight:900;color:{_streak_col}">{_streak}</div>'
+                f'<div style="font-size:13px;font-weight:800;color:{_streak_col}">{_streak_label}</div>'
+                f'<div style="font-size:10px;color:rgba(0,0,0,0.45);margin-top:3px">day streak</div>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+
+            # Weekly stats
+            _total_apps = len(_pl_jobs_now)
+            _this_week_apps = sum(
+                1 for j in _pl_jobs_now
+                if j.get("date_added", "") >= str(_date_cls.today()).rsplit("-", 1)[0] + "-"
+            )
+
+            _mom_c1, _mom_c2 = st.columns(2, gap="small")
+            with _mom_c1:
+                st.metric("Total apps", _total_apps)
+            with _mom_c2:
+                _offers = len([j for j in _pl_jobs_now if j.get("status") == "offer"])
+                st.metric("Offers", _offers)
+
+            # Cohort progress bar (if cohort data exists)
+            _ch_data = st.session_state.cohort_intelligence
+            if _ch_data and _ch_data.get("median_applications"):
+                _pct_to_median = min(100, int(_total_apps / max(1, _ch_data["median_applications"]) * 100))
+                st.markdown(
+                    f'<div style="font-size:10px;color:rgba(0,0,0,0.5);margin:6px 0 3px 0">'
+                    f'vs. cohort median ({_ch_data["median_applications"]} apps)</div>'
+                    f'<div style="background:rgba(0,0,0,0.07);height:5px;border-radius:3px">'
+                    f'<div style="background:#0A66C2;height:5px;width:{_pct_to_median}%;border-radius:3px"></div>'
+                    f'</div><div style="font-size:10px;color:#0A66C2;margin-top:2px">{_pct_to_median}% of way there</div>',
+                    unsafe_allow_html=True,
+                )
+
+            # Log activity button
+            if st.button("✓ Log today's activity", key="log_activity", use_container_width=True):
+                st.session_state.momentum_streak_days = _streak + (0 if _last_day == _today_str else 1)
+                st.session_state.momentum_last_date = _today_str
+                st.session_state["_momentum_activity_today"] = True
+                st.rerun()
+
     # ════════════════════════════════════════════════════════════════════════
     # APPLICATION PIPELINE CRM — Search OS
     # Tracks every application, every stage, every rejection.
@@ -2005,6 +2282,68 @@ if quick_apply:
                     f'Next: {_reframe.get("next_action","")}</div>'
                     f'<div style="font-size:11px;color:rgba(0,0,0,0.45);font-style:italic">'
                     f'{_reframe.get("motivation_line","")}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+
+        # ── Signal-Adaptive Engine ───────────────────────────────────────
+        # Detects rejection patterns and auto-updates application strategy.
+        # Closes the loop: data → diagnosis → automatic profile update.
+        _sa_rejected = [j for j in _pl_jobs if j.get("status") == "rejected"]
+        _sa_avg_ats = _pl_stats.get("avg_ats_score", 0)
+        _sa_response = _pl_stats.get("response_rate", 100)
+        _sa_suggestions: list = []
+
+        if len(_sa_rejected) >= 2:
+            # Pattern 1: ATS bottleneck
+            if _sa_avg_ats and _sa_avg_ats < 65 and _sa_response < 20:
+                _sa_suggestions.append({
+                    "icon": "🤖",
+                    "title": "ATS Bottleneck Detected",
+                    "detail": f"Avg ATS {_sa_avg_ats}/100 · {_sa_response}% response rate. "
+                              f"Most applications are filtered before a human reads them.",
+                    "action": "Run ATS Fix & Regenerate on your 3 most recent applications. Target 75+.",
+                    "color": "#B71C1C",
+                })
+            # Pattern 2: Getting views but no calls
+            _viewed = len([j for j in _pl_jobs if j.get("status") == "viewed"])
+            if _viewed >= 2 and _pl_stats.get("interview_rate", 0) < 5:
+                _sa_suggestions.append({
+                    "icon": "👁️",
+                    "title": "Profile Viewed But No Calls",
+                    "detail": f"{_viewed} applications viewed by recruiters — but no interview calls. "
+                              f"Your CV is getting through ATS but not converting.",
+                    "action": "Your cover letter or CV narrative isn't landing. Run a new Adversarial Debate to find the weak point.",
+                    "color": "#A05A00",
+                })
+            # Pattern 3: First-round rejection pattern
+            _first_rd_rej = [j for j in _sa_rejected if "first" in (j.get("rejection_stage","") or "").lower()]
+            if len(_first_rd_rej) >= 2:
+                _sa_suggestions.append({
+                    "icon": "🎤",
+                    "title": "First-Round Rejection Pattern",
+                    "detail": f"{len(_first_rd_rej)} rejections after first interview. "
+                              f"You're passing ATS and getting calls — but losing the first conversation.",
+                    "action": "Run 3 Mock Interview sessions before your next call. First-round issues are almost always coachable.",
+                    "color": "#7A2A8A",
+                })
+
+        if _sa_suggestions:
+            st.markdown(
+                '<div style="font-size:11px;font-weight:800;text-transform:uppercase;'
+                'letter-spacing:0.06em;color:rgba(0,0,0,0.45);margin:8px 0 6px 0">'
+                '⚡ Signal-Adaptive Engine — Pattern Detected</div>',
+                unsafe_allow_html=True,
+            )
+            for _sug in _sa_suggestions:
+                st.markdown(
+                    f'<div style="background:#fff;border-left:4px solid {_sug["color"]};'
+                    f'border-radius:0 8px 8px 0;padding:10px 14px;margin-bottom:6px;'
+                    f'box-shadow:0 1px 4px rgba(0,0,0,0.06)">'
+                    f'<div style="font-size:12px;font-weight:800;color:{_sug["color"]};margin-bottom:3px">'
+                    f'{_sug["icon"]} {_sug["title"]}</div>'
+                    f'<div style="font-size:11px;color:rgba(0,0,0,0.65);margin-bottom:5px">{_sug["detail"]}</div>'
+                    f'<div style="font-size:11px;font-weight:700;color:#1D2226">→ {_sug["action"]}</div>'
                     f'</div>',
                     unsafe_allow_html=True,
                 )
@@ -3506,6 +3845,98 @@ if quick_apply:
                 elif _qa_top_gaps:
                     st.caption(f"Biggest gaps vs. this role: {' · '.join(_qa_top_gaps)}")
 
+                # ── Proof-of-Skill Generator ──────────────────────────────
+                if _qa_top_gaps:
+                    with st.expander(f"🧪 Proof-of-Skill Generator — Turn gaps into portfolio artifacts", expanded=False):
+                        st.markdown(
+                            '<div style="font-size:11px;color:rgba(0,0,0,0.5);margin-bottom:8px">'
+                            'Not "take a course." A specific project you can finish today that '
+                            'produces a linkable proof artifact — demonstrable in your next interview.'
+                            '</div>',
+                            unsafe_allow_html=True,
+                        )
+                        _proof_skill = st.selectbox(
+                            "Choose a skill gap to close:",
+                            options=_qa_top_gaps[:5],
+                            key="proof_skill_select",
+                        )
+                        _proof_hours = st.slider("Hours available", 1, 8, 3, key="proof_hours")
+
+                        if st.button("Generate Proof Project", key="proof_gen", type="primary", use_container_width=True):
+                            with st.spinner(f"Designing your {_proof_skill} proof project…"):
+                                _proof_gap = 2.0  # typical gap
+                                _proof_target = 4.0
+                                try:
+                                    _proof_row = _qa_gap_df_local[_qa_gap_df_local["skill"] == _proof_skill]
+                                    if not _proof_row.empty:
+                                        _proof_gap = float(_proof_row.iloc[0].get("you", 2.0))
+                                        _proof_target = float(_proof_row.iloc[0].get("target", 4.0))
+                                except Exception:
+                                    pass
+                                _proof_result = generate_skill_proof(
+                                    skill_name=_proof_skill,
+                                    skill_gap_level=_proof_gap,
+                                    skill_target_level=_proof_target,
+                                    target_role=str(_qa_p.get("job_title", target)),
+                                    current_role=str(current),
+                                    time_available_hours=_proof_hours,
+                                    model="gpt-4o-mini",
+                                    api_key=_qa_key or None,
+                                    prefer_online=bool(_qa_key),
+                                )
+                                _proof_store = dict(st.session_state.skill_proofs)
+                                _proof_store[_proof_skill] = _proof_result
+                                st.session_state.skill_proofs = _proof_store
+                            st.rerun()
+
+                        _proof = st.session_state.skill_proofs.get(_proof_skill)
+                        if _proof and _proof.get("project_title"):
+                            st.markdown(
+                                f'<div style="background:#F0FAF4;border-radius:8px;padding:12px 16px;margin-top:8px">'
+                                f'<div style="font-size:13px;font-weight:800;color:#057642;margin-bottom:4px">'
+                                f'{_proof["project_title"]}</div>'
+                                f'<div style="font-size:11px;color:rgba(0,0,0,0.5);margin-bottom:8px">'
+                                f'⏱ {_proof.get("time_estimate_hours","?")}h · {_proof.get("artifact_format","?")} · {_proof.get("difficulty","?")}</div>'
+                                f'<div style="font-size:12px;line-height:1.6;color:#1D2226;margin-bottom:8px">'
+                                f'{_proof.get("what_you_build","")}</div>'
+                                f'</div>',
+                                unsafe_allow_html=True,
+                            )
+                            if _proof.get("step_by_step"):
+                                st.markdown("**Step by step:**")
+                                for _si, _step in enumerate(_proof["step_by_step"], 1):
+                                    st.markdown(f"{_si}. {_step}")
+
+                            if _proof.get("tools_needed"):
+                                st.caption(f"Tools needed: {' · '.join(_proof['tools_needed'][:4])}")
+
+                            if _proof.get("how_to_use_in_interview"):
+                                st.markdown(
+                                    f'<div style="background:#EEF3FB;border-left:3px solid #0A66C2;'
+                                    f'border-radius:0 6px 6px 0;padding:8px 12px;font-size:12px;margin-top:6px">'
+                                    f'<strong>In the interview:</strong> "{_proof["how_to_use_in_interview"]}"</div>',
+                                    unsafe_allow_html=True,
+                                )
+
+                            _proof_md_parts = [
+                                f"# {_proof['project_title']}",
+                                f"**Skill:** {_proof_skill} | **Time:** {_proof.get('time_estimate_hours','?')}h | **Format:** {_proof.get('artifact_format','?')}",
+                                f"\n## What You Build\n{_proof.get('what_you_build','')}",
+                                "\n## Step by Step",
+                            ] + [f"{i+1}. {s}" for i, s in enumerate(_proof.get("step_by_step",[]))] + [
+                                f"\n## Tools Needed\n{', '.join(_proof.get('tools_needed',[]))}",
+                                f"\n## CV Bullet\n`{_proof.get('cv_bullet','')}`",
+                                f"\n## LinkedIn Hook\n{_proof.get('linkedin_post_hook','')}",
+                                f"\n## Interview Usage\n\"{_proof.get('how_to_use_in_interview','')}\"",
+                            ]
+                            st.download_button(
+                                "⬇️ Download Project Brief",
+                                data="\n".join(_proof_md_parts),
+                                file_name=f"proof_{_proof_skill.replace(' ','_')[:20].lower()}.md",
+                                mime="text/markdown",
+                                key=f"proof_dl_{_proof_skill[:10]}",
+                            )
+
     # ── Phase 3: Generate application ────────────────────────────────────────
     if st.session_state.qa_parsed and st.session_state.qa_closest_occ:
         _qa_p2 = st.session_state.qa_parsed
@@ -3551,6 +3982,14 @@ if quick_apply:
                         "score vs. gpt-4o-mini on cover letters (82 vs 68/100 zero-shot avg). "
                         "A second gpt-4o-mini call evaluates the output before you see it."
                     )
+                    # Enrich cv_profile with Pivot DNA for voice-calibrated outputs
+                    _qa_cv_profile_enriched = dict(st.session_state.cv_profile or {})
+                    if st.session_state.pivot_dna:
+                        _qa_cv_profile_enriched["_voice_instructions"] = get_voice_injection_prompt(st.session_state.pivot_dna)
+                        _qa_cv_profile_enriched["_pivot_hook"] = st.session_state.pivot_dna.get("pivot_hook", "")
+                        _qa_cv_profile_enriched["_unfair_advantage"] = st.session_state.pivot_dna.get("unfair_advantage", "")
+                        _qa_cv_profile_enriched["_strongest_argument"] = st.session_state.pivot_dna.get("strongest_transferable_argument", "")
+
                     with st.spinner("Writing your cover letter, InMail, and CV rewrites with gpt-4o…"):
                         _qa_new_pkg = generate_application_package(
                             job_title=_qa_p2.get("job_title", str(target)),
@@ -3558,7 +3997,7 @@ if quick_apply:
                             job_description=_qa_p2.get("cleaned_description", ""),
                             current_role=str(current),
                             target_role=st.session_state.qa_closest_occ,
-                            cv_profile=st.session_state.cv_profile,
+                            cv_profile=_qa_cv_profile_enriched,
                             top_transfer=_qa_top_t2,
                             top_missing=_qa_top_m2,
                             model="gpt-4o",
@@ -4727,6 +5166,111 @@ if quick_apply:
                     key="iwr_download",
                 )
 
+    # ── Hiring Manager Dossier ───────────────────────────────────────────────
+    # Person-level intel: what does THIS person care about?
+    if st.session_state.qa_package:
+        _hmd_parsed = st.session_state.qa_parsed or {}
+        _hmd_company = _hmd_parsed.get("company", "")
+        _hmd_role = _hmd_parsed.get("job_title", str(target))
+
+        with st.expander("🎯 Hiring Manager Dossier — Know who you're convincing", expanded=False):
+            st.markdown(
+                '<div style="font-size:11px;color:rgba(0,0,0,0.5);margin-bottom:8px">'
+                'A company brief tells you about the company. '
+                'The Hiring Manager Dossier tells you about the PERSON making the decision — '
+                'their philosophy, what they value, the language that resonates.'
+                '</div>',
+                unsafe_allow_html=True,
+            )
+            _hmd_col1, _hmd_col2 = st.columns(2, gap="medium")
+            with _hmd_col1:
+                _hmd_name = st.text_input("Hiring manager name", key="hmd_name",
+                                          placeholder="e.g. Sarah Chen")
+                _hmd_bg = st.text_area("Background / notes (LinkedIn URL, role, etc.)",
+                                       key="hmd_bg", height=80,
+                                       placeholder="Paste LinkedIn URL or any info you have: role, background, recent posts…")
+            with _hmd_col2:
+                st.markdown("**Why this matters:**")
+                st.markdown(
+                    '<div style="font-size:11px;color:rgba(0,0,0,0.65);line-height:1.7">'
+                    '→ Tailor your cover letter opening to their specific philosophy<br>'
+                    '→ Use language that resonates with how they think<br>'
+                    '→ Know what questions they\'re likely to ask<br>'
+                    '→ Engage their LinkedIn content before you apply'
+                    '</div>',
+                    unsafe_allow_html=True,
+                )
+
+            if st.button("Build Hiring Manager Dossier", key="hmd_build", type="primary", use_container_width=True,
+                         disabled=not bool(_hmd_name)):
+                with st.spinner(f"Analysing {_hmd_name} at {_hmd_company}… (gpt-4o)"):
+                    st.session_state.hm_dossier = generate_hiring_manager_dossier(
+                        manager_name=_hmd_name,
+                        company_name=_hmd_company or "the company",
+                        role_title=_hmd_role,
+                        manager_background_notes=_hmd_bg,
+                        current_role=str(current),
+                        target_role=str(target),
+                        model="gpt-4o",
+                        api_key=_qa_key or None,
+                        prefer_online=bool(_qa_key),
+                    )
+                    st.session_state.hm_dossier_name = _hmd_name
+                st.rerun()
+
+            if not _hmd_name:
+                st.caption("Enter the hiring manager's name to unlock.")
+
+            _hmd = st.session_state.hm_dossier
+            if _hmd and st.session_state.hm_dossier_name == (st.session_state.get("hmd_name") or ""):
+                # Background + philosophy
+                st.markdown(
+                    f'<div style="background:#F3F6F9;border-radius:8px;padding:10px 14px;margin-bottom:8px">'
+                    f'<div style="font-size:12px;line-height:1.65;color:#1D2226">'
+                    f'<strong>Read:</strong> {_hmd.get("background_summary","")}<br>'
+                    f'<strong>Hiring Philosophy:</strong> {_hmd.get("likely_hiring_philosophy","")}'
+                    f'</div></div>',
+                    unsafe_allow_html=True,
+                )
+
+                _hmd_c1, _hmd_c2 = st.columns(2, gap="medium")
+                with _hmd_c1:
+                    if _hmd.get("what_they_value"):
+                        st.markdown("**What they value:**")
+                        for _hv in _hmd["what_they_value"][:4]:
+                            st.markdown(f'<span style="color:#057642;font-size:12px">✓ {_hv}</span>', unsafe_allow_html=True)
+                    if _hmd.get("interview_likely_focus"):
+                        st.markdown("**Interview focus areas:**")
+                        for _hif in _hmd["interview_likely_focus"][:3]:
+                            st.markdown(f"→ {_hif}")
+                with _hmd_c2:
+                    if _hmd.get("language_to_use"):
+                        st.markdown("**Language that resonates:**")
+                        for _hu in _hmd["language_to_use"][:4]:
+                            st.markdown(f'<span style="color:#0A66C2;font-size:12px">✓ "{_hu}"</span>', unsafe_allow_html=True)
+                    if _hmd.get("language_to_avoid"):
+                        st.markdown("**Language to avoid:**")
+                        for _ha in _hmd["language_to_avoid"][:3]:
+                            st.markdown(f'<span style="color:#B71C1C;font-size:12px">✗ "{_ha}"</span>', unsafe_allow_html=True)
+
+                if _hmd.get("cover_letter_hook"):
+                    st.markdown(
+                        f'<div style="background:#EEF3FB;border-left:3px solid #0A66C2;'
+                        f'border-radius:0 6px 6px 0;padding:8px 12px;font-size:12px;margin-top:6px">'
+                        f'<strong>Cover letter hook:</strong> {_hmd["cover_letter_hook"]}</div>',
+                        unsafe_allow_html=True,
+                    )
+                if _hmd.get("linkedin_comment_angle"):
+                    st.info(f"**LinkedIn strategy:** {_hmd['linkedin_comment_angle']}")
+                if _hmd.get("one_line_read"):
+                    st.markdown(
+                        f'<div style="font-size:12px;font-weight:800;color:#1D2226;'
+                        f'border-top:1px solid rgba(0,0,0,0.08);padding-top:8px;margin-top:8px">'
+                        f'Verdict: {_hmd["one_line_read"]}</div>',
+                        unsafe_allow_html=True,
+                    )
+                st.caption(f"Confidence: {_hmd.get('confidence','?')} · {_hmd.get('source','')}")
+
     # ── Phase 5: Interview prep ──────────────────────────────────────────────
     if st.session_state.qa_package:
         _qa_p3 = st.session_state.qa_parsed or {}
@@ -4893,6 +5437,38 @@ if quick_apply:
             '</div>',
             unsafe_allow_html=True,
         )
+        # ── Pre-Send Checklist (paste flow) ─────────────────────────────
+        _pf_company = _qa_p4.get("company", "paste")
+        _pf_psc_id = f"paste_{_pf_company[:20].replace(' ','_')}"
+        _pf_psc_checks = st.session_state.presend_checks.get(_pf_psc_id, {})
+        _pf_psc_items = [
+            ("pkg_ok",    "Application package generated ✓", True),
+            ("ats_ok",    f"ATS score checked ({(st.session_state.qa_ats_paste or {}).get('ats_score','?')}/100)", bool(st.session_state.qa_ats_paste)),
+            ("debate_ok", f"Hiring verdict: {st.session_state.qa_debate.get('verdict_label','?') if st.session_state.qa_debate else 'not run'}", bool(st.session_state.qa_debate)),
+            ("intel_ok",  "Company intel read", bool(st.session_state.company_briefs.get(_pf_company))),
+            ("wr_ok",     "Interview War Room built", bool(st.session_state.war_room_result and st.session_state.war_room_company == _pf_company)),
+        ]
+        _pf_done = sum(1 for _k, _l, _auto in _pf_psc_items if _pf_psc_checks.get(_k, _auto))
+        _pf_total = len(_pf_psc_items)
+        _pf_ready = _pf_done >= 4
+
+        st.markdown(
+            f'<div style="background:{"#F0FAF4" if _pf_ready else "#F3F6F9"};'
+            f'border:1.5px solid {"#057642" if _pf_ready else "rgba(0,0,0,0.1)"};'
+            f'border-radius:8px;padding:10px 14px;margin:8px 0;'
+            f'display:flex;align-items:center;justify-content:space-between">'
+            f'<div style="font-size:12px;font-weight:800;color:{"#057642" if _pf_ready else "#A05A00"}">'
+            f'{"✅ Ready to apply" if _pf_ready else f"⚠ Pre-Send Checklist: {_pf_done}/{_pf_total} complete"}</div>'
+            f'<div style="font-size:11px;color:rgba(0,0,0,0.5)">'
+            + " · ".join([
+                f'<span style="color:{"#057642" if _pf_psc_checks.get(_k, _auto) else "#B71C1C"}">'
+                f'{"✓" if _pf_psc_checks.get(_k, _auto) else "✗"} {_l[:20]}</span>'
+                for _k, _l, _auto in _pf_psc_items
+            ]) +
+            f'</div></div>',
+            unsafe_allow_html=True,
+        )
+
         _qa_dl_col, _qa_switch_col = st.columns([1, 2])
         with _qa_dl_col:
             st.download_button(
@@ -8398,6 +8974,49 @@ with _tab_execute:
                     unsafe_allow_html=True,
                 )
 
+                # ── Application ROI Score ────────────────────────────────
+                _roi_key = f"{job.company}|{job.title}"
+                _roi_cached = st.session_state.roi_results.get(_roi_key)
+                if not _roi_cached:
+                    # Auto-compute ROI instantly (deterministic — no LLM)
+                    _roi_ats = None
+                    if st.session_state.smart_apply_selected_idx == i:
+                        _roi_ats = (st.session_state.ats_result or {}).get("ats_score")
+                    _roi_company_stage = "unknown"
+                    _roi_hiring_signal = "unknown"
+                    _roi_ci = st.session_state.company_briefs.get(job.company)
+                    if _roi_ci:
+                        _roi_company_stage = _roi_ci.get("stage", "unknown")
+                        _roi_hiring_signal = _roi_ci.get("hiring_signal", "unknown")
+                    _roi_fit = getattr(job, "fit_pct", None) or getattr(job, "gap_score", None)
+                    _roi_result = compute_application_roi(
+                        job_title=job.title,
+                        company=job.company,
+                        ats_score=_roi_ats,
+                        fit_percentile=_roi_fit,
+                        hiring_signal=_roi_hiring_signal,
+                        company_stage=_roi_company_stage,
+                        pivot_compatibility="medium",
+                    )
+                    _roi_results_new = dict(st.session_state.roi_results)
+                    _roi_results_new[_roi_key] = _roi_result
+                    st.session_state.roi_results = _roi_results_new
+                    _roi_cached = _roi_result
+
+                if _roi_cached:
+                    st.markdown(
+                        f'<div style="display:flex;align-items:center;gap:10px;margin:6px 0">'
+                        f'<div style="background:#F3F6F9;border-radius:6px;padding:5px 10px;'
+                        f'display:flex;align-items:center;gap:8px">'
+                        f'<span style="font-size:14px">{_roi_cached.get("priority_icon","📊")}</span>'
+                        f'<div>'
+                        f'<div style="font-size:11px;font-weight:800;color:{_roi_cached.get("priority_color","#1D2226")}">'
+                        f'{_roi_cached.get("priority","?")} · {_roi_cached.get("ei_per_app_pct","?")}% interview probability</div>'
+                        f'<div style="font-size:10px;color:rgba(0,0,0,0.45)">{_roi_cached.get("reasoning","")[:80]}…</div>'
+                        f'</div></div></div>',
+                        unsafe_allow_html=True,
+                    )
+
                 # ── Company Intelligence Brief ───────────────────────────
                 _ci_key = f"ci_{job.company.replace(' ','_')}"
                 _ci_brief = st.session_state.company_briefs.get(job.company)
@@ -8475,6 +9094,45 @@ with _tab_execute:
                                 st.session_state.company_briefs = _briefs2
                                 st.rerun()
 
+                # ── Pre-Send Checklist ────────────────────────────────────
+                # 5 checks before you apply. Zero friction. Maximum confidence.
+                _psc_id = f"{job.company}_{job.title}".replace(" ","_")[:30]
+                _psc_checks = st.session_state.presend_checks.get(_psc_id, {})
+                _psc_items = [
+                    ("ats_ok",       f"ATS score ≥75 ({(_roi_cached or {}).get('ei_per_app_pct','?')}% interview prob.)", bool(_roi_cached and _roi_cached.get("ei_per_app_pct",0) >= 18)),
+                    ("pkg_ok",       "Application package generated", bool(st.session_state.smart_apply_package and st.session_state.smart_apply_selected_idx == i)),
+                    ("intel_ok",     "Company intel read", bool(st.session_state.company_briefs.get(job.company))),
+                    ("war_room_ok",  "Interview War Room built", bool(st.session_state.war_room_result and st.session_state.war_room_company == job.company)),
+                    ("negot_ok",     "Negotiation range researched", bool(st.session_state.negotiation_offer_analysis)),
+                ]
+                _psc_done = sum(1 for _k, _l, _auto in _psc_items if _psc_checks.get(_k, _auto))
+                _psc_total = len(_psc_items)
+                _psc_col = "#117A37" if _psc_done >= 4 else ("#A05A00" if _psc_done >= 2 else "#B71C1C")
+
+                with st.expander(
+                    f"✅ Pre-Send Checklist — {_psc_done}/{_psc_total} ready"
+                    + (" · Send it 🚀" if _psc_done >= 4 else " · Not ready yet"),
+                    expanded=False,
+                ):
+                    _psc_new = dict(_psc_checks)
+                    for _pk, _pl, _pauto in _psc_items:
+                        _checked = _psc_checks.get(_pk, _pauto)
+                        _psc_new[_pk] = st.checkbox(_pl, value=_checked, key=f"psc_{_psc_id}_{_pk}")
+                    if _psc_new != _psc_checks:
+                        _psc_all = dict(st.session_state.presend_checks)
+                        _psc_all[_psc_id] = _psc_new
+                        st.session_state.presend_checks = _psc_all
+                        st.rerun()
+
+                    _psc_score = sum(1 for v in _psc_new.values() if v)
+                    st.markdown(
+                        f'<div style="background:#F3F6F9;border-radius:6px;padding:8px 12px;margin-top:6px">'
+                        f'<div style="font-size:12px;font-weight:800;color:{_psc_col}">'
+                        f'{"Ready to apply — send it." if _psc_score >= 4 else ("Almost ready — 1 more check." if _psc_score == 3 else f"Complete {_psc_total - _psc_score} more checks first.")}'
+                        f'</div></div>',
+                        unsafe_allow_html=True,
+                    )
+
                 # Apply button per job — real jobs get "Apply Now" external link + package generator
                 _is_real = getattr(job, "is_real_job", False)
                 _apply_link = getattr(job, "apply_link", "")
@@ -8490,11 +9148,18 @@ with _tab_execute:
                     ):
                         with st.spinner(f"Generating your personalised package for {job.company}…"):
                             st.session_state.smart_apply_selected_idx = i
+                            # Enrich cv_profile with Pivot DNA voice calibration
+                            _sa_cv_enriched = dict(st.session_state.cv_profile or {})
+                            if st.session_state.pivot_dna:
+                                _sa_cv_enriched["_voice_instructions"] = get_voice_injection_prompt(st.session_state.pivot_dna)
+                                _sa_cv_enriched["_pivot_hook"] = st.session_state.pivot_dna.get("pivot_hook", "")
+                                _sa_cv_enriched["_unfair_advantage"] = st.session_state.pivot_dna.get("unfair_advantage", "")
+                                _sa_cv_enriched["_strongest_argument"] = st.session_state.pivot_dna.get("strongest_transferable_argument", "")
                             _pkg = generate_application_package(
                                 job=job,
                                 current_role=str(current),
                                 target_role=str(target),
-                                cv_profile=st.session_state.cv_profile,
+                                cv_profile=_sa_cv_enriched,
                                 top_transfer=_top_transfer_sa,
                                 top_missing=_top_missing_sa,
                                 model="gpt-4o",

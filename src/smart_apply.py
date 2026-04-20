@@ -359,6 +359,15 @@ def generate_application_package(
             f"- Top skills: {', '.join(p.get('top_skills', [])[:6])}\n"
             f"Write about THIS SPECIFIC PERSON, not a generic candidate.\n"
         )
+        # Inject Pivot DNA voice calibration if available
+        if cv_profile.get("_voice_instructions"):
+            cv_context += f"\nVOICE CALIBRATION — CRITICAL:\n{cv_profile['_voice_instructions']}\n"
+        if cv_profile.get("_pivot_hook"):
+            cv_context += f"\nUSE THIS AS THE COVER LETTER OPENING (candidate's own words):\n\"{cv_profile['_pivot_hook']}\"\n"
+        if cv_profile.get("_unfair_advantage"):
+            cv_context += f"\nUNFAIR ADVANTAGE TO HIGHLIGHT:\n{cv_profile['_unfair_advantage']}\n"
+        if cv_profile.get("_strongest_argument"):
+            cv_context += f"\nSTRONGEST TRANSFERABLE ARGUMENT:\n{cv_profile['_strongest_argument']}\n"
 
     transfer_str = ", ".join((top_transfer or [])[:5])
     missing_str = ", ".join((top_missing or [])[:3])
