@@ -103,6 +103,8 @@ from src.demo_profile import (
     load_demo_profile, DEMO_CURRENT_OCC, DEMO_TARGET_OCC,
     DEMO_CV_TEXT,
 )
+from src.cluster_evaluator import evaluate_all_clusters, _all_fallbacks
+from src.pivot_space import compute_pivot_path, get_all_occupations
 import plotly.graph_objects as go
 import plotly.express as px
 
@@ -1465,6 +1467,10 @@ DEFAULT_STATE = {
     # Hiring Window Intelligence — per-company timing analysis
     "hiring_window_result": None,       # analyze_hiring_window() result
     "hiring_window_company": "",        # last queried company
+    "cluster_names": None,              # LLM-evaluated cluster names {id: {name, tagline, ...}}
+    "pivot_path_result": None,          # compute_pivot_path() result
+    "pivot_path_current": "",           # occupation queried
+    "pivot_path_target": "",            # occupation queried
     # Rejection Interpreter — per-rejection actionable diagnosis
     "rejection_interpretations": {},    # {outcome_id: interpret_rejection() result}
     # Outcome Tracker + Calibration Motor
@@ -3251,6 +3257,347 @@ if quick_apply:
                 )
                 st.caption(f"Data confidence: {conf_badge} · Best channel: {_hw.get('best_channel','').replace('_',' ')}")
                 st.markdown('</div>', unsafe_allow_html=True)
+
+        # ── Occupation Space Navigator ─────────────────────────────────────────
+        # 894 O*NET occupations embedded in UMAP skill-space.
+        # Shows where you are, where you're going, and what bridge roles exist.
+        # Cluster names are LLM-evaluated with a Generate→Evaluate→Refine loop
+        # — the antidote to the #1 mistake: shipping zero-shot output without
+        # checking if the model actually did what you needed.
+        with st.expander(
+            f'{icon("globe",14,"#7C3AED")} Occupation Space — Where does your pivot sit in the skill universe?',
+            expanded=False,
+        ):
+            st.markdown(
+                '<div style="background:#F5F0FF;border-radius:8px;padding:14px 16px;margin-bottom:12px">'
+                '<div style="font-size:11px;color:#4C1D95;font-weight:600;margin-bottom:4px">'
+                '894 real O*NET occupations · UMAP skill-vector layout · LLM-evaluated cluster names</div>'
+                '<div style="font-size:11px;color:rgba(0,0,0,0.65);line-height:1.5">'
+                'Each dot is a real occupation. Proximity = similar skill profile. '
+                'Pick your current and target occupation to see the pivot distance, '
+                'bridge roles, and your exact position in the skill universe.'
+                '</div></div>',
+                unsafe_allow_html=True,
+            )
+
+            # ── Step 1: Load / evaluate cluster names ─────────────────────────
+            _cn = st.session_state.get("cluster_names")
+            _oai_key = st.session_state.get("openai_key","")
+
+            _cn_col1, _cn_col2 = st.columns([3,1])
+            with _cn_col1:
+                if _cn:
+                    _cn_status_parts = []
+                    for _cid, _cd in sorted(_cn.items()):
+                        _refined_badge = " ✓refined" if _cd.get("refined") else ""
+                        _eval_s = _cd.get("eval_score", 0)
+                        _eval_disp = f" (eval {_eval_s}/10)" if _eval_s > 0 else " (fallback)"
+                        _cn_status_parts.append(f'**{_cd["name"]}**{_refined_badge}{_eval_disp}')
+                    st.markdown(
+                        '<div style="font-size:10px;font-weight:800;letter-spacing:0.06em;'
+                        'text-transform:uppercase;color:rgba(0,0,0,0.38);margin-bottom:4px">'
+                        'Cluster names (LLM-evaluated)</div>',
+                        unsafe_allow_html=True,
+                    )
+                    for _cn_p in _cn_status_parts:
+                        st.markdown(f'<div style="font-size:11px;color:rgba(0,0,0,0.7)">{_cn_p}</div>', unsafe_allow_html=True)
+                else:
+                    st.markdown(
+                        '<div style="font-size:11px;color:rgba(0,0,0,0.5);font-style:italic">'
+                        'Cluster names not yet evaluated. Click Evaluate to name clusters with GPT + self-evaluation loop.</div>',
+                        unsafe_allow_html=True,
+                    )
+            with _cn_col2:
+                if st.button(
+                    "Evaluate Clusters" if not _cn else "Re-evaluate",
+                    key="btn_eval_clusters",
+                    type="primary" if not _cn else "secondary",
+                    use_container_width=True,
+                ):
+                    if not _oai_key:
+                        st.warning("Add your OpenAI key in the sidebar first.")
+                    else:
+                        with st.spinner("Running Generate → Evaluate → Refine loop…"):
+                            try:
+                                import json as _json
+                                _ct = _json.load(open("artifacts/cluster_themes.json"))
+                                _cl = _json.load(open("artifacts/clusters.json"))
+                                _evaluated = evaluate_all_clusters(_oai_key, _ct, _cl)
+                                st.session_state.cluster_names = _evaluated
+                                _cn = _evaluated
+                                _refined_count = sum(1 for v in _evaluated.values() if v.get("refined"))
+                                st.success(f"Clusters named. {_refined_count} refined after self-evaluation.")
+                            except Exception as _e:
+                                st.error(f"Evaluation failed: {_e}")
+
+            # Show cluster cards if evaluated
+            if _cn:
+                _card_cols = st.columns(len(_cn))
+                for _ci, (_cid, _cd) in enumerate(sorted(_cn.items())):
+                    _cluster_colors = {"0":"#4F8EF7","1":"#F7A84F","2":"#4FD196","3":"#B96FF7"}
+                    _cc = _cluster_colors.get(_cid, "#888")
+                    with _card_cols[_ci]:
+                        _reach = _cd.get("pivot_reachability", 3)
+                        _reach_stars = "★" * _reach + "☆" * (5 - _reach)
+                        st.markdown(
+                            f'<div style="background:{_cc}18;border:1.5px solid {_cc}40;border-radius:8px;'
+                            f'padding:10px 11px;height:100%">'
+                            f'<div style="font-size:10px;font-weight:800;color:{_cc};letter-spacing:0.06em;'
+                            f'text-transform:uppercase;margin-bottom:3px">Cluster {_cid}</div>'
+                            f'<div style="font-size:12px;font-weight:700;color:#0A0A0A;margin-bottom:4px">{_cd["name"]}</div>'
+                            f'<div style="font-size:10px;color:rgba(0,0,0,0.6);line-height:1.4;margin-bottom:6px">{_cd.get("tagline","")[:90]}</div>'
+                            f'<div style="font-size:10px;color:{_cc};font-weight:600">{_reach_stars} pivot-friendliness</div>'
+                            f'</div>',
+                            unsafe_allow_html=True,
+                        )
+
+            st.markdown('<div style="height:14px"></div>', unsafe_allow_html=True)
+            st.divider()
+
+            # ── Step 2: Pivot path computation ────────────────────────────────
+            st.markdown(
+                '<div style="font-size:11px;font-weight:800;letter-spacing:0.06em;'
+                'text-transform:uppercase;color:rgba(0,0,0,0.38);margin-bottom:8px">'
+                'Compute your pivot path</div>',
+                unsafe_allow_html=True,
+            )
+
+            _all_occs = get_all_occupations()
+            _pp_col1, _pp_col2 = st.columns(2)
+
+            # Pre-select from session state if available
+            _pp_cur_default = 0
+            _pp_tgt_default = 1
+            _pp_cur_sess = st.session_state.get("pivot_path_current","")
+            _pp_tgt_sess = st.session_state.get("pivot_path_target","")
+            if _pp_cur_sess and _pp_cur_sess in _all_occs:
+                _pp_cur_default = _all_occs.index(_pp_cur_sess)
+            elif st.session_state.get("onet_match"):
+                _cur_onet = st.session_state.onet_match.get("occupation_title","")
+                if _cur_onet in _all_occs:
+                    _pp_tgt_default = _all_occs.index(_cur_onet)
+            if _pp_tgt_sess and _pp_tgt_sess in _all_occs:
+                _pp_tgt_default = _all_occs.index(_pp_tgt_sess)
+
+            with _pp_col1:
+                _pp_current = st.selectbox(
+                    "Your current occupation",
+                    options=_all_occs,
+                    index=_pp_cur_default,
+                    key="pp_current_select",
+                )
+            with _pp_col2:
+                _pp_target = st.selectbox(
+                    "Your target occupation",
+                    options=_all_occs,
+                    index=_pp_tgt_default,
+                    key="pp_target_select",
+                )
+
+            if st.button("Compute Pivot Path", key="btn_pivot_path", type="primary", use_container_width=True):
+                with st.spinner("Navigating occupation space…"):
+                    _pp_result = compute_pivot_path(
+                        _pp_current, _pp_target,
+                        cluster_names=st.session_state.get("cluster_names"),
+                    )
+                    st.session_state.pivot_path_result = _pp_result
+                    st.session_state.pivot_path_current = _pp_current
+                    st.session_state.pivot_path_target  = _pp_target
+
+            # ── Pivot path results ─────────────────────────────────────────────
+            _pp = st.session_state.get("pivot_path_result")
+            if _pp and _pp.get("current_found") and _pp.get("target_found"):
+                _pd  = _pp.get("pivot_distance", 0)
+                _pgr = _pp.get("pivot_distance_grade","?")
+                _plb = _pp.get("pivot_distance_label","")
+                _pgr_color = {"A":"#057642","B":"#2563EB","C":"#D97706","D":"#DC2626","F":"#7C2D12"}.get(_pgr,"#555")
+
+                # Distance banner
+                st.markdown(
+                    f'<div style="background:{_pgr_color}12;border:1.5px solid {_pgr_color}40;'
+                    f'border-radius:8px;padding:12px 16px;display:flex;align-items:center;gap:16px;margin-top:8px">'
+                    f'<div style="font-size:36px;font-weight:900;color:{_pgr_color};line-height:1">{_pgr}</div>'
+                    f'<div>'
+                    f'<div style="font-size:14px;font-weight:700;color:#0A0A0A">{_plb}</div>'
+                    f'<div style="font-size:11px;color:rgba(0,0,0,0.55);margin-top:2px">'
+                    f'Cosine distance: {_pd:.2f} · Cluster journey: {_pp.get("cluster_journey","")}'
+                    f'</div></div></div>',
+                    unsafe_allow_html=True,
+                )
+
+                # Skills 3-column breakdown
+                _sk_c1, _sk_c2, _sk_c3 = st.columns(3)
+                with _sk_c1:
+                    st.markdown(
+                        '<div style="margin-top:10px;font-size:10px;font-weight:800;letter-spacing:0.06em;'
+                        'text-transform:uppercase;color:#057642">You already have</div>',
+                        unsafe_allow_html=True,
+                    )
+                    for _sk in _pp.get("shared_skills",[])[:6]:
+                        st.markdown(f'<div style="font-size:11px;color:rgba(0,0,0,0.7);padding:1px 0">{check_icon(11)} {_sk}</div>', unsafe_allow_html=True)
+                with _sk_c2:
+                    st.markdown(
+                        '<div style="margin-top:10px;font-size:10px;font-weight:800;letter-spacing:0.06em;'
+                        'text-transform:uppercase;color:#DC2626">Gaps to bridge</div>',
+                        unsafe_allow_html=True,
+                    )
+                    for _sk in _pp.get("missing_skills",[])[:6]:
+                        st.markdown(f'<div style="font-size:11px;color:rgba(0,0,0,0.7);padding:1px 0">{warn_icon(11)} {_sk}</div>', unsafe_allow_html=True)
+                with _sk_c3:
+                    st.markdown(
+                        '<div style="margin-top:10px;font-size:10px;font-weight:800;letter-spacing:0.06em;'
+                        'text-transform:uppercase;color:#7C3AED">Bridge roles</div>',
+                        unsafe_allow_html=True,
+                    )
+                    for _br in _pp.get("bridge_occupations",[]):
+                        _br_pos = int(_br.get("path_position",0.5)*100)
+                        st.markdown(
+                            f'<div style="font-size:11px;color:rgba(0,0,0,0.7);padding:2px 0;line-height:1.3">'
+                            f'<span style="font-weight:600">{_br["occupation"]}</span>'
+                            f'<span style="font-size:9px;color:#7C3AED;margin-left:4px">{_br_pos}% of the way</span>'
+                            f'</div>',
+                            unsafe_allow_html=True,
+                        )
+
+                # ── UMAP Scatter Plot ──────────────────────────────────────────
+                _ud = _pp.get("umap_data", {})
+                if _ud.get("background"):
+                    st.markdown('<div style="height:10px"></div>', unsafe_allow_html=True)
+                    _cluster_colors_map = _ud.get("cluster_colors", {})
+                    _cluster_names_map  = _ud.get("cluster_names", {})
+
+                    _fig = go.Figure()
+
+                    # Background: all 894 occupations, colored by cluster
+                    _bg = _ud["background"]
+                    if _bg:
+                        _bg_by_cluster: Dict[str, list] = {}
+                        for _pt in _bg:
+                            _bg_by_cluster.setdefault(_pt["cid"], []).append(_pt)
+
+                        for _cid_plot, _pts in _bg_by_cluster.items():
+                            _col = _cluster_colors_map.get(_cid_plot, "#888888")
+                            _cname_plot = _cluster_names_map.get(_cid_plot, f"Cluster {_cid_plot}")
+                            _fig.add_trace(go.Scatter(
+                                x=[p["x"] for p in _pts],
+                                y=[p["y"] for p in _pts],
+                                mode="markers",
+                                name=_cname_plot,
+                                marker=dict(size=3, color=_col, opacity=0.45),
+                                text=[p["occ"] for p in _pts],
+                                hovertemplate="<b>%{text}</b><br>" + _cname_plot + "<extra></extra>",
+                            ))
+
+                    # Bridge occupations — larger gold dots
+                    _bridges = _ud.get("bridges", [])
+                    if _bridges:
+                        _fig.add_trace(go.Scatter(
+                            x=[p["x"] for p in _bridges],
+                            y=[p["y"] for p in _bridges],
+                            mode="markers+text",
+                            name="Bridge roles",
+                            marker=dict(size=9, color="#F59E0B", symbol="diamond", opacity=0.9,
+                                        line=dict(width=1.5, color="#92400E")),
+                            text=[p["occ"].split(" ")[-1] for p in _bridges],
+                            textposition="top center",
+                            textfont=dict(size=8, color="#92400E"),
+                            hovertemplate="<b>%{customdata}</b><br>Bridge role<extra></extra>",
+                            customdata=[p["occ"] for p in _bridges],
+                        ))
+
+                    # Highlighted: current + target — big star + circle
+                    _hl = _ud.get("highlighted", [])
+                    for _hl_pt in _hl:
+                        _is_current = _hl_pt["occ"] == _ud.get("current_occ")
+                        _hl_sym     = "star" if _is_current else "circle"
+                        _hl_col     = "#0A66C2" if _is_current else "#DC2626"
+                        _hl_size    = 16 if _is_current else 14
+                        _hl_label   = "You (current)" if _is_current else "Target"
+                        _fig.add_trace(go.Scatter(
+                            x=[_hl_pt["x"]],
+                            y=[_hl_pt["y"]],
+                            mode="markers+text",
+                            name=_hl_label,
+                            marker=dict(size=_hl_size, color=_hl_col, symbol=_hl_sym,
+                                        line=dict(width=2, color="white")),
+                            text=[_hl_label],
+                            textposition="top center",
+                            textfont=dict(size=9, color=_hl_col, family="Arial Black"),
+                            hovertemplate=f"<b>{_hl_pt['occ']}</b><br>{_hl_label}<extra></extra>",
+                        ))
+
+                    # Arrow from current to target
+                    _hl_current = next((p for p in _hl if p["occ"] == _ud.get("current_occ")), None)
+                    _hl_target  = next((p for p in _hl if p["occ"] == _ud.get("target_occ")),  None)
+                    if _hl_current and _hl_target:
+                        _fig.add_annotation(
+                            x=_hl_target["x"],  y=_hl_target["y"],
+                            ax=_hl_current["x"], ay=_hl_current["y"],
+                            xref="x", yref="y", axref="x", ayref="y",
+                            showarrow=True,
+                            arrowhead=2, arrowsize=1.5, arrowwidth=2.5,
+                            arrowcolor="#7C3AED",
+                        )
+
+                    _fig.update_layout(
+                        height=460,
+                        margin=dict(l=0, r=0, t=28, b=0),
+                        plot_bgcolor="#FAFAFA",
+                        paper_bgcolor="#FAFAFA",
+                        showlegend=True,
+                        legend=dict(
+                            orientation="h", yanchor="bottom", y=1.01,
+                            xanchor="left", x=0, font=dict(size=10),
+                        ),
+                        xaxis=dict(showticklabels=False, showgrid=False, zeroline=False, title=""),
+                        yaxis=dict(showticklabels=False, showgrid=False, zeroline=False, title=""),
+                        title=dict(
+                            text="Occupation Space — UMAP skill-vector layout",
+                            font=dict(size=12, color="rgba(0,0,0,0.5)"),
+                            x=0.5, xanchor="center",
+                        ),
+                    )
+                    st.plotly_chart(_fig, use_container_width=True, config={"displayModeBar": False})
+                    st.caption(
+                        f"894 O*NET occupations · 119 skills · UMAP(cosine) · "
+                        f"Purple arrow = your pivot path · ◆ = bridge roles"
+                    )
+
+            elif _pp and (not _pp.get("current_found") or not _pp.get("target_found")):
+                _not_found = []
+                if not _pp.get("current_found"): _not_found.append(f'"{st.session_state.get("pivot_path_current","")}"')
+                if not _pp.get("target_found"):  _not_found.append(f'"{st.session_state.get("pivot_path_target","")}"')
+                st.warning(f"Occupation not found in O*NET matrix: {', '.join(_not_found)}. Try selecting from the dropdown.")
+
+                # Still show the map even if exact match failed
+                _ud = _pp.get("umap_data", {})
+                if _ud.get("background"):
+                    _bg2 = _ud["background"]
+                    _fig2 = go.Figure()
+                    _bg2_by_cluster: Dict[str, list] = {}
+                    for _pt2 in _bg2:
+                        _bg2_by_cluster.setdefault(_pt2["cid"], []).append(_pt2)
+                    _cluster_colors_map2 = _ud.get("cluster_colors", {})
+                    _cluster_names_map2  = _ud.get("cluster_names", {})
+                    for _cid2, _pts2 in _bg2_by_cluster.items():
+                        _col2 = _cluster_colors_map2.get(_cid2, "#888")
+                        _cname2 = _cluster_names_map2.get(_cid2, f"Cluster {_cid2}")
+                        _fig2.add_trace(go.Scatter(
+                            x=[p["x"] for p in _pts2], y=[p["y"] for p in _pts2],
+                            mode="markers", name=_cname2,
+                            marker=dict(size=3, color=_col2, opacity=0.45),
+                            text=[p["occ"] for p in _pts2],
+                            hovertemplate="<b>%{text}</b><extra></extra>",
+                        ))
+                    _fig2.update_layout(
+                        height=380, margin=dict(l=0,r=0,t=28,b=0),
+                        plot_bgcolor="#FAFAFA", paper_bgcolor="#FAFAFA",
+                        showlegend=True,
+                        legend=dict(orientation="h", yanchor="bottom", y=1.01, xanchor="left", x=0, font=dict(size=10)),
+                        xaxis=dict(showticklabels=False, showgrid=False, zeroline=False),
+                        yaxis=dict(showticklabels=False, showgrid=False, zeroline=False),
+                    )
+                    st.plotly_chart(_fig2, use_container_width=True, config={"displayModeBar": False})
 
     # ── Next Action Engine ────────────────────────────────────────────────────
     # Reads session state → determines single most important next action.
