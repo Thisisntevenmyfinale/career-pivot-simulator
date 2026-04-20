@@ -1743,18 +1743,83 @@ def recommend_neighbors(use_idf: bool, current_occ: str, top_k: int = 10) -> pd.
 # Sidebar
 # ============================================================
 with st.sidebar:
-    # LinkedIn profile card header
+    # ── Pivot OS Brand Header ────────────────────────────────────────────────
+    # P(offer) from session state (computed in main content, persists across reruns)
+    _sb_ops   = st.session_state.get("_ops_val") or 0
+    _sb_cal   = st.session_state.get("calibration_data") or {}
+    _sb_brier = st.session_state.get("brier_stats") or {}
+    _sb_base  = 0.05
+    _sb_ops_f = 1.0 + max(0, (_sb_ops - 50)) / 100
+    _sb_cal_f = _sb_cal.get("adjustment_factor", 1.0) if _sb_cal.get("calibrated") else 1.0
+    _sb_br_f  = _sb_brier.get("correction_factor", 1.0) if not _sb_brier.get("insufficient_data") else 1.0
+    _sb_prob  = round(min(35, max(0.5, _sb_base * _sb_ops_f * _sb_cal_f * _sb_br_f * 100)), 1)
+    _sb_pcol  = "#4ADE80" if _sb_prob >= 10 else ("#FCD34D" if _sb_prob >= 5 else "#F87171")
+
+    # Journey state detection
+    _sb_has_cv      = bool(st.session_state.get("cv_profile"))
+    _sb_has_pivot   = bool(st.session_state.get("pivot_dna"))
+    _sb_has_jobs    = bool(st.session_state.get("pipeline_jobs"))
+    _sb_has_apps    = bool(st.session_state.get("qa_package"))
+    _sb_has_outcome = bool(st.session_state.get("outcome_log"))
+
+    _sb_steps = [
+        ("1", "Define your pivot",    current != (occupations[0] if occupations else ""), "Pick current & target occupation"),
+        ("2", "Upload CV & score",    _sb_has_cv,    "Upload CV → get OPS score + skill gaps"),
+        ("3", "Score opportunities",  bool(st.session_state.get("jd_analysis_result")), "Run JD Analyzer on real job postings"),
+        ("4", "Build applications",   _sb_has_apps,  "Generate tailored cover letter + package"),
+        ("5", "Track & learn",        _sb_has_outcome, "Log outcomes → calibrate AI predictions"),
+    ]
+    _sb_done = sum(1 for _, _, done, _ in _sb_steps if done)
+    _sb_next_step = next(((i+1, hint) for i, (_, _, done, hint) in enumerate(_sb_steps) if not done), (None, "All steps complete"))
+
     st.markdown(
-        '<div style="background:linear-gradient(135deg,#0A66C2,#004182);'
-        'border-radius:8px 8px 0 0;height:52px;margin:-8px -8px 0 -8px;"></div>'
-        '<div style="display:flex;flex-direction:column;align-items:center;'
-        'margin-top:-28px;margin-bottom:12px;">'
-        '<div style="width:56px;height:56px;border-radius:50%;background:#fff;'
-        'border:3px solid #fff;display:flex;align-items:center;justify-content:center;'
-        'font-size:22px;font-weight:900;color:#0A66C2;box-shadow:0 2px 8px rgba(0,0,0,0.15)">JP</div>'
-        '<div style="font-size:13px;font-weight:700;color:rgba(0,0,0,0.88);margin-top:6px">Career Pivot Planner</div>'
-        '<div style="font-size:11px;color:rgba(0,0,0,0.5);margin-top:1px">Career Intelligence · Jobs</div>'
-        '</div>',
+        f'<div style="background:linear-gradient(160deg,#0A1628 0%,#0F2347 100%);'
+        f'border-radius:12px;padding:16px 14px;margin:-8px -8px 12px -8px">'
+        # Brand
+        f'<div style="display:flex;align-items:baseline;gap:6px;margin-bottom:2px">'
+        f'<div style="font-size:18px;font-weight:900;color:#fff;letter-spacing:-0.02em">Pivot OS</div>'
+        f'<div style="font-size:10px;font-weight:700;color:rgba(255,255,255,0.4);'
+        f'text-transform:uppercase;letter-spacing:0.1em">beta</div>'
+        f'</div>'
+        f'<div style="font-size:10px;color:rgba(255,255,255,0.45);margin-bottom:14px">'
+        f'Maximize P(offer) — every feature is a lever</div>'
+        # P(offer) metric
+        f'<div style="background:rgba(255,255,255,0.07);border-radius:8px;'
+        f'padding:10px 12px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between">'
+        f'<div>'
+        f'<div style="font-size:10px;font-weight:700;color:rgba(255,255,255,0.45);'
+        f'text-transform:uppercase;letter-spacing:0.08em;margin-bottom:2px">P(offer / app)</div>'
+        f'<div style="font-size:28px;font-weight:900;color:{_sb_pcol};line-height:1">{_sb_prob}%</div>'
+        f'</div>'
+        f'<div style="text-align:right">'
+        f'<div style="font-size:10px;color:rgba(255,255,255,0.3)">OPS {_sb_ops}/100</div>'
+        f'<div style="font-size:10px;color:rgba(255,255,255,0.3)">Cal {_sb_cal_f:.2f}×</div>'
+        f'</div>'
+        f'</div>'
+        # Journey steps
+        f'<div style="font-size:9px;font-weight:800;letter-spacing:0.1em;text-transform:uppercase;'
+        f'color:rgba(255,255,255,0.3);margin-bottom:6px">Your journey</div>'
+        + "".join([
+            f'<div style="display:flex;align-items:center;gap:8px;padding:3px 0">'
+            f'<div style="width:18px;height:18px;border-radius:50%;flex-shrink:0;'
+            f'background:{"#4ADE80" if done else "rgba(255,255,255,0.1)"};'
+            f'display:flex;align-items:center;justify-content:center;'
+            f'font-size:9px;font-weight:900;color:{"#0A1628" if done else "rgba(255,255,255,0.4)"}">'
+            f'{"✓" if done else num}</div>'
+            f'<div style="font-size:10px;color:{"rgba(255,255,255,0.85)" if done else "rgba(255,255,255,0.45)"};'
+            f'font-weight:{"700" if done else "400"}">{label}</div>'
+            f'</div>'
+            for num, label, done, _ in _sb_steps
+        ])
+        + (
+            f'<div style="margin-top:10px;background:rgba(250,179,0,0.15);border-radius:6px;'
+            f'padding:6px 10px;font-size:10px;color:#FCD34D;font-weight:600">'
+            f'→ Next: {_sb_next_step[1]}</div>'
+            if _sb_next_step[0] else
+            f'<div style="margin-top:10px;background:rgba(74,222,128,0.15);border-radius:6px;'
+            f'padding:6px 10px;font-size:10px;color:#4ADE80;font-weight:600">✓ All steps complete</div>'
+        )
+        + f'</div>',
         unsafe_allow_html=True,
     )
 
@@ -2045,6 +2110,60 @@ if quick_apply:
         _qa_key = str(st.secrets.get("OPENAI_API_KEY", "")).strip()
     except Exception:
         pass
+
+    # ════════════════════════════════════════════════════════════════════════
+    # PRODUCT CONCEPT BANNER — shown until user has real data
+    # One sentence: what this is. Five rows: what each step does.
+    # ════════════════════════════════════════════════════════════════════════
+    _pc_has_data = bool(
+        st.session_state.get("cv_profile") or
+        st.session_state.get("pipeline_jobs") or
+        st.session_state.get("demo_mode")
+    )
+    if not _pc_has_data:
+        st.markdown(
+            '<div style="background:linear-gradient(135deg,#0A1628,#0F2347);'
+            'border-radius:16px;padding:28px 32px;margin-bottom:20px">'
+
+            '<div style="display:flex;align-items:center;gap:12px;margin-bottom:6px">'
+            '<div style="font-size:26px;font-weight:900;color:#fff;letter-spacing:-0.02em">Pivot OS</div>'
+            '<div style="font-size:11px;font-weight:700;color:rgba(255,255,255,0.35);'
+            'text-transform:uppercase;letter-spacing:0.1em;padding:2px 8px;'
+            'background:rgba(255,255,255,0.08);border-radius:20px">beta</div>'
+            '</div>'
+
+            '<div style="font-size:15px;font-weight:600;color:rgba(255,255,255,0.75);'
+            'margin-bottom:20px;max-width:520px;line-height:1.5">'
+            'The only career tool with a single north star: '
+            '<span style="color:#FCD34D;font-weight:800">maximize P(offer per application)</span>. '
+            'Every feature is a lever on that number.'
+            '</div>'
+
+            '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:20px">'
+            + "".join([
+                f'<div style="background:rgba(255,255,255,0.06);border-radius:10px;padding:12px 10px">'
+                f'<div style="font-size:18px;margin-bottom:6px">{icon}</div>'
+                f'<div style="font-size:10px;font-weight:800;color:rgba(255,255,255,0.9);margin-bottom:3px">{step}</div>'
+                f'<div style="font-size:9px;color:rgba(255,255,255,0.45);line-height:1.4">{desc}</div>'
+                f'</div>'
+                for icon, step, desc in [
+                    ("📋", "1 · Define", "Set current → target occupation. Instant skill gap from 894 O*NET roles."),
+                    ("🧬", "2 · Profile", "Upload CV → OPS score + Pivot DNA. AI extracts your unfair advantage."),
+                    ("🎯", "3 · Score", "Paste any job posting → P(offer) prediction + go/no-go verdict."),
+                    ("⚡", "4 · Apply", "3-evaluator debate → tailored package → ATS scan. One click."),
+                    ("📈", "5 · Learn", "Log outcomes → Brier calibration → AI predictions improve over time."),
+                ]
+            ])
+            + '</div>'
+
+            '<div style="display:flex;gap:10px;align-items:center">'
+            '<div style="font-size:11px;color:rgba(255,255,255,0.5)">'
+            '↑ Upload your CV in the sidebar to start, or load the demo profile.'
+            '</div>'
+            '</div>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
 
     # ════════════════════════════════════════════════════════════════════════
     # DAILY PIVOT BRIEF — the first thing you see every morning
@@ -2786,21 +2905,46 @@ if quick_apply:
     if not _ns_actions:
         _ns_actions.append("Keep momentum — you're in a strong position. Keep applying and nurturing pipeline.")
 
+    # Build lever breakdown
+    _ns_levers = [
+        ("Skill Match", f"OPS {_ops_for_ns}/100", _ns_ops_factor, "↑ Close top skill gaps",   "#60A5FA"),
+        ("Calibration", f"×{_ns_cal_factor:.2f}",  _ns_cal_factor, "↑ Log more outcomes",      "#A78BFA"),
+        ("Brier Corr.", f"×{_ns_brier_factor:.2f}", _ns_brier_factor,"↑ Run JD Analyzer + log", "#34D399"),
+        ("Pipeline",    f"{_active_apps} active",    min(2.0, 1.0 + _active_apps * 0.1), "↑ Add 8-12 applications", "#FCD34D"),
+    ]
+
     st.markdown(
-        f'<div style="background:linear-gradient(135deg,#0A1628,#1a2744);border-radius:14px;'
-        f'padding:18px 24px;margin-bottom:16px;display:flex;align-items:center;gap:24px">'
+        f'<div style="background:linear-gradient(135deg,#0A1628,#0F2347);border-radius:14px;'
+        f'padding:18px 24px;margin-bottom:16px">'
+        # Top row: big number + title
+        f'<div style="display:flex;align-items:center;gap:24px;margin-bottom:16px">'
         f'<div style="text-align:center;flex-shrink:0">'
-        f'<div style="font-size:42px;font-weight:900;color:{_ns_col};line-height:1">{_ns_prob_pct}%</div>'
-        f'<div style="font-size:10px;font-weight:800;letter-spacing:0.1em;text-transform:uppercase;'
-        f'color:rgba(255,255,255,0.5);margin-top:3px">P(offer / application)</div>'
+        f'<div style="font-size:52px;font-weight:900;color:{_ns_col};line-height:1">{_ns_prob_pct}%</div>'
+        f'<div style="font-size:9px;font-weight:800;letter-spacing:0.12em;text-transform:uppercase;'
+        f'color:rgba(255,255,255,0.4);margin-top:4px">P(offer / application)</div>'
         f'</div>'
-        f'<div style="flex:1;border-left:1px solid rgba(255,255,255,0.1);padding-left:20px">'
-        f'<div style="font-size:11px;font-weight:800;color:rgba(255,255,255,0.9);margin-bottom:8px">'
-        f'PIVOT OS NORTH STAR — every feature is a lever on this number</div>'
-        f'<div style="font-size:10px;color:rgba(255,255,255,0.45);margin-bottom:8px">'
-        f'OPS {_ops_for_ns}/100 × calibration {_ns_cal_factor:.2f}× × Brier correction {_ns_brier_factor:.2f}× · base: 5% PM offer rate</div>'
-        f'<div style="font-size:11px;font-weight:700;color:#F0B429">→ {_ns_actions[0]}</div>'
+        f'<div style="flex:1;border-left:1px solid rgba(255,255,255,0.08);padding-left:20px">'
+        f'<div style="font-size:13px;font-weight:900;color:#fff;margin-bottom:4px">Pivot OS · North Star</div>'
+        f'<div style="font-size:11px;color:rgba(255,255,255,0.5);line-height:1.5;margin-bottom:10px">'
+        f'Every feature in this tool is a lever on this number. '
+        f'Formula: 5% base × OPS factor × personal calibration × Brier correction.</div>'
+        f'<div style="font-size:11px;font-weight:700;color:#FCD34D;padding:6px 10px;'
+        f'background:rgba(252,211,77,0.12);border-radius:6px;border-left:2px solid #FCD34D40">'
+        f'→ {_ns_actions[0]}</div>'
         f'</div>'
+        f'</div>'
+        # Lever breakdown
+        f'<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px">'
+        + "".join([
+            f'<div style="background:rgba(255,255,255,0.05);border-radius:8px;padding:8px 10px">'
+            f'<div style="font-size:9px;font-weight:700;color:rgba(255,255,255,0.35);'
+            f'text-transform:uppercase;letter-spacing:0.08em;margin-bottom:3px">{lbl}</div>'
+            f'<div style="font-size:13px;font-weight:900;color:{col}">{val}</div>'
+            f'<div style="font-size:9px;color:rgba(255,255,255,0.3);margin-top:3px">{tip}</div>'
+            f'</div>'
+            for lbl, val, _, tip, col in _ns_levers
+        ])
+        + f'</div>'
         f'</div>',
         unsafe_allow_html=True,
     )
