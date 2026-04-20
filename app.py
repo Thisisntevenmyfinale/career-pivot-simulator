@@ -2100,6 +2100,20 @@ with st.sidebar:
     st.caption(f"Dataset · {mat.shape[0]} occupations · {mat.shape[1]} skills")
 
 # ══════════════════════════════════════════════════════════════════════════════
+# P(OFFER) — computed once, used in all modes (Quick Apply, Guided, Advanced)
+# Formula: 5% base × OPS factor × calibration factor × Brier correction factor
+# ══════════════════════════════════════════════════════════════════════════════
+_ns_base         = 0.05
+_ns_ops_val      = st.session_state.get("_ops_val") or 0
+_ns_ops_factor   = 1.0 + max(0, (_ns_ops_val - 50)) / 100
+_ns_cal_data     = st.session_state.get("calibration_data") or {}
+_ns_cal_factor   = _ns_cal_data.get("adjustment_factor", 1.0) if _ns_cal_data.get("calibrated") else 1.0
+_ns_brier_data   = st.session_state.get("brier_stats") or {}
+_ns_brier_factor = _ns_brier_data.get("correction_factor", 1.0) if not _ns_brier_data.get("insufficient_data") else 1.0
+_ns_prob_pct     = round(min(35, max(0.5, _ns_base * _ns_ops_factor * _ns_cal_factor * _ns_brier_factor * 100)), 1)
+_ns_prob_col     = "#4ADE80" if _ns_prob_pct >= 10 else ("#FCD34D" if _ns_prob_pct >= 5 else "#F87171")
+
+# ══════════════════════════════════════════════════════════════════════════════
 # QUICK APPLY MODE
 # One input (job posting) → one output (complete application package)
 # ══════════════════════════════════════════════════════════════════════════════
@@ -2867,100 +2881,153 @@ if quick_apply:
                     )
 
     # ════════════════════════════════════════════════════════════════════════
-    # P(OFFER) NORTH STAR — The single metric that everything feeds into
-    # Every feature in this tool is a lever on this one number.
+    # PIVOT OS COMMAND CENTER — Diagnosis → Action → Measure
+    # One number (P(offer)) drives every section below.
+    # The Command Center identifies the binding constraint and ranks actions.
     # ════════════════════════════════════════════════════════════════════════
-    _ops_for_ns = st.session_state.get("_ops_val") or 0
-    _cal_for_ns = st.session_state.get("calibration_data") or {}
-    _brier_for_ns = st.session_state.get("brier_stats") or {}
-    _mp_for_ns = st.session_state.get("market_pulse_result") or {}
+    # Use pre-computed P(offer) globals (defined before mode branching above)
+    _ops_for_ns   = _ns_ops_val
+    _cal_for_ns   = _ns_cal_data
+    _brier_for_ns = _ns_brier_data
+    _mp_for_ns    = st.session_state.get("market_pulse_result") or {}
+    _ns_col       = _ns_prob_col
 
-    # Base probability: industry PM offer rate is 3-8% per cold app
-    # Adjusted by OPS score: higher skill match = better hit rate
-    _ns_base = 0.05  # 5% cold baseline
-    _ns_ops_factor = 1.0 + max(0, (_ops_for_ns - 50)) / 100  # 0 OPS = 1.0x, 100 OPS = 1.5x
-    _ns_cal_factor = _cal_for_ns.get("adjustment_factor", 1.0) if _cal_for_ns.get("calibrated") else 1.0
-    _ns_brier_factor = _brier_for_ns.get("correction_factor", 1.0) if not _brier_for_ns.get("insufficient_data") else 1.0
-    _ns_timing_factor = (_mp_for_ns.get("timing_score", 50) / 50) if _mp_for_ns.get("timing_score") else 1.0
-    _ns_timing_factor = max(0.5, min(1.5, _ns_timing_factor))
-
-    _ns_prob = _ns_base * _ns_ops_factor * _ns_cal_factor * _ns_brier_factor
-    _ns_prob_pct = round(min(35, max(0.5, _ns_prob * 100)), 1)
-
-    _ns_col = "#057642" if _ns_prob_pct >= 10 else ("#D97706" if _ns_prob_pct >= 5 else "#DC2626")
-
-    # Next best action (rule-based)
     _pipeline_now = st.session_state.get("pipeline_jobs") or []
-    _active_apps = sum(1 for j in _pipeline_now if j.get("status") in ("applied", "first_round", "final_round"))
-    _ns_actions = []
-    if _ops_for_ns < 60:
-        _ns_actions.append(f"Improve OPS score (currently {_ops_for_ns}/100) — close top skill gaps")
-    if _active_apps < 5:
-        _ns_actions.append(f"Increase pipeline (only {_active_apps} active applications — target 8-12)")
+    _active_apps  = sum(1 for j in _pipeline_now if j.get("status") in ("applied", "first_round", "final_round"))
     _csv_matches_ns = len(st.session_state.get("csv_warm_intros") or [])
-    if _csv_matches_ns == 0:
-        _ns_actions.append("Upload LinkedIn connections CSV — warm intros are 12× more effective than cold apps")
-    elif len([dm for dm in (st.session_state.get("csv_dms") or {}).values() if dm]) == 0:
-        _ns_actions.append(f"Send the {_csv_matches_ns} warm intro DMs waiting in your network")
-    if not _ns_actions:
-        _ns_actions.append("Keep momentum — you're in a strong position. Keep applying and nurturing pipeline.")
 
-    # Build lever breakdown
-    _ns_levers = [
-        ("Skill Match", f"OPS {_ops_for_ns}/100", _ns_ops_factor, "↑ Close top skill gaps",   "#60A5FA"),
-        ("Calibration", f"×{_ns_cal_factor:.2f}",  _ns_cal_factor, "↑ Log more outcomes",      "#A78BFA"),
-        ("Brier Corr.", f"×{_ns_brier_factor:.2f}", _ns_brier_factor,"↑ Run JD Analyzer + log", "#34D399"),
-        ("Pipeline",    f"{_active_apps} active",    min(2.0, 1.0 + _active_apps * 0.1), "↑ Add 8-12 applications", "#FCD34D"),
+    # ── Lever definitions: (name, current_val_str, factor, optimal_factor, unlock_action, section_label, color, progress_pct) ──
+    _lv_ops_pct  = round(_ops_for_ns)
+    _lv_ops_prog = round(_lv_ops_pct)  # 0-100 where 100 = OPS 100
+    _lv_cal_prog = 100 if _ns_cal_factor != 1.0 else 0
+    _lv_br_prog  = 50 if not _brier_for_ns.get("insufficient_data") else 0
+    _lv_net_prog = min(100, _csv_matches_ns * 10)
+
+    # Binding constraint = lever with lowest progress (most room to improve)
+    _lv_progress = {
+        "OPS":         (_lv_ops_prog,  _ns_ops_factor),
+        "Calibration": (_lv_cal_prog,  _ns_cal_factor),
+        "Brier":       (_lv_br_prog,   _ns_brier_factor),
+        "Network":     (_lv_net_prog,  1.0),
+    }
+    _binding_lever = min(_lv_progress, key=lambda k: _lv_progress[k][0])
+
+    _binding_actions = {
+        "OPS":         ("Upload your CV and run the OPS scorer — every 10pt OPS gain = +0.5pp P(offer)",  "Skill Gap section ↓"),
+        "Calibration": ("Log your first 3 outcomes — unlocks personal calibration of all AI predictions",  "Outcome Tracker ↓"),
+        "Brier":       ("Run JD Analyzer on 3 jobs and log their outcomes — unlocks Brier correction",     "JD Analyzer → Outcome Tracker ↓"),
+        "Network":     ("Upload LinkedIn CSV — warm intros convert 12× better than cold applications",     "LinkedIn Network Engine ↓"),
+    }
+    _binding_action_text, _binding_section_ref = _binding_actions.get(_binding_lever, ("", ""))
+
+    # Ranked levers: sorted by progress (ascending = most urgent first)
+    _ranked_levers = [
+        # (label, current_display, factor, progress_pct, section_ref, color, action_text)
+        ("OPS · Skill Match",
+         f"OPS {_lv_ops_pct}/100",
+         _ns_ops_factor,
+         _lv_ops_prog,
+         "Skill Gap section ↓",
+         "#60A5FA",
+         f"Upload CV → OPS score. Current: {_lv_ops_pct}/100, target: ≥65. Impact: each +10pt OPS = ×{1.0+10/100:.2f} on P(offer)."),
+        ("Calibration · Personal ROI",
+         f"×{_ns_cal_factor:.2f}",
+         _ns_cal_factor,
+         _lv_cal_prog,
+         "Outcome Tracker ↓",
+         "#A78BFA",
+         "Log 5+ outcomes. Calibration corrects AI predictions to YOUR response rate, not industry average."),
+        ("Brier · AI Accuracy",
+         f"×{_ns_brier_factor:.2f}",
+         _ns_brier_factor,
+         _lv_br_prog,
+         "JD Analyzer + Outcome Tracker ↓",
+         "#34D399",
+         "Run JD Analyzer → log outcomes → Brier score measures how well-calibrated AI predictions are. Correction auto-applied."),
+        ("Network · Warm Intros",
+         f"{_csv_matches_ns} matches",
+         1.0,
+         _lv_net_prog,
+         "LinkedIn Network Engine ↓",
+         "#FCD34D",
+         f"Upload LinkedIn CSV. {_csv_matches_ns} matches found. Warm referrals: 35-50% response vs 2-3% cold."),
     ]
+    _ranked_levers.sort(key=lambda x: x[3])  # sort by progress ascending (most urgent first)
 
+    # ── Render: Command Center ──────────────────────────────────────────────
+    # Header row: P(offer) + formula
+    _cc_formula = f"5% base × {_ns_ops_factor:.2f}× OPS × {_ns_cal_factor:.2f}× Cal × {_ns_brier_factor:.2f}× Brier = {_ns_prob_pct}%"
     st.markdown(
-        f'<div style="background:linear-gradient(135deg,#0A1628,#0F2347);border-radius:14px;'
-        f'padding:18px 24px;margin-bottom:16px">'
-        # Top row: big number + title
-        f'<div style="display:flex;align-items:center;gap:24px;margin-bottom:16px">'
-        f'<div style="text-align:center;flex-shrink:0">'
-        f'<div style="font-size:52px;font-weight:900;color:{_ns_col};line-height:1">{_ns_prob_pct}%</div>'
-        f'<div style="font-size:9px;font-weight:800;letter-spacing:0.12em;text-transform:uppercase;'
-        f'color:rgba(255,255,255,0.4);margin-top:4px">P(offer / application)</div>'
+        f'<div style="background:linear-gradient(135deg,#0A1628 0%,#0F2347 100%);'
+        f'border-radius:16px;overflow:hidden;margin-bottom:16px">'
+
+        # ── Top bar: number + title + formula ──
+        f'<div style="padding:20px 24px 16px 24px;display:flex;align-items:center;gap:24px">'
+        f'<div style="flex-shrink:0;text-align:center">'
+        f'<div style="font-size:56px;font-weight:900;color:{_ns_col};line-height:1;letter-spacing:-2px">{_ns_prob_pct}%</div>'
+        f'<div style="font-size:9px;font-weight:800;letter-spacing:0.14em;text-transform:uppercase;'
+        f'color:rgba(255,255,255,0.35);margin-top:3px">P(offer / application)</div>'
         f'</div>'
-        f'<div style="flex:1;border-left:1px solid rgba(255,255,255,0.08);padding-left:20px">'
-        f'<div style="font-size:13px;font-weight:900;color:#fff;margin-bottom:4px">Pivot OS · North Star</div>'
-        f'<div style="font-size:11px;color:rgba(255,255,255,0.5);line-height:1.5;margin-bottom:10px">'
-        f'Every feature in this tool is a lever on this number. '
-        f'Formula: 5% base × OPS factor × personal calibration × Brier correction.</div>'
-        f'<div style="font-size:11px;font-weight:700;color:#FCD34D;padding:6px 10px;'
-        f'background:rgba(252,211,77,0.12);border-radius:6px;border-left:2px solid #FCD34D40">'
-        f'→ {_ns_actions[0]}</div>'
+        f'<div style="flex:1;border-left:1px solid rgba(255,255,255,0.08);padding-left:22px">'
+        f'<div style="display:flex;align-items:baseline;gap:8px;margin-bottom:5px">'
+        f'<div style="font-size:14px;font-weight:900;color:#fff;letter-spacing:-0.3px">Pivot OS — Command Center</div>'
+        f'</div>'
+        f'<div style="font-family:monospace;font-size:11px;color:rgba(255,255,255,0.5);'
+        f'background:rgba(255,255,255,0.06);border-radius:6px;padding:5px 10px;margin-bottom:10px;display:inline-block">'
+        f'{_cc_formula}</div>'
+        f'<div style="font-size:10px;color:rgba(255,255,255,0.35);line-height:1.5">'
+        f'Every section below is a lever on this number. The tool identifies your binding constraint — fix that first.</div>'
         f'</div>'
         f'</div>'
-        # Lever breakdown
-        f'<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px">'
+
+        # ── Binding constraint banner ──
+        f'<div style="background:#DC262618;border-top:1px solid #DC262630;border-bottom:1px solid #DC262630;'
+        f'padding:12px 24px;display:flex;align-items:center;gap:12px">'
+        f'<div style="background:#DC2626;border-radius:6px;padding:2px 10px;font-size:9px;font-weight:900;'
+        f'color:#fff;text-transform:uppercase;letter-spacing:0.1em;flex-shrink:0">Binding Constraint</div>'
+        f'<div style="flex:1;font-size:12px;font-weight:600;color:rgba(255,255,255,0.85)">{_binding_action_text}</div>'
+        f'<div style="font-size:10px;font-weight:700;color:rgba(255,255,255,0.4);flex-shrink:0">{_binding_section_ref}</div>'
+        f'</div>'
+
+        # ── 4 levers: ranked by urgency ──
+        f'<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:0;border-top:1px solid rgba(255,255,255,0.06)">'
         + "".join([
-            f'<div style="background:rgba(255,255,255,0.05);border-radius:8px;padding:8px 10px">'
-            f'<div style="font-size:9px;font-weight:700;color:rgba(255,255,255,0.35);'
-            f'text-transform:uppercase;letter-spacing:0.08em;margin-bottom:3px">{lbl}</div>'
-            f'<div style="font-size:13px;font-weight:900;color:{col}">{val}</div>'
-            f'<div style="font-size:9px;color:rgba(255,255,255,0.3);margin-top:3px">{tip}</div>'
+            f'<div style="padding:14px 16px;border-right:1px solid rgba(255,255,255,0.06);'
+            f'{"background:rgba(220,38,38,0.08);" if i==0 else ""}'
+            f'position:relative">'
+            # Rank badge
+            f'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">'
+            f'<div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;color:{col}">{lbl}</div>'
+            f'{"<div style=font-size:9px;font-weight:900;color:#DC2626;background:#DC262618;border-radius:10px;padding:1px 7px>FIX FIRST</div>" if i==0 else ""}'
             f'</div>'
-            for lbl, val, _, tip, col in _ns_levers
+            # Value
+            f'<div style="font-size:18px;font-weight:900;color:{col};margin-bottom:6px">{val}</div>'
+            # Progress bar
+            f'<div style="height:3px;background:rgba(255,255,255,0.08);border-radius:2px;margin-bottom:6px">'
+            f'<div style="width:{pct}%;height:3px;background:{col};border-radius:2px;'
+            f'transition:width 1s"></div></div>'
+            # Section ref
+            f'<div style="font-size:9px;color:rgba(255,255,255,0.3)">{ref}</div>'
+            f'</div>'
+            for i, (lbl, val, fac, pct, ref, col, _) in enumerate(_ranked_levers)
         ])
         + f'</div>'
         f'</div>',
         unsafe_allow_html=True,
     )
 
-    # Section map: each section is labelled by which P(offer) lever it drives
+    # ── Ranked action queue: connects Command Center to sections below ──────
     st.markdown(
-        '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">'
+        '<div style="display:flex;gap:6px;align-items:center;margin-bottom:10px;flex-wrap:wrap">'
+        '<div style="font-size:9px;font-weight:800;letter-spacing:0.1em;text-transform:uppercase;'
+        'color:rgba(0,0,0,0.35);margin-right:4px">SECTIONS BELOW — fix in this order:</div>'
         + "".join([
-            f'<div style="font-size:9px;font-weight:700;padding:2px 8px;border-radius:10px;'
-            f'background:{bg};color:{col};letter-spacing:0.04em">{label}</div>'
-            for label, bg, col in [
-                ("Pipeline lever → volume × quality", "#EEF3FB", "#0A66C2"),
-                ("OPS lever → skill match", "#F0FAF4", "#057642"),
-                ("Calibration lever → personal ROI", "#FFF8E7", "#A05A00"),
-                ("Network lever → warm intro", "#F5F0FF", "#7C3AED"),
-            ]
+            f'<div style="font-size:9px;font-weight:700;padding:3px 10px;border-radius:10px;'
+            f'border:1px solid {col}50;color:{col};background:{col}12;letter-spacing:0.03em">'
+            f'{"① " if i==0 else "② " if i==1 else "③ " if i==2 else "④ "}{lbl.split(" · ")[0]}'
+            f'{"  ← fix first" if i==0 else ""}'
+            f'</div>'
+            for i, (lbl, _v, _f, _p, _r, col, _a) in enumerate(_ranked_levers)
         ])
         + '</div>',
         unsafe_allow_html=True,
@@ -2975,9 +3042,9 @@ if quick_apply:
     _pl_stats = compute_pipeline_stats(_pl_jobs)
 
     with st.expander(
-        f"Application Pipeline — {_pl_stats['total']} tracked · "
+        f"Pipeline · {_pl_stats['total']} tracked · "
         f"{_pl_stats['response_rate']}% response rate · "
-        f"{'On track' if _pl_stats['response_rate'] >= 20 else ('Watch this' if _pl_stats['response_rate'] >= 10 else 'Bottleneck detected') if _pl_stats['total'] >= 3 else 'Log applications to unlock diagnosis'}",
+        f"{'On track' if _pl_stats['response_rate'] >= 20 else ('Watch this' if _pl_stats['response_rate'] >= 10 else 'Bottleneck detected') if _pl_stats['total'] >= 3 else 'Log first applications to unlock pipeline diagnosis'}",
         expanded=bool(_pl_jobs),
     ):
         # ── Pipeline header ──────────────────────────────────────────────
@@ -9714,7 +9781,15 @@ if guided:
     _sp = st.session_state.sprint_step          # current active step 1-5
 
     # ── Sprint header ─────────────────────────────────────────────────────
+    # P(offer) impact per step: what completing each step does to the number
     _sp_steps = ["Assess", "Plan", "Validate", "Execute", "Interview"]
+    _sp_impacts = [
+        "OPS score → skill match factor",
+        "Gap-close plan → readiness",
+        "Debate verdict → go/no-go confidence",
+        "Application package → quality score",
+        "Interview prep → conversion rate",
+    ]
     _sp_done  = [
         True,
         bool(st.session_state.learning_plan_md),
@@ -9757,31 +9832,66 @@ if guided:
     _sp_pct = int(sum(_sp_done) / len(_sp_done) * 100)
     _sp_time_labels = ["5 min", "10 min", "8 min", "15 min", "7 min"]
     _sp_time_total = 45
+    # P(offer) shown in sprint header (same formula as Command Center)
+    _sp_ns_col = "#4ADE80" if _ns_prob_pct >= 10 else ("#FCD34D" if _ns_prob_pct >= 5 else "#F87171")
 
     st.markdown(
-        f'<div style="background:#fff;border:1px solid rgba(0,0,0,0.1);border-radius:12px;'
-        f'padding:18px 24px 14px 24px;margin-bottom:16px;box-shadow:0 1px 4px rgba(0,0,0,0.05)">'
+        f'<div style="background:linear-gradient(135deg,#0A1628 0%,#0F2347 100%);border-radius:14px;'
+        f'padding:18px 24px 16px 24px;margin-bottom:16px">'
+
+        # Top: title + P(offer) + readiness
         f'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">'
         f'<div>'
-        f'<div style="display:flex;align-items:center;gap:8px">'
-        f'<div style="font-size:12px;font-weight:900;color:#0A66C2;letter-spacing:-0.2px">Career Pivot Sprint</div>'
+        f'<div style="display:flex;align-items:center;gap:8px;margin-bottom:3px">'
+        f'<div style="font-size:13px;font-weight:900;color:#fff;letter-spacing:-0.3px">Pivot OS · Career Sprint</div>'
         f'<div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.06em;'
-        f'background:#EEF3FB;border:1px solid #0A66C2;color:#0A66C2;border-radius:12px;'
-        f'padding:2px 8px;white-space:nowrap">{icon("cpu", 11, "#0A66C2")} gpt-4o Agent</div>'
+        f'background:rgba(255,255,255,0.1);color:rgba(255,255,255,0.7);border-radius:12px;'
+        f'padding:2px 8px;white-space:nowrap">{icon("cpu", 11, "rgba(255,255,255,0.7)")} gpt-4o agent</div>'
         f'</div>'
-        f'<div style="font-size:11px;color:rgba(0,0,0,0.4);margin-top:1px">'
-        f'~{_sp_time_total} min total · {sum(_sp_done)}/5 steps complete</div>'
+        f'<div style="font-size:10px;color:rgba(255,255,255,0.4)">'
+        f'~{_sp_time_total} min total · {sum(_sp_done)}/5 steps · goal: maximize P(offer)</div>'
+        f'</div>'
+        # Right: P(offer) + Readiness
+        f'<div style="display:flex;gap:20px;align-items:center">'
+        f'<div style="text-align:right">'
+        f'<div style="font-size:28px;font-weight:900;color:{_sp_ns_col};line-height:1">{_ns_prob_pct}%</div>'
+        f'<div style="font-size:8px;font-weight:800;letter-spacing:0.1em;text-transform:uppercase;'
+        f'color:rgba(255,255,255,0.35)">P(offer)</div>'
         f'</div>'
         f'<div style="text-align:right">'
-        f'<div style="font-size:22px;font-weight:900;color:{_readiness_bar_color};line-height:1">'
-        f'{_readiness}<span style="font-size:11px;font-weight:600;color:rgba(0,0,0,0.3)">/100</span></div>'
-        f'<div style="font-size:9px;font-weight:800;letter-spacing:0.06em;text-transform:uppercase;'
-        f'color:rgba(0,0,0,0.4)">Pivot Readiness</div>'
+        f'<div style="font-size:28px;font-weight:900;color:{_readiness_bar_color};line-height:1">'
+        f'{_readiness}<span style="font-size:11px;font-weight:600;color:rgba(255,255,255,0.3)">/100</span></div>'
+        f'<div style="font-size:8px;font-weight:800;letter-spacing:0.1em;text-transform:uppercase;'
+        f'color:rgba(255,255,255,0.35)">Readiness</div>'
         f'</div>'
         f'</div>'
-        f'<div style="display:flex;align-items:center;margin-bottom:12px">{_sp_nodes}</div>'
-        f'<div style="height:3px;background:rgba(0,0,0,0.07);border-radius:2px;overflow:hidden">'
-        f'<div style="width:{_sp_pct}%;height:3px;background:#0A66C2;border-radius:2px;transition:width 0.8s"></div>'
+        f'</div>'
+
+        # Steps with impact labels
+        f'<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-bottom:14px">'
+        + "".join([
+            f'<div style="background:{"rgba(74,222,128,0.12)" if _sdone else ("rgba(255,255,255,0.08)" if _si+1==_sp else "rgba(255,255,255,0.03)")};'
+            f'border:1px solid {"rgba(74,222,128,0.4)" if _sdone else ("rgba(255,255,255,0.2)" if _si+1==_sp else "rgba(255,255,255,0.06)")};'
+            f'border-radius:8px;padding:8px 10px">'
+            f'<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">'
+            f'<div style="width:20px;height:20px;border-radius:50%;flex-shrink:0;'
+            f'background:{"#4ADE80" if _sdone else ("rgba(255,255,255,0.9)" if _si+1==_sp else "rgba(255,255,255,0.1)")};'
+            f'display:flex;align-items:center;justify-content:center;'
+            f'font-size:9px;font-weight:900;color:{"#0A1628" if _sdone else ("#0A1628" if _si+1==_sp else "rgba(255,255,255,0.3)")}">'
+            f'{"✓" if _sdone else str(_si+1)}</div>'
+            f'<div style="font-size:10px;font-weight:{"900" if _si+1==_sp else "700"};'
+            f'color:{"rgba(255,255,255,0.9)" if (_sdone or _si+1==_sp) else "rgba(255,255,255,0.35)"}">{_sname}</div>'
+            f'</div>'
+            f'<div style="font-size:8px;color:rgba(255,255,255,{"0.5" if (_sdone or _si+1==_sp) else "0.2"});line-height:1.4">'
+            f'{_simp}</div>'
+            f'</div>'
+            for _si, (_sname, _sdone, _simp) in enumerate(zip(_sp_steps, _sp_done, _sp_impacts))
+        ])
+        + f'</div>'
+
+        # Progress bar
+        f'<div style="height:3px;background:rgba(255,255,255,0.08);border-radius:2px;overflow:hidden">'
+        f'<div style="width:{_sp_pct}%;height:3px;background:#4ADE80;border-radius:2px;transition:width 0.8s"></div>'
         f'</div>'
         f'</div>',
         unsafe_allow_html=True,
