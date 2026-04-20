@@ -1365,6 +1365,11 @@ DEFAULT_STATE = {
     "mock_interview_report": None,      # final performance report
     "mock_interview_active": False,     # True while interview is running
     "mock_interview_job_ctx": {},       # {title, company, jd} for the interview session
+    # Pivot-Zwilling (persistent AI career companion)
+    "zwilling_messages": [],            # [{role, content}] — full conversation history
+    "zwilling_initialized": False,      # True after first system context injected
+    # Voice transcriptions (audio → Whisper)
+    "voice_transcripts": {},            # {question_idx: transcribed_text}
     # ATS Scanner
     "ats_result": None,                 # result from scan_ats_compatibility
     # Sprint Mode
@@ -11483,8 +11488,55 @@ with _tab_interview:
                 unsafe_allow_html=True,
             )
 
-            # Answer input
-            _saved_answer = (st.session_state.interview_answers or {}).get(_qi, "")
+            # ── Voice transcription (Whisper) ─────────────────────────────────
+            with st.expander("🎙️ Record your answer (upload audio → auto-transcribe)", expanded=False):
+                _voice_col1, _voice_col2 = st.columns([3, 2])
+                with _voice_col1:
+                    _audio_file = st.file_uploader(
+                        "Upload audio (mp3, wav, m4a, webm)",
+                        type=["mp3", "wav", "m4a", "webm", "ogg"],
+                        key=f"itv_audio_{_qi}",
+                        label_visibility="collapsed",
+                        help="Record your answer on your phone or laptop, then upload here. Whisper will transcribe it into the answer box.",
+                    )
+                with _voice_col2:
+                    st.markdown(
+                        '<div style="font-size:11px;color:rgba(0,0,0,0.45);padding-top:6px;line-height:1.6">'
+                        'Speak your answer naturally → upload → Whisper transcribes → edit if needed → Evaluate.<br>'
+                        '<em>Requires OPENAI_API_KEY</em></div>',
+                        unsafe_allow_html=True,
+                    )
+                if _audio_file and _oai_key_itv:
+                    if st.button(f"🎙️ Transcribe audio", key=f"itv_transcribe_{_qi}", use_container_width=True):
+                        with st.spinner("Transcribing with Whisper…"):
+                            try:
+                                from openai import OpenAI as _OAI
+                                _wc = _OAI(api_key=_oai_key_itv)
+                                _audio_bytes = _audio_file.read()
+                                import io
+                                _audio_buf = io.BytesIO(_audio_bytes)
+                                _audio_buf.name = _audio_file.name
+                                _trans = _wc.audio.transcriptions.create(
+                                    model="whisper-1",
+                                    file=_audio_buf,
+                                    language="en",
+                                )
+                                _transcript = _trans.text.strip()
+                                if st.session_state.voice_transcripts is None:
+                                    st.session_state.voice_transcripts = {}
+                                st.session_state.voice_transcripts[_qi] = _transcript
+                                if st.session_state.interview_answers is None:
+                                    st.session_state.interview_answers = {}
+                                st.session_state.interview_answers[_qi] = _transcript
+                                st.rerun()
+                            except Exception as _e:
+                                st.error(f"Transcription failed: {repr(_e)[:120]}")
+                elif _audio_file and not _oai_key_itv:
+                    st.warning("Add OPENAI_API_KEY to enable Whisper transcription.")
+
+            # Answer input (pre-filled from voice transcript if available)
+            _voice_transcript = (st.session_state.voice_transcripts or {}).get(_qi, "")
+            _saved_answer = (st.session_state.interview_answers or {}).get(_qi, "") or _voice_transcript
             _answer_input = st.text_area(
                 f"Your answer to Q{_qi+1}",
                 value=_saved_answer,
@@ -11493,6 +11545,8 @@ with _tab_interview:
                 key=f"itv_ans_{_qi}",
                 label_visibility="collapsed",
             )
+            if _voice_transcript and _saved_answer == _voice_transcript:
+                st.caption("🎙️ Auto-filled from voice transcription — edit as needed before evaluating")
 
             _eval_col, _ = st.columns([2, 3])
             with _eval_col:
@@ -11859,3 +11913,147 @@ with _tab_interview:
             st.session_state.mock_interview_report = None
             st.session_state.mock_interview_active = False
             st.rerun()
+    # ──────────────────────────────────────────────────────────────────────────
+    # Pivot-Zwilling — Persistent AI Career Companion
+    # ──────────────────────────────────────────────────────────────────────────
+    st.divider()
+    st.markdown(
+        '<div class="li-tool-header">'
+        '<div class="li-tool-icon" style="background:#F0F4FF">🪞</div>'
+        '<div><div class="li-tool-title">Pivot-Zwilling · Your Career Twin</div>'
+        '<div class="li-tool-cap">Persistent AI companion · Knows your CV, scores, and pivot path · Honest strategic coaching between sessions</div></div>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
+
+    _zw_oai_key = None
+    try:
+        _zw_oai_key = st.secrets.get("OPENAI_API_KEY")
+    except Exception:
+        pass
+
+    _zw_msgs: list = st.session_state.zwilling_messages or []
+
+    # Build context snapshot (injected once as the system message)
+    def _build_zwilling_context() -> str:
+        _ctx_parts = [
+            f"You are the user's dedicated career pivot strategist — their Pivot-Zwilling (Career Twin).",
+            f"You know everything about their situation. You are direct, honest, and specific.",
+            f"Never be sycophantic. If something is off, say so plainly.",
+            f"",
+            f"=== CANDIDATE PROFILE ===",
+            f"Current role: {current}",
+            f"Target role: {target}",
+        ]
+        if _cv_profile:
+            _ctx_parts.append(f"Top skills: {', '.join((_cv_profile.get('top_skills') or [])[:8])}")
+            _ctx_parts.append(f"Years experience: {_cv_profile.get('years_experience', 'unknown')}")
+            _ctx_parts.append(f"CV role: {_cv_profile.get('extracted_role', '')}")
+        if st.session_state.onet_match:
+            _ctx_parts.append(f"O*NET target match: {st.session_state.onet_match.get('occupation_title', '')}")
+        if st.session_state.skill_gap_results:
+            _sg = st.session_state.skill_gap_results
+            _ctx_parts.append(f"Fit percentile: {_sg.get('fit_percentile', 'N/A')}")
+            _top_gaps = [g['skill'] for g in (_sg.get('gaps', []) or [])[:3]]
+            if _top_gaps:
+                _ctx_parts.append(f"Top 3 skill gaps: {', '.join(_top_gaps)}")
+        if st.session_state.pivot_dna:
+            _dna = st.session_state.pivot_dna
+            _ctx_parts.append(f"Strongest transferable argument: {_dna.get('strongest_transferable_argument', '')}")
+            _ctx_parts.append(f"Unfair advantage: {_dna.get('unfair_advantage', '')}")
+        if st.session_state.cohort_intelligence:
+            _ci = st.session_state.cohort_intelligence
+            _ctx_parts.append(f"Cohort median timeline: {_ci.get('median_timeline_weeks', '?')} weeks, {_ci.get('median_applications', '?')} applications")
+            _ctx_parts.append(f"What works for this pivot: {_ci.get('what_worked', '')[:200]}")
+        if st.session_state.mock_interview_report:
+            _mir = st.session_state.mock_interview_report
+            _ctx_parts.append(f"Mock interview score: {_mir.get('overall_score', 'N/A')}/100 · {_mir.get('hire_recommendation', '')}")
+            _ctx_parts.append(f"Mock interview verdict: {_mir.get('one_line_verdict', '')}")
+        _pipeline = st.session_state.pipeline_jobs or []
+        if _pipeline:
+            _stats = {
+                "total": len(_pipeline),
+                "active": sum(1 for j in _pipeline if j.status not in ("rejected", "offer", "declined")),
+                "rejected": sum(1 for j in _pipeline if j.status == "rejected"),
+                "interviews": sum(1 for j in _pipeline if j.status in ("interview", "technical", "final")),
+            }
+            _ctx_parts.append(f"Pipeline: {_stats['total']} applications · {_stats['active']} active · {_stats['rejected']} rejected · {_stats['interviews']} in interview")
+        _ctx_parts += [
+            f"",
+            f"=== YOUR ROLE AS PIVOT-ZWILLING ===",
+            f"- Answer questions about strategy, timing, positioning, interview prep, and motivation",
+            f"- Challenge the user when they're thinking about giving up or making a bad strategic move",
+            f"- Reference their specific numbers, gaps, and situation — no generic advice",
+            f"- Be a sparring partner: push back if their logic is weak",
+            f"- Max 3 paragraphs per response unless asked for detail. Be dense and useful.",
+        ]
+        return "\n".join(_ctx_parts)
+
+    # Initialize with system message if first load
+    if not st.session_state.zwilling_initialized and _zw_oai_key:
+        _sys_ctx = _build_zwilling_context()
+        st.session_state.zwilling_messages = [{"role": "system", "content": _sys_ctx}]
+        st.session_state.zwilling_initialized = True
+        _zw_msgs = st.session_state.zwilling_messages
+
+    # Render conversation (skip system message)
+    _zw_visible = [m for m in _zw_msgs if m.get("role") != "system"]
+    if _zw_visible:
+        for _zm in _zw_visible:
+            with st.chat_message("assistant" if _zm["role"] == "assistant" else "user"):
+                st.markdown(_zm["content"])
+    else:
+        st.markdown(
+            '<div style="background:#F0F4FF;border:1px solid #C4D3F8;border-radius:10px;'
+            'padding:16px 20px;margin-bottom:12px">'
+            '<div style="font-size:13px;color:#1D2226;line-height:1.7">'
+            '🪞 <strong>I\'m your Pivot-Zwilling</strong> — a strategic AI that knows your full profile.<br>'
+            'Ask me anything: <em>"Am I ready to apply?"</em> · <em>"Which gap is blocking me most?"</em> · '
+            '<em>"Roast my pivot pitch"</em> · <em>"What should I do today?"</em>'
+            '</div></div>',
+            unsafe_allow_html=True,
+        )
+
+    # Chat input
+    if _zw_oai_key:
+        _zw_user_input = st.chat_input(
+            "Ask your Career Twin anything…",
+            key="zwilling_chat_input",
+        )
+        if _zw_user_input:
+            # Ensure system context is present
+            if not st.session_state.zwilling_initialized:
+                _sys_ctx = _build_zwilling_context()
+                st.session_state.zwilling_messages = [{"role": "system", "content": _sys_ctx}]
+                st.session_state.zwilling_initialized = True
+            st.session_state.zwilling_messages.append({"role": "user", "content": _zw_user_input})
+            with st.spinner("Pivot-Zwilling thinking…"):
+                try:
+                    from openai import OpenAI as _ZOAIClient
+                    _zw_client = _ZOAIClient(api_key=_zw_oai_key)
+                    _zw_resp = _zw_client.chat.completions.create(
+                        model="gpt-4o",
+                        messages=st.session_state.zwilling_messages,
+                        temperature=0.6,
+                        max_tokens=500,
+                    )
+                    _zw_reply = (_zw_resp.choices[0].message.content or "").strip()
+                    st.session_state.zwilling_messages.append({"role": "assistant", "content": _zw_reply})
+                except Exception as _ze:
+                    st.session_state.zwilling_messages.append({
+                        "role": "assistant",
+                        "content": f"[Error: {repr(_ze)[:100]}]"
+                    })
+            st.rerun()
+
+        _zw_ctrl_col1, _zw_ctrl_col2 = st.columns([2, 3])
+        with _zw_ctrl_col1:
+            if st.button("↺ Reset conversation", key="zwilling_reset", type="secondary"):
+                st.session_state.zwilling_messages = []
+                st.session_state.zwilling_initialized = False
+                st.rerun()
+        with _zw_ctrl_col2:
+            if _zw_visible:
+                st.caption(f"{len(_zw_visible)} exchanges · context is refreshed on reset")
+    else:
+        st.info("Add OPENAI_API_KEY in .streamlit/secrets.toml to enable Pivot-Zwilling.")
