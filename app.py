@@ -3673,76 +3673,74 @@ if quick_apply:
     ]
     _ranked_levers.sort(key=lambda x: x[3])  # sort by progress ascending (most urgent first)
 
-    # ── Render: Command Center ──────────────────────────────────────────────
-    # Header row: P(offer) + formula
-    _cc_formula = f"5% base × {_ns_ops_factor:.2f}× OPS × {_ns_cal_factor:.2f}× Cal × {_ns_brier_factor:.2f}× Brier = {_ns_prob_pct}%"
+    # ── Render: Command Center (LinkedIn card style) ─────────────────────────
+    # Tier label for P(offer) number
+    _cc_tier     = "Getting started" if _ns_prob_pct < 5 else ("Building" if _ns_prob_pct < 15 else ("Target reached" if _ns_prob_pct < 25 else "Elite"))
+    _cc_tier_col = "#B71C1C" if _ns_prob_pct < 5 else ("#A05A00" if _ns_prob_pct < 15 else ("#057642" if _ns_prob_pct < 25 else "#057642"))
+    # Friendly lever names (no ALL_CAPS)
+    _lv_names  = ["Skill match", "Calibration", "Network", "Prediction accuracy"]
+    _lv_icons  = ["bar-chart-2", "sliders", "users", "target"]
+    _lv_status = ["Not started" if pct == 0 else ("In progress" if pct < 80 else "Active")
+                  for _, _, _, pct, _, _, _ in _ranked_levers]
+
     st.markdown(
-        f'<div class="li-section" style="margin-bottom:16px">'
+        f'<div class="li-section" style="margin-bottom:16px;padding:0">'
 
-        # ── Top bar: number + title + formula ──
-        f'<div style="padding:16px 20px 0 20px;display:flex;align-items:center;gap:20px">'
-        f'<div style="flex-shrink:0;text-align:center;min-width:76px">'
-        f'<div style="font-size:48px;font-weight:900;color:{_ns_col};line-height:1;letter-spacing:-2px">{_ns_prob_pct}%</div>'
-        f'<div style="font-size:9px;font-weight:800;letter-spacing:0.12em;text-transform:uppercase;'
-        f'color:rgba(0,0,0,0.40);margin-top:2px">P(offer / application)</div>'
-        f'</div>'
-        f'<div style="flex:1;border-left:1px solid rgba(0,0,0,0.08);padding-left:18px">'
-        f'<div style="font-size:15px;font-weight:900;color:rgba(0,0,0,0.88);margin-bottom:4px">Pivot OS — Command Center</div>'
-        f'<div style="font-family:monospace;font-size:11px;color:rgba(0,0,0,0.55);'
-        f'background:#F3F6F9;border-radius:6px;padding:4px 10px;margin-bottom:8px;display:inline-block">'
-        f'{_cc_formula}</div>'
-        f'<div style="font-size:11px;color:rgba(0,0,0,0.45);line-height:1.5">'
-        f'Every section below is a lever on this number. The tool identifies your binding constraint — fix that first.</div>'
-        f'</div>'
+        # ── Header: P(offer) + tier + next action ──────────────────────────
+        f'<div style="padding:20px 20px 16px 20px;display:flex;align-items:center;gap:20px;'
+        f'border-bottom:1px solid rgba(0,0,0,0.08)">'
+
+        # Big number
+        f'<div style="flex-shrink:0;text-align:center">'
+        f'<div style="font-size:44px;font-weight:900;color:{_ns_col};line-height:1;letter-spacing:-2px">{_ns_prob_pct}%</div>'
+        f'<div style="font-size:11px;font-weight:700;color:{_cc_tier_col};margin-top:2px">{_cc_tier}</div>'
+        f'<div style="font-size:10px;color:rgba(0,0,0,0.35);margin-top:1px">P(offer)</div>'
         f'</div>'
 
-        # ── Binding constraint banner ──
-        f'<div style="background:#FEF2F2;border-top:1px solid #FECACA;border-bottom:1px solid #FECACA;'
-        f'padding:10px 20px;display:flex;align-items:center;gap:12px;margin:12px 0 0 0">'
-        f'<div style="background:#DC2626;border-radius:6px;padding:2px 8px;font-size:9px;font-weight:900;'
-        f'color:#fff;text-transform:uppercase;letter-spacing:0.1em;flex-shrink:0">Binding Constraint</div>'
-        f'<div style="flex:1;font-size:12px;font-weight:600;color:rgba(0,0,0,0.75)">{_binding_action_text}</div>'
-        f'<div style="font-size:10px;font-weight:700;color:#0A66C2;flex-shrink:0">{_binding_section_ref}</div>'
-        f'</div>'
+        # Divider
+        f'<div style="width:1px;height:52px;background:rgba(0,0,0,0.08);flex-shrink:0"></div>'
 
-        # ── 4 levers: ranked by urgency ──
-        f'<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:0;border-top:1px solid rgba(0,0,0,0.06)">'
+        # Right: title + next action
+        f'<div style="flex:1">'
+        f'<div style="font-size:15px;font-weight:800;color:#1D2226;margin-bottom:6px">P(offer) Command Center</div>'
+        f'<div style="font-size:12px;color:rgba(0,0,0,0.55);line-height:1.5;margin-bottom:10px">'
+        f'Four levers drive this number. Your most urgent one is highlighted below.</div>'
+        # Next action highlight
+        f'<div style="background:#EEF3FB;border-radius:8px;padding:8px 12px;display:flex;align-items:center;gap:8px">'
+        f'<div style="width:6px;height:6px;background:#0A66C2;border-radius:50%;flex-shrink:0"></div>'
+        f'<div style="font-size:12px;font-weight:600;color:#0A66C2">{_binding_action_text}</div>'
+        f'</div>'
+        f'</div>'
+        f'</div>'  # end header
+
+        # ── 4 levers grid ──────────────────────────────────────────────────
+        f'<div style="display:grid;grid-template-columns:repeat(4,1fr)">'
         + "".join([
             (
-                f'<div style="padding:14px 16px;border-right:1px solid rgba(0,0,0,0.06);'
-                + ('background:#FEF2F2;' if i == 0 else 'background:#fff;')
-                + 'position:relative">'
-                + f'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px">'
-                + f'<div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;color:{col}">{lbl}</div>'
-                + ('<div style="font-size:9px;font-weight:900;color:#DC2626;background:#FECACA;border-radius:10px;padding:1px 7px">FIX FIRST</div>' if i == 0 else '')
-                + '</div>'
-                + f'<div style="font-size:18px;font-weight:900;color:{col};margin-bottom:5px">{val}</div>'
-                + f'<div style="height:3px;background:rgba(0,0,0,0.07);border-radius:2px;margin-bottom:5px">'
-                + f'<div style="width:{pct}%;height:3px;background:{col};border-radius:2px;transition:width 1s"></div></div>'
-                + f'<div style="font-size:9px;color:rgba(0,0,0,0.40)">{ref}</div>'
-                + '</div>'
+                f'<div style="padding:16px;'
+                + (f'background:#EEF3FB;' if i == 0 else f'background:#fff;')
+                + (f'border-right:1px solid rgba(0,0,0,0.06);' if i < 3 else '')
+                + f'">'
+                # Status dot + lever name
+                + f'<div style="display:flex;align-items:center;gap:6px;margin-bottom:10px">'
+                + f'<div style="width:8px;height:8px;border-radius:50%;flex-shrink:0;background:{"#0A66C2" if i==0 else ("rgba(0,0,0,0.15)" if pct==0 else "#057642")}"></div>'
+                + f'<div style="font-size:11px;font-weight:700;color:{"#0A66C2" if i==0 else "rgba(0,0,0,0.65)"}">{_lv_names[i]}</div>'
+                + (f'<div style="margin-left:auto;font-size:9px;font-weight:800;color:#0A66C2;background:#C7D8F0;border-radius:8px;padding:1px 6px">Priority</div>' if i == 0 else '')
+                + f'</div>'
+                # Value
+                + f'<div style="font-size:20px;font-weight:900;color:{"#0A66C2" if i==0 else "rgba(0,0,0,0.75)"};margin-bottom:6px">{val}</div>'
+                # Progress bar
+                + f'<div style="height:4px;background:rgba(0,0,0,0.07);border-radius:2px;margin-bottom:8px">'
+                + f'<div style="width:{pct}%;height:4px;background:{"#0A66C2" if i==0 else "#057642"};border-radius:2px;transition:width 1s"></div>'
+                + f'</div>'
+                # Status
+                + f'<div style="font-size:10px;color:rgba(0,0,0,0.45)">{_lv_status[i]}</div>'
+                + f'</div>'
             )
             for i, (lbl, val, fac, pct, ref, col, _) in enumerate(_ranked_levers)
         ])
-        + f'</div>'
-        f'</div>',
-        unsafe_allow_html=True,
-    )
-
-    # ── Ranked action queue: connects Command Center to sections below ──────
-    st.markdown(
-        '<div style="display:flex;gap:6px;align-items:center;margin-bottom:10px;flex-wrap:wrap">'
-        '<div style="font-size:9px;font-weight:800;letter-spacing:0.1em;text-transform:uppercase;'
-        'color:rgba(0,0,0,0.35);margin-right:4px">SECTIONS BELOW — fix in this order:</div>'
-        + "".join([
-            f'<div style="font-size:9px;font-weight:700;padding:3px 10px;border-radius:10px;'
-            f'border:1px solid {col}50;color:{col};background:{col}12;letter-spacing:0.03em">'
-            f'{"① " if i==0 else "② " if i==1 else "③ " if i==2 else "④ "}{lbl.split(" · ")[0]}'
-            f'{"  ← fix first" if i==0 else ""}'
-            f'</div>'
-            for i, (lbl, _v, _f, _p, _r, col, _a) in enumerate(_ranked_levers)
-        ])
-        + '</div>',
+        + f'</div>'  # end grid
+        f'</div>',  # end card
         unsafe_allow_html=True,
     )
 
