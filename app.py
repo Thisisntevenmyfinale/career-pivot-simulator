@@ -2029,7 +2029,7 @@ OCC_TO_IDX: dict[str, int] = {o: i for i, o in enumerate(OCCS)}
 # ============================================================
 DEFAULT_STATE = {
     "has_run": False,
-    "mode_radio": "Guided",   # controls sidebar mode selector — writable from landing page CTA
+    "mode_radio": "Career Sprint",   # controls sidebar mode selector — writable from landing page CTA
     "target_override": None,
     "route_result": None,
     "route_config": {"k_neighbors": 10, "max_steps": 6},
@@ -2387,16 +2387,18 @@ with st.sidebar:
     _sb_done = sum(1 for _, _, done, _ in _sb_steps if done)
     _sb_next_step = next(((i+1, hint) for i, (_, _, done, hint) in enumerate(_sb_steps) if not done), (None, "All steps complete"))
 
-    # ── LinkedIn profile card ─────────────────────────────────────────────────
+    # ── Single unified sidebar card: identity + P(offer) + journey ──────────
     _cv_profile = st.session_state.get("cv_profile") or {}
-    _cv_name = _cv_profile.get("name", "Jan Philipp Gnau") if _cv_profile else "Jan Philipp Gnau"
-    _cv_initials = "".join(p[0].upper() for p in str(_cv_name).split()[:2]) or "JP"
-    _cv_headline = _cv_profile.get("current_role", _sb_current) if _cv_profile else _sb_current
-    _cv_location = _cv_profile.get("location", "Career Pivot in Progress")
-    _pipeline_jobs = st.session_state.get("pipeline_jobs") or []
-    _conn_count = max(10, len(_pipeline_jobs) * 3 + 47)  # simulated connections
+    _cv_name     = _cv_profile.get("name", "Your Profile") if _cv_profile else "Your Profile"
+    _cv_initials = "".join(p[0].upper() for p in str(_cv_name).split()[:2]) or "YP"
+    _cv_headline = _cv_profile.get("current_role", str(_sb_current)) if _cv_profile else str(_sb_current)
+    _sb_goal     = compute_goal_progress(_sb_prob)
+    _sb_strength = "All-Star" if _sb_done >= 4 else ("Intermediate" if _sb_done >= 2 else "Getting started")
+
     st.markdown(
-        f'<div class="li-profile-card">'
+        f'<div class="li-profile-card" style="margin-bottom:8px">'
+
+        # ── Top: avatar + name + headline ──────────────────────────────────
         f'<div class="li-profile-bg"></div>'
         f'<div class="li-profile-avatar-wrap">'
         f'<div class="li-profile-avatar">{_cv_initials}</div>'
@@ -2404,110 +2406,87 @@ with st.sidebar:
         f'<div class="li-profile-info">'
         f'<div class="li-profile-name">{_cv_name}</div>'
         f'<div class="li-profile-headline">{str(_cv_headline)[:55]}</div>'
-        f'<div style="font-size:11px;color:rgba(0,0,0,0.45);margin-top:2px">{_cv_location}</div>'
         f'</div>'
-        f'<div class="li-profile-divider"></div>'
-        f'<div class="li-profile-stat">'
-        f'<span class="li-profile-stat-label">Profile strength</span>'
-        f'<span class="li-profile-stat-val">{"All-Star" if _sb_done >= 4 else "Intermediate" if _sb_done >= 2 else "Beginner"}</span>'
-        f'</div>'
-        f'<div class="li-profile-stat">'
-        f'<span class="li-profile-stat-label">Offer probability</span>'
-        f'<span class="li-profile-stat-val" style="color:{_sb_pcol};font-size:13px;font-weight:800">{_sb_prob}%</span>'
-        f'</div>'
-        f'<div class="li-profile-stat">'
-        f'<span class="li-profile-stat-label">Connections</span>'
-        f'<span class="li-profile-stat-val">{_conn_count}</span>'
-        f'</div>'
-        f'<div class="li-profile-divider"></div>'
-        f'<div style="padding:10px 16px 12px;">'
-        f'<div class="li-premium-promo-badge">✦ Try Premium for free</div>'
-        f'<div class="li-premium-promo-sub" style="margin-top:2px">See who viewed your profile</div>'
-        f'</div>'
-        f'</div>',
-        unsafe_allow_html=True,
-    )
 
-    # ── P(offer) north star card ──────────────────────────────────────────────
-    _sb_goal = compute_goal_progress(_sb_prob)
-    st.markdown(
-        f'<div class="li-profile-card" style="margin-bottom:8px">'
-
-        # Title row
-        f'<div style="padding:12px 16px 0 16px;display:flex;align-items:center;justify-content:space-between">'
-        f'<div style="font-size:13px;font-weight:800;color:rgba(0,0,0,0.88)">Mission: Maximize P(offer)</div>'
+        # ── P(offer) north star ─────────────────────────────────────────────
+        f'<div style="padding:12px 16px 8px 16px;border-top:1px solid rgba(0,0,0,0.07)">'
+        f'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">'
+        f'<div>'
+        f'<div style="font-size:10px;color:rgba(0,0,0,0.40);margin-bottom:2px">Offer probability</div>'
+        f'<div style="font-size:28px;font-weight:900;color:{_sb_pcol};line-height:1">{_sb_prob}%</div>'
+        f'</div>'
+        f'<div style="text-align:right">'
         f'<div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.06em;'
-        f'color:{_sb_goal["tier_color"]};background:{_sb_goal["tier_color"]}18;border-radius:10px;padding:2px 8px">'
-        f'{_sb_goal["tier_label"]}</div>'
-        f'</div>'
-
-        # P(offer) big number + goal bar
-        f'<div style="padding:10px 16px">'
-        f'<div style="display:flex;align-items:flex-end;gap:6px;margin-bottom:6px">'
-        f'<div style="font-size:32px;font-weight:900;color:{_sb_pcol};line-height:1">{_sb_prob}%</div>'
-        f'<div style="font-size:11px;color:rgba(0,0,0,0.40);margin-bottom:4px">P(offer / application)</div>'
-        f'</div>'
-        # Goal progress bar: 5% → 15% → 25%
-        f'<div style="position:relative;height:8px;background:rgba(0,0,0,0.07);border-radius:4px;margin-bottom:4px">'
-        f'<div style="position:absolute;left:{min(100,max(0,(_sb_prob-5)/20*100)):.0f}%;height:8px;'
-        f'width:3px;background:{_sb_pcol};border-radius:2px;transform:translateX(-50%);'
-        f'transition:left 0.6s"></div>'
-        f'<div style="position:absolute;left:{min(100,max(0,(15-5)/20*100)):.0f}%;top:-4px;'
-        f'width:1px;height:16px;background:#0A66C2;opacity:0.4"></div>'
-        f'<div style="position:absolute;left:{min(100,max(0,(25-5)/20*100)):.0f}%;top:-4px;'
-        f'width:1px;height:16px;background:#057642;opacity:0.4"></div>'
-        f'</div>'
-        f'<div style="display:flex;justify-content:space-between;font-size:9px;color:rgba(0,0,0,0.35)">'
-        f'<span>5% baseline</span><span style="color:#0A66C2;font-weight:700">15% target</span>'
-        f'<span style="color:#057642;font-weight:700">25% elite</span>'
-        f'</div>'
-        f'</div>'
-
-        # Levers row
-        f'<div style="display:flex;gap:0;border-top:1px solid rgba(0,0,0,0.07)">'
-        f'<div style="flex:1;padding:6px 10px;border-right:1px solid rgba(0,0,0,0.07)">'
-        f'<div style="font-size:9px;color:rgba(0,0,0,0.35);text-transform:uppercase;letter-spacing:0.05em">OPS</div>'
-        f'<div style="font-size:13px;font-weight:800;color:rgba(0,0,0,0.70)">{_sb_ops}/100</div>'
-        f'</div>'
-        f'<div style="flex:1;padding:6px 10px;border-right:1px solid rgba(0,0,0,0.07)">'
-        f'<div style="font-size:9px;color:rgba(0,0,0,0.35);text-transform:uppercase;letter-spacing:0.05em">Cal</div>'
-        f'<div style="font-size:13px;font-weight:800;color:rgba(0,0,0,0.70)">×{_sb_cal_f:.2f}</div>'
-        f'</div>'
-        f'<div style="flex:1;padding:6px 10px">'
-        f'<div style="font-size:9px;color:rgba(0,0,0,0.35);text-transform:uppercase;letter-spacing:0.05em">Next</div>'
-        f'<div style="font-size:11px;font-weight:700;color:#0A66C2;line-height:1.2">'
+        f'color:{_sb_goal["tier_color"]};background:{_sb_goal["tier_color"]}18;'
+        f'border-radius:10px;padding:2px 8px;margin-bottom:4px">{_sb_goal["tier_label"]}</div>'
+        f'<div style="font-size:10px;color:rgba(0,0,0,0.40)">'
         f'+{_sb_goal["gap_to_next"]:.1f}pp to {_sb_goal["next_tier_label"]}</div>'
         f'</div>'
         f'</div>'
+        # Goal bar: 5% → 15% → 25%
+        f'<div style="position:relative;height:6px;background:rgba(0,0,0,0.07);border-radius:3px;margin-bottom:4px">'
+        f'<div style="width:{min(100,max(2,(_sb_prob/25)*100)):.0f}%;height:6px;'
+        f'background:{_sb_pcol};border-radius:3px;transition:width 0.6s"></div>'
+        f'<div style="position:absolute;left:60%;top:-3px;width:1px;height:12px;background:#0A66C2;opacity:0.35"></div>'
+        f'<div style="position:absolute;left:100%;top:-3px;width:1px;height:12px;background:#057642;opacity:0.35"></div>'
+        f'</div>'
+        f'<div style="display:flex;justify-content:space-between;font-size:9px;color:rgba(0,0,0,0.30);margin-bottom:8px">'
+        f'<span>5%</span><span style="color:#0A66C2;font-weight:700">15% target</span>'
+        f'<span style="color:#057642;font-weight:700">25% elite</span>'
+        f'</div>'
+        # OPS + Cal mini stats
+        f'<div style="display:flex;gap:8px">'
+        f'<div style="flex:1;background:#F3F6F9;border-radius:6px;padding:5px 8px">'
+        f'<div style="font-size:9px;color:rgba(0,0,0,0.40)">Skill match</div>'
+        f'<div style="font-size:13px;font-weight:800;color:rgba(0,0,0,0.75)">{_sb_ops}/100</div>'
+        f'</div>'
+        f'<div style="flex:1;background:#F3F6F9;border-radius:6px;padding:5px 8px">'
+        f'<div style="font-size:9px;color:rgba(0,0,0,0.40)">Calibration</div>'
+        f'<div style="font-size:13px;font-weight:800;color:rgba(0,0,0,0.75)">×{_sb_cal_f:.2f}</div>'
+        f'</div>'
+        f'<div style="flex:1;background:#F3F6F9;border-radius:6px;padding:5px 8px">'
+        f'<div style="font-size:9px;color:rgba(0,0,0,0.40)">Progress</div>'
+        f'<div style="font-size:13px;font-weight:800;color:#0A66C2">{_sb_done}/5</div>'
+        f'</div>'
+        f'</div>'
+        f'</div>'  # end P(offer) block
 
-        # Journey steps
-        f'<div style="padding:8px 16px 4px 16px;font-size:10px;font-weight:800;'
-        f'text-transform:uppercase;letter-spacing:0.06em;color:rgba(0,0,0,0.35)">Your journey</div>'
+        # ── 5-step journey checklist ────────────────────────────────────────
+        f'<div style="padding:0 0 4px 0;border-top:1px solid rgba(0,0,0,0.06)">'
         + "".join([
-            f'<div class="li-ghost-card" style="display:flex;align-items:center;gap:8px;padding:5px 16px">'
-            f'<div style="width:16px;height:16px;border-radius:50%;flex-shrink:0;'
-            f'background:{"#057642" if done else "rgba(0,0,0,0.08)"};'
+            f'<div style="display:flex;align-items:center;gap:10px;padding:7px 16px;'
+            f'border-bottom:1px solid rgba(0,0,0,0.04)">'
+            f'<div style="width:18px;height:18px;border-radius:50%;flex-shrink:0;'
+            f'background:{"#057642" if done else "rgba(0,0,0,0.07)"};'
             f'display:flex;align-items:center;justify-content:center;'
-            f'font-size:8px;font-weight:900;color:{"#fff" if done else "rgba(0,0,0,0.35)"}">'
+            f'font-size:9px;font-weight:900;color:{"#fff" if done else "rgba(0,0,0,0.30)"}">'
             f'{"✓" if done else num}</div>'
-            f'<div style="font-size:12px;color:{"rgba(0,0,0,0.80)" if done else "rgba(0,0,0,0.45)"};'
-            f'font-weight:{"600" if done else "400"}">{label}</div>'
+            f'<div>'
+            f'<div style="font-size:12px;font-weight:{"700" if done else "500"};'
+            f'color:{"rgba(0,0,0,0.80)" if done else "rgba(0,0,0,0.50)"}">{label}</div>'
+            f'</div>'
             f'</div>'
             for num, label, done, _ in _sb_steps
         ])
+        # Next step hint
         + (
-            f'<div style="margin:4px 10px 10px 10px;background:#FFF8E7;border:1px solid #F3D7A5;'
-            f'border-radius:6px;padding:7px 10px;font-size:11px;color:#A05A00;font-weight:600">'
-            f'→ {_sb_next_step[1]}</div>'
+            f'<div style="margin:6px 12px 8px 12px;background:#EEF3FB;border-radius:6px;'
+            f'padding:7px 10px;font-size:11px;color:#0A66C2;font-weight:600">'
+            f'Next: {_sb_next_step[1]}</div>'
             if _sb_next_step[0] else
-            f'<div style="margin:4px 10px 10px 10px;background:#E7F6EC;border:1px solid #CBEAD5;'
-            f'border-radius:6px;padding:7px 10px;font-size:11px;color:#057642;font-weight:700">'
-            f'All 5 stages complete — loop fully active</div>'
+            f'<div style="margin:6px 12px 8px 12px;background:#E7F6EC;border-radius:6px;'
+            f'padding:7px 10px;font-size:11px;color:#057642;font-weight:700">'
+            f'All stages complete — loop active</div>'
         )
-        + f'<div style="padding:8px 16px;border-top:1px solid rgba(0,0,0,0.06);'
-        f'font-size:10px;color:rgba(0,0,0,0.35)">'
-        f'{icon("shield", 10, "#057642")} Progress saved automatically · session {_sb_done + 1} of your pivot journey'
+        + f'</div>'
+
+        # ── Footer ──────────────────────────────────────────────────────────
+        + f'<div style="padding:6px 16px 10px 16px;border-top:1px solid rgba(0,0,0,0.06);'
+        f'font-size:10px;color:rgba(0,0,0,0.35);display:flex;align-items:center;gap:6px">'
+        f'{icon("shield", 10, "#057642")}'
+        f'<span>Progress saved · session {_sb_done + 1}</span>'
         f'</div>'
+
         + f'</div>',
         unsafe_allow_html=True,
     )
@@ -2515,8 +2494,8 @@ with st.sidebar:
     # Apply pending mode switch from landing page CTA buttons (must happen before widget renders)
     if st.session_state.get("_pending_mode"):
         st.session_state["mode_radio"] = st.session_state.pop("_pending_mode")
-    mode = st.radio("Mode", options=["Guided", "Quick Apply", "Advanced"], key="mode_radio", horizontal=True)
-    guided = mode == "Guided"
+    mode = st.radio("Mode", options=["Career Sprint", "Quick Apply", "Expert Mode"], key="mode_radio", horizontal=True)
+    guided = mode == "Career Sprint"
     quick_apply = mode == "Quick Apply"
 
     st.divider()
@@ -2626,7 +2605,7 @@ with st.sidebar:
             st.session_state.cv_text = _extracted
 
     # Optional: also allow manual text paste as fallback
-    with st.expander("Or paste CV text manually", expanded=not bool(cv_uploaded_file)):
+    with st.expander("Or paste CV text manually", expanded=False):
         cv_text_input = st.text_area(
             "CV text",
             value=st.session_state.cv_text,
@@ -9747,7 +9726,7 @@ if not st.session_state.has_run:
             unsafe_allow_html=True,
         )
         if st.button("Start Career Sprint", use_container_width=True, key="_hero_gs_btn"):
-            st.session_state["_pending_mode"] = "Guided"
+            st.session_state["_pending_mode"] = "Career Sprint"
             st.session_state["has_run"] = True
             st.rerun()
     with _cta_c3:
@@ -9776,7 +9755,7 @@ if not st.session_state.has_run:
         ):
             if not st.session_state.get("cv_text"):
                 load_demo_profile(st.session_state)
-            st.session_state["_pending_mode"] = "Advanced"
+            st.session_state["_pending_mode"] = "Expert Mode"
             st.session_state["has_run"] = True
             st.session_state["full_pipeline_triggered"] = True
             st.rerun()
