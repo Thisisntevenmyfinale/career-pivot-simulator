@@ -10338,6 +10338,22 @@ if guided:
 
     _sp = st.session_state.sprint_step          # current active step 1-5
 
+    # ── Readiness score (same formula as quick_apply Overview panel) ──────
+    _n_gaps_g    = int((gap_df["gap"] > 0).sum()) if not gap_df.empty else 0
+    _gap_ratio_g = _n_gaps_g / max(len(gap_df) if not gap_df.empty else 1, 1)
+    _cv_score_g  = min(float(_cv_profile.get("skills_mapped_count", 0)) / 40.0, 1.0) if _cv_profile else 0.5
+    _base_pts_g  = int((0.45 * (match_score_display / 100) + 0.30 * (1 - _gap_ratio_g) + 0.25 * _cv_score_g) * 30)
+    _readiness   = max(5, min(
+        _base_pts_g
+        + (8  if bool((st.session_state.cv_text or "").strip())      else 0)
+        + (10 if bool(st.session_state.learning_plan_md)             else 0)
+        + (12 if bool(st.session_state.debate_result)                else 0)
+        + (10 if bool(st.session_state.review_board_strategies)      else 0)
+        + (15 if bool(st.session_state.smart_apply_package)          else 0)
+        + (15 if bool(st.session_state.interview_prep_done)          else 0)
+    , 100))
+    _readiness_bar_color = "#117A37" if _readiness >= 65 else ("#0A66C2" if _readiness >= 40 else "#A05A00")
+
     # ── Sprint header ─────────────────────────────────────────────────────
     # P(offer) impact per step: what completing each step does to the number
     _sp_steps = ["Assess", "Plan", "Validate", "Execute", "Interview"]
