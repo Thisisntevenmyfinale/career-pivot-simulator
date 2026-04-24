@@ -2828,3036 +2828,3049 @@ if quick_apply:
     _tab_apply, _tab_tools = st.tabs(["Apply", "Analysis & Tools"])
 
     with _tab_tools:
-        # DAILY PIVOT BRIEF — the first thing you see every morning
-        # ════════════════════════════════════════════════════════════════════════
-        from datetime import date as _date_cls
-        _today_iso = _date_cls.today().isoformat()
-        if st.session_state.get("cv_text") or st.session_state.get("pipeline_jobs"):
-            # Regenerate brief if stale (new day or not yet generated)
-            if st.session_state.get("daily_brief_date") != _today_iso or not st.session_state.get("daily_brief_content"):
-                st.session_state.daily_brief_date = _today_iso
-                st.session_state.daily_brief_content = generate_daily_brief(dict(st.session_state))
+        with st.expander("Daily Pivot Brief", expanded=False):
+            # DAILY PIVOT BRIEF — the first thing you see every morning
+            # ════════════════════════════════════════════════════════════════════════
+            from datetime import date as _date_cls
+            _today_iso = _date_cls.today().isoformat()
+            if st.session_state.get("cv_text") or st.session_state.get("pipeline_jobs"):
+                # Regenerate brief if stale (new day or not yet generated)
+                if st.session_state.get("daily_brief_date") != _today_iso or not st.session_state.get("daily_brief_content"):
+                    st.session_state.daily_brief_date = _today_iso
+                    st.session_state.daily_brief_content = generate_daily_brief(dict(st.session_state))
 
-            _brief = st.session_state.daily_brief_content
-            if _brief:
-                _db_actions = _brief.get("actions", [])
-                _db_momentum = _brief.get("momentum", {})
-                _db_pipeline = _brief.get("pipeline", {})
-                _db_mot = _brief.get("motivational_line", "")
+                _brief = st.session_state.daily_brief_content
+                if _brief:
+                    _db_actions = _brief.get("actions", [])
+                    _db_momentum = _brief.get("momentum", {})
+                    _db_pipeline = _brief.get("pipeline", {})
+                    _db_mot = _brief.get("motivational_line", "")
 
-                st.markdown(
-                    f'<div class="li-section" style="margin-bottom:16px">'
-                    f'<div style="padding:14px 20px 0 20px;display:flex;align-items:center;justify-content:space-between">'
-                    f'<div>'
-                    f'<div style="font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;'
-                    f'color:rgba(0,0,0,0.45);margin-bottom:1px">Daily Pivot Brief</div>'
-                    f'<div style="font-size:15px;font-weight:800;color:rgba(0,0,0,0.88)">'
-                    f'{_brief.get("day_name")}, {_brief.get("date_str")}</div>'
-                    f'</div>'
-                    f'<div style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;'
-                    f'background:#EEF3FB;color:#0A66C2">'
-                    f'{_db_momentum.get("label","")}</div>'
-                    f'</div>'
-                    f'<div style="padding:12px 20px 4px 20px">',
-                    unsafe_allow_html=True,
-                )
-
-                # Top 3 actions
-                for _dbi, _act in enumerate(_db_actions):
-                    _is_primary = _dbi == 0
                     st.markdown(
-                        f'<div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:8px">'
-                        f'<div style="min-width:22px;height:22px;border-radius:50%;flex-shrink:0;margin-top:1px;'
-                        f'background:{"#0A66C2" if _is_primary else "rgba(0,0,0,0.06)"};'
-                        f'display:flex;align-items:center;justify-content:center;'
-                        f'font-size:10px;font-weight:900;color:{"#fff" if _is_primary else "rgba(0,0,0,0.45)"}">{_dbi+1}</div>'
+                        f'<div class="li-section" style="margin-bottom:16px">'
+                        f'<div style="padding:14px 20px 0 20px;display:flex;align-items:center;justify-content:space-between">'
                         f'<div>'
-                        f'<div style="font-size:{"13px" if _is_primary else "12px"};'
-                        f'font-weight:{"700" if _is_primary else "500"};'
-                        f'color:{"rgba(0,0,0,0.88)" if _is_primary else "rgba(0,0,0,0.65)"};line-height:1.4">'
-                        f'{_act.get("title","")}</div>'
-                        f'<div style="font-size:10px;color:rgba(0,0,0,0.45);margin-top:1px">{_act.get("why","")}</div>'
+                        f'<div style="font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;'
+                        f'color:rgba(0,0,0,0.45);margin-bottom:1px">Daily Pivot Brief</div>'
+                        f'<div style="font-size:15px;font-weight:800;color:rgba(0,0,0,0.88)">'
+                        f'{_brief.get("day_name")}, {_brief.get("date_str")}</div>'
+                        f'</div>'
+                        f'<div style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;'
+                        f'background:#EEF3FB;color:#0A66C2">'
+                        f'{_db_momentum.get("label","")}</div>'
+                        f'</div>'
+                        f'<div style="padding:12px 20px 4px 20px">',
+                        unsafe_allow_html=True,
+                    )
+
+                    # Top 3 actions
+                    for _dbi, _act in enumerate(_db_actions):
+                        _is_primary = _dbi == 0
+                        st.markdown(
+                            f'<div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:8px">'
+                            f'<div style="min-width:22px;height:22px;border-radius:50%;flex-shrink:0;margin-top:1px;'
+                            f'background:{"#0A66C2" if _is_primary else "rgba(0,0,0,0.06)"};'
+                            f'display:flex;align-items:center;justify-content:center;'
+                            f'font-size:10px;font-weight:900;color:{"#fff" if _is_primary else "rgba(0,0,0,0.45)"}">{_dbi+1}</div>'
+                            f'<div>'
+                            f'<div style="font-size:{"13px" if _is_primary else "12px"};'
+                            f'font-weight:{"700" if _is_primary else "500"};'
+                            f'color:{"rgba(0,0,0,0.88)" if _is_primary else "rgba(0,0,0,0.65)"};line-height:1.4">'
+                            f'{_act.get("title","")}</div>'
+                            f'<div style="font-size:10px;color:rgba(0,0,0,0.45);margin-top:1px">{_act.get("why","")}</div>'
+                            f'</div>'
+                            f'</div>',
+                            unsafe_allow_html=True,
+                        )
+
+                    # Pipeline snapshot + motivational line
+                    _db_pl = _db_pipeline
+                    _pl_line = ""
+                    if not _db_pl.get("empty"):
+                        _stale = _db_pl.get("stale_count", 0)
+                        _int = _db_pl.get("interview_count", 0)
+                        _parts = [f"{_db_pl.get('active',0)} active"]
+                        if _stale: _parts.append(f"{_stale} need follow-up")
+                        if _int: _parts.append(f"{_int} in interview")
+                        _pl_line = " · ".join(_parts)
+
+                    _pl_pill = (
+                        f'<span style="font-size:10px;color:rgba(0,0,0,0.4)">{_pl_line}</span>'
+                        if _pl_line else ""
+                    )
+                    st.markdown(
+                        f'</div>'
+                        f'<div style="border-top:1px solid rgba(0,0,0,0.07);padding:8px 20px;'
+                        f'display:flex;align-items:center;justify-content:space-between">'
+                        f'<div style="font-size:10px;color:rgba(0,0,0,0.45);font-style:italic">{_db_mot}</div>'
+                        f'{_pl_pill}'
                         f'</div>'
                         f'</div>',
                         unsafe_allow_html=True,
                     )
 
-                # Pipeline snapshot + motivational line
-                _db_pl = _db_pipeline
-                _pl_line = ""
-                if not _db_pl.get("empty"):
-                    _stale = _db_pl.get("stale_count", 0)
-                    _int = _db_pl.get("interview_count", 0)
-                    _parts = [f"{_db_pl.get('active',0)} active"]
-                    if _stale: _parts.append(f"{_stale} need follow-up")
-                    if _int: _parts.append(f"{_int} in interview")
-                    _pl_line = " · ".join(_parts)
-
-                _pl_pill = (
-                    f'<span style="font-size:10px;color:rgba(0,0,0,0.4)">{_pl_line}</span>'
-                    if _pl_line else ""
-                )
-                st.markdown(
-                    f'</div>'
-                    f'<div style="border-top:1px solid rgba(0,0,0,0.07);padding:8px 20px;'
-                    f'display:flex;align-items:center;justify-content:space-between">'
-                    f'<div style="font-size:10px;color:rgba(0,0,0,0.45);font-style:italic">{_db_mot}</div>'
-                    f'{_pl_pill}'
-                    f'</div>'
-                    f'</div>',
-                    unsafe_allow_html=True,
-                )
-
-        # ════════════════════════════════════════════════════════════════════════
-        # CAREER COMMAND CENTER — AI Advisor Layer
-        # Cross-module synthesis: reads all session state → one clear next action.
-        # This is the "what do I do right now?" that no other tool answers.
-        # ════════════════════════════════════════════════════════════════════════
-        _adv_pl = compute_pipeline_stats(st.session_state.pipeline_jobs or [])
-        _adv_cv = st.session_state.cv_profile or {}
-        _adv_has_data = bool(
-            st.session_state.pipeline_jobs or
-            st.session_state.cv_profile or
-            st.session_state.qa_package or
-            st.session_state.qa_portfolio_packages
-        )
-
-        if _adv_has_data:
-            # Show Command Center header
-            _adv_phase_colors = {
-                "Exploration": "#7A2A8A",
-                "Active Application": "#0A66C2",
-                "Interview Loop": "#057642",
-                "Negotiation": "#A05A00",
-            }
-
-            with st.container(border=True):
-                _adv_hc1, _adv_hc2 = st.columns([4, 1], gap="small")
-                with _adv_hc1:
-                    st.markdown(
-                        '<div style="display:flex;align-items:center;gap:10px">'
-                        f'<div style="display:flex;align-items:center;justify-content:center">{icon("compass", 20, "#1D2226")}</div>'
-                        '<div><div style="font-size:15px;font-weight:900;color:#1D2226">Career Command Center</div>'
-                        '<div style="font-size:11px;color:rgba(0,0,0,0.45)">AI reads your full session and tells you what to do next</div>'
-                        '</div></div>',
-                        unsafe_allow_html=True,
-                    )
-                with _adv_hc2:
-                    if st.button("Refresh Advisor", key="adv_refresh", use_container_width=True, help="Re-synthesize based on current session state"):
-                        st.session_state.advisor_result = None
-
-                # Auto-run advisor if we have data but no result
-                if not st.session_state.advisor_result and _qa_key:
-                    with st.spinner("AI Advisor synthesising your session…"):
-                        _adv_gaps = []
-                        if st.session_state.cv_gap_df is not None:
-                            try:
-                                _adv_gaps = st.session_state.cv_gap_df.head(5)["skill"].tolist()
-                            except Exception:
-                                pass
-                        _adv_fit = None
-                        if st.session_state.cv_profile and st.session_state.has_run:
-                            try:
-                                _adv_core = build_cosine_core(True)
-                                _adv_fit = get_score_distribution(True, str(current)).get("percentile_of_user")
-                            except Exception:
-                                pass
-                        _adv_mock_score = None
-                        if st.session_state.mock_interview_report:
-                            _adv_mock_score = st.session_state.mock_interview_report.get("overall_score")
-                        st.session_state.advisor_result = synthesize_advisor_recommendation(
-                            fit_score=_adv_fit,
-                            target_role=str(target),
-                            current_role=str(current),
-                            top_skill_gaps=_adv_gaps or None,
-                            pipeline_stats=_adv_pl,
-                            pipeline_diagnosis=st.session_state.pipeline_diagnosis,
-                            rejection_analysis=st.session_state.pipeline_rejection_analysis,
-                            weeks_searching=st.session_state.pipeline_weeks_searching,
-                            avg_ats_score=_adv_pl.get("avg_ats_score"),
-                            last_ats_score=(st.session_state.ats_result or {}).get("ats_score") or
-                                           (st.session_state.qa_ats_paste or {}).get("ats_score"),
-                            has_cover_letter=bool(st.session_state.qa_package or st.session_state.qa_portfolio_packages),
-                            mock_interview_score=_adv_mock_score,
-                            mock_interview_complete=bool(st.session_state.mock_interview_report),
-                            has_offer=bool(st.session_state.negotiation_offer_analysis),
-                            offer_analyzed=bool(
-                                st.session_state.negotiation_offer_analysis and
-                                st.session_state.negotiation_offer_analysis.get("market_salary_mid")
-                            ),
-                            cv_uploaded=bool(st.session_state.cv_profile),
-                            model="gpt-4o-mini",
-                            api_key=_qa_key,
-                            prefer_online=True,
-                        )
-
-                _adv = st.session_state.advisor_result
-                if _adv:
-                    _adv_phase = _adv.get("phase", "Exploration")
-                    _adv_phase_col = _adv_phase_colors.get(_adv_phase, "#0A66C2")
-                    _adv_momentum = _adv.get("momentum_score", 0)
-                    _adv_mom_col = "#117A37" if _adv_momentum >= 65 else ("#A05A00" if _adv_momentum >= 35 else "#B71C1C")
-
-                    # Phase + Momentum bar
-                    st.markdown(
-                        f'<div style="display:flex;align-items:center;gap:16px;margin:10px 0 14px 0">'
-                        f'<div style="background:{_adv_phase_col};color:#fff;border-radius:20px;'
-                        f'padding:3px 12px;font-size:11px;font-weight:800">{_adv_phase}</div>'
-                        f'<div style="flex:1">'
-                        f'<div style="display:flex;justify-content:space-between;font-size:10px;'
-                        f'font-weight:700;color:rgba(0,0,0,0.5);margin-bottom:3px">'
-                        f'<span>Momentum</span><span style="color:{_adv_mom_col}">'
-                        f'{_adv.get("momentum_label","?")} · {_adv_momentum}/100</span></div>'
-                        f'<div style="background:rgba(0,0,0,0.07);height:6px;border-radius:3px;overflow:hidden">'
-                        f'<div style="background:{_adv_mom_col};height:6px;width:{_adv_momentum}%;'
-                        f'border-radius:3px"></div></div>'
-                        f'</div></div>',
-                        unsafe_allow_html=True,
-                    )
-
-                    # Status summary
-                    st.markdown(
-                        f'<div style="font-size:12px;color:rgba(0,0,0,0.65);line-height:1.6;'
-                        f'margin-bottom:10px">{_adv.get("status_summary","")}</div>',
-                        unsafe_allow_html=True,
-                    )
-
-                    # Primary action — the one thing to do
-                    st.markdown(
-                        f'<div style="background:#EEF3FB;border-left:4px solid #0A66C2;'
-                        f'border-radius:0 8px 8px 0;padding:10px 14px;margin-bottom:8px">'
-                        f'<div style="font-size:10px;font-weight:800;text-transform:uppercase;'
-                        f'letter-spacing:0.08em;color:#0A66C2;margin-bottom:4px">Primary Action</div>'
-                        f'<div style="font-size:13px;font-weight:800;color:#1D2226;margin-bottom:3px">'
-                        f'{_adv.get("primary_action","")}</div>'
-                        f'<div style="font-size:11px;color:rgba(0,0,0,0.55)">'
-                        f'{_adv.get("primary_action_why","")}</div>'
-                        f'</div>',
-                        unsafe_allow_html=True,
-                    )
-
-                    # Supporting actions + signals
-                    _adv_sa = _adv.get("supporting_actions", [])
-                    _adv_gs = _adv.get("green_signals", [])
-                    _adv_ws = _adv.get("warning_signals", [])
-
-                    _adv_sc1, _adv_sc2 = st.columns(2, gap="medium")
-                    with _adv_sc1:
-                        if _adv_sa:
-                            st.markdown(
-                                '<div style="font-size:10px;font-weight:800;text-transform:uppercase;'
-                                'letter-spacing:0.06em;color:rgba(0,0,0,0.4);margin-bottom:6px">Also do</div>',
-                                unsafe_allow_html=True,
-                            )
-                            for _sa in _adv_sa[:3]:
-                                st.markdown(f"→ {_sa}")
-                    with _adv_sc2:
-                        for _gs in _adv_gs[:2]:
-                            st.markdown(f'<span style="color:#057642">{check_icon(12)} {_gs}</span>', unsafe_allow_html=True)
-                        for _ws in _adv_ws[:2]:
-                            st.markdown(f'<span style="color:#B71C1C">{warn_icon(12)} {_ws}</span>', unsafe_allow_html=True)
-
-                    if _adv.get("time_to_offer_estimate"):
-                        st.caption(f"Time to offer estimate: {_adv['time_to_offer_estimate']}")
-
-                elif not _qa_key:
-                    st.info("Add OpenAI API key in Streamlit secrets to activate the AI Advisor.")
-
-        # ── Portfolio ROI Summary (deterministic — always shown when data exists)
-        _roi_all = list(st.session_state.roi_results.values())
-        if _roi_all:
-            _roi_summary = get_portfolio_roi_summary(_roi_all, _adv_pl)
-            _roi_high = _roi_summary.get("high_roi_count", 0)
-            _roi_avg_pct = _roi_summary.get("avg_ei_pct", 0)
-            _roi_exp = _roi_summary.get("expected_interviews_total", 0)
-            _roi_sum_col = "#117A37" if _roi_avg_pct >= 25 else ("#A05A00" if _roi_avg_pct >= 12 else "#B71C1C")
-
-            st.markdown(
-                f'<div style="background:#F3F6F9;border-radius:8px;padding:10px 16px;margin-top:8px;'
-                f'display:flex;align-items:center;gap:20px">'
-                f'<div style="font-size:10px;font-weight:800;text-transform:uppercase;'
-                f'letter-spacing:0.06em;color:rgba(0,0,0,0.4)">Portfolio ROI</div>'
-                f'<div style="display:flex;gap:16px;flex:1">'
-                f'<div style="text-align:center">'
-                f'<div style="font-size:18px;font-weight:900;color:{_roi_sum_col}">{_roi_avg_pct:.0f}%</div>'
-                f'<div style="font-size:10px;color:rgba(0,0,0,0.45)">Avg interview prob.</div>'
-                f'</div>'
-                f'<div style="text-align:center">'
-                f'<div style="font-size:18px;font-weight:900;color:#0A66C2">{_roi_exp:.1f}</div>'
-                f'<div style="font-size:10px;color:rgba(0,0,0,0.45)">Expected interviews</div>'
-                f'</div>'
-                f'<div style="text-align:center">'
-                f'<div style="font-size:18px;font-weight:900;color:#057642">{_roi_high}</div>'
-                f'<div style="font-size:10px;color:rgba(0,0,0,0.45)">High-ROI roles</div>'
-                f'</div>'
-                f'</div>'
-                f'<div style="font-size:11px;color:rgba(0,0,0,0.55);max-width:300px;line-height:1.4">'
-                f'{_roi_summary.get("top_recommendation","")}</div>'
-                f'</div>',
-                unsafe_allow_html=True,
+        with st.expander("Career Command Center", expanded=False):
+            # ════════════════════════════════════════════════════════════════════════
+            # CAREER COMMAND CENTER — AI Advisor Layer
+            # Cross-module synthesis: reads all session state → one clear next action.
+            # This is the "what do I do right now?" that no other tool answers.
+            # ════════════════════════════════════════════════════════════════════════
+            _adv_pl = compute_pipeline_stats(st.session_state.pipeline_jobs or [])
+            _adv_cv = st.session_state.cv_profile or {}
+            _adv_has_data = bool(
+                st.session_state.pipeline_jobs or
+                st.session_state.cv_profile or
+                st.session_state.qa_package or
+                st.session_state.qa_portfolio_packages
             )
 
-        # ════════════════════════════════════════════════════════════════════════
-        # COHORT INTELLIGENCE + MOMENTUM ENGINE
-        # What people in your exact situation actually experienced.
-        # + Behavioral science against the psychological crash.
-        # ════════════════════════════════════════════════════════════════════════
-        _cohort_key = f"{current}→{target}"
-        _cohort_stale = st.session_state.get("cohort_intelligence") and \
-                        st.session_state.get("cohort_pivot_key") != _cohort_key
+            if _adv_has_data:
+                # Show Command Center header
+                _adv_phase_colors = {
+                    "Exploration": "#7A2A8A",
+                    "Active Application": "#0A66C2",
+                    "Interview Loop": "#057642",
+                    "Negotiation": "#A05A00",
+                }
 
-        if _cohort_stale:
-            st.session_state.cohort_intelligence = None
-
-        _cohort_col, _momentum_col = st.columns([3, 2], gap="medium")
-
-        with _cohort_col:
-            with st.expander(
-                "Cohort Intelligence — What people in your exact situation did",
-                expanded=bool(st.session_state.cohort_intelligence),
-            ):
-                st.markdown(
-                    '<div style="font-size:11px;color:rgba(0,0,0,0.5);margin-bottom:8px">'
-                    'Real benchmarks for your specific pivot path — not industry averages. '
-                    'Timeline, application counts, what worked, what didn\'t.'
-                    '</div>',
-                    unsafe_allow_html=True,
-                )
-                if st.button("Get Cohort Benchmarks", key="cohort_run", type="primary", use_container_width=True,
-                             disabled=not bool(_qa_key)):
-                    with st.spinner(f"Analysing {current} → {target} cohort data…"):
-                        _cv_p = st.session_state.cv_profile or {}
-                        st.session_state.cohort_intelligence = get_cohort_intelligence(
-                            current_role=str(current),
-                            target_role=str(target),
-                            years_experience=float(_cv_p.get("years_experience", 0) or 0),
-                            model="gpt-4o-mini",
-                            api_key=_qa_key or None,
-                            prefer_online=bool(_qa_key),
-                        )
-                        st.session_state.cohort_pivot_key = _cohort_key
-                    st.rerun()
-
-                if not _qa_key:
-                    st.caption("Add OpenAI API key to unlock cohort benchmarks.")
-
-                _ch = st.session_state.cohort_intelligence
-                if _ch:
-                    # Key metrics row
-                    _ch_c1, _ch_c2, _ch_c3 = st.columns(3, gap="small")
-                    for _chcol, _chval, _chlabel, _chcolor in [
-                        (_ch_c1, f"{_ch.get('median_timeline_weeks','?')}w", "Median Timeline", "#0A66C2"),
-                        (_ch_c2, str(_ch.get("median_applications","?")), "Median Apps", "#7A2A8A"),
-                        (_ch_c3, f"{_ch.get('warm_intro_rate','?')}%", "Via Warm Intro", "#057642"),
-                    ]:
-                        with _chcol:
-                            st.markdown(
-                                f'<div style="background:#F3F6F9;border-radius:6px;padding:8px;text-align:center">'
-                                f'<div style="font-size:20px;font-weight:900;color:{_chcolor}">{_chval}</div>'
-                                f'<div style="font-size:10px;color:rgba(0,0,0,0.5);font-weight:700">{_chlabel}</div>'
-                                f'</div>',
-                                unsafe_allow_html=True,
-                            )
-
-                    if _ch.get("most_common_entry_companies"):
-                        st.markdown("**Where this pivot typically lands:**")
-                        for _cc in _ch["most_common_entry_companies"][:3]:
-                            st.markdown(f"→ {_cc}")
-
-                    if _ch.get("what_worked"):
-                        st.markdown("**What worked for successful pivoters:**")
-                        for _cw in _ch["what_worked"][:3]:
-                            st.markdown(f'<span style="color:#057642;font-size:12px">{check_icon(12)} {_cw}</span>', unsafe_allow_html=True)
-
-                    if _ch.get("what_failed"):
-                        st.markdown("**Common failure patterns:**")
-                        for _cf in _ch["what_failed"][:3]:
-                            st.markdown(f'<span style="color:#B71C1C;font-size:12px">{x_icon(12)} {_cf}</span>', unsafe_allow_html=True)
-
-                    if _ch.get("biggest_misconception"):
-                        st.info(f"**Biggest misconception:** {_ch['biggest_misconception']}")
-
-                    if _ch.get("fastest_path"):
+                with st.container(border=True):
+                    _adv_hc1, _adv_hc2 = st.columns([4, 1], gap="small")
+                    with _adv_hc1:
                         st.markdown(
-                            f'<div style="background:#EEF3FB;border-left:3px solid #0A66C2;'
-                            f'border-radius:0 6px 6px 0;padding:8px 12px;font-size:12px;margin-top:6px">'
-                            f'<strong>Fastest path:</strong> {_ch["fastest_path"]}</div>',
+                            '<div style="display:flex;align-items:center;gap:10px">'
+                            f'<div style="display:flex;align-items:center;justify-content:center">{icon("compass", 20, "#1D2226")}</div>'
+                            '<div><div style="font-size:15px;font-weight:900;color:#1D2226">Career Command Center</div>'
+                            '<div style="font-size:11px;color:rgba(0,0,0,0.45)">AI reads your full session and tells you what to do next</div>'
+                            '</div></div>',
                             unsafe_allow_html=True,
                         )
+                    with _adv_hc2:
+                        if st.button("Refresh Advisor", key="adv_refresh", use_container_width=True, help="Re-synthesize based on current session state"):
+                            st.session_state.advisor_result = None
 
-                    if _ch.get("your_week_estimate"):
-                        st.caption(f"Your timeline estimate: {_ch['your_week_estimate']} · Confidence: {_ch.get('confidence','?')}")
-
-        with _momentum_col:
-            with st.expander("Momentum Engine — Your search streak", expanded=False):
-                # Track daily activity
-                from datetime import date as _date_cls
-                _today_str = str(_date_cls.today())
-                _last_day = st.session_state.momentum_last_date
-                _streak = st.session_state.momentum_streak_days
-
-                _pl_jobs_now = st.session_state.pipeline_jobs or []
-                _activity_today = bool(
-                    st.session_state.get("_momentum_activity_today", False) or
-                    (st.session_state.qa_package and _today_str == st.session_state.get("_last_apply_date",""))
-                )
-
-                # Streak logic
-                if _last_day == _today_str:
-                    pass  # already counted today
-                elif _activity_today:
-                    _streak += 1
-                    st.session_state.momentum_streak_days = _streak
-                    st.session_state.momentum_last_date = _today_str
-
-                # Streak display
-                _streak_col = "#117A37" if _streak >= 7 else ("#A05A00" if _streak >= 3 else "#0A66C2")
-                _streak_label = "On Fire" if _streak >= 14 else ("Strong" if _streak >= 7 else ("Building ↗" if _streak >= 3 else "Just Started"))
-                st.markdown(
-                    f'<div style="text-align:center;padding:10px 0">'
-                    f'<div style="font-size:42px;font-weight:900;color:{_streak_col}">{_streak}</div>'
-                    f'<div style="font-size:13px;font-weight:800;color:{_streak_col}">{_streak_label}</div>'
-                    f'<div style="font-size:10px;color:rgba(0,0,0,0.45);margin-top:3px">day streak</div>'
-                    f'</div>',
-                    unsafe_allow_html=True,
-                )
-
-                # Weekly stats
-                _total_apps = len(_pl_jobs_now)
-                _this_week_apps = sum(
-                    1 for j in _pl_jobs_now
-                    if j.get("date_added", "") >= str(_date_cls.today()).rsplit("-", 1)[0] + "-"
-                )
-
-                _mom_c1, _mom_c2 = st.columns(2, gap="small")
-                with _mom_c1:
-                    st.metric("Total apps", _total_apps)
-                with _mom_c2:
-                    _offers = len([j for j in _pl_jobs_now if j.get("status") == "offer"])
-                    st.metric("Offers", _offers)
-
-                # Cohort progress bar (if cohort data exists)
-                _ch_data = st.session_state.cohort_intelligence
-                if _ch_data and _ch_data.get("median_applications"):
-                    _pct_to_median = min(100, int(_total_apps / max(1, _ch_data["median_applications"]) * 100))
-                    st.markdown(
-                        f'<div style="font-size:10px;color:rgba(0,0,0,0.5);margin:6px 0 3px 0">'
-                        f'vs. cohort median ({_ch_data["median_applications"]} apps)</div>'
-                        f'<div style="background:rgba(0,0,0,0.07);height:5px;border-radius:3px">'
-                        f'<div style="background:#0A66C2;height:5px;width:{_pct_to_median}%;border-radius:3px"></div>'
-                        f'</div><div style="font-size:10px;color:#0A66C2;margin-top:2px">{_pct_to_median}% of way there</div>',
-                        unsafe_allow_html=True,
-                    )
-
-                # Log activity button
-                if st.button("Log today's activity", key="log_activity", use_container_width=True):
-                    st.session_state.momentum_streak_days = _streak + (0 if _last_day == _today_str else 1)
-                    st.session_state.momentum_last_date = _today_str
-                    st.session_state["_momentum_activity_today"] = True
-                    st.rerun()
-
-        # ════════════════════════════════════════════════════════════════════════
-        # PER-JD OFFER PREDICTOR — "Should I apply to THIS job?"
-        # ════════════════════════════════════════════════════════════════════════
-        with st.expander(
-            "Per-JD Offer Predictor — Paste a job description for instant Go/No-Go",
-            expanded=False,
-        ):
-            st.markdown(
-                '<div style="font-size:11px;color:rgba(0,0,0,0.55);line-height:1.6;margin-bottom:10px">'
-                'Not keyword matching. An actual outcome prediction: <strong>P(offer | this JD, your profile)</strong>. '
-                'Includes ATS risk, missing keywords you must add to your CV, and whether the pivot '
-                'narrative will hold up for this specific company.'
-                '</div>',
-                unsafe_allow_html=True,
-            )
-
-            _jd_text_input = st.text_area(
-                "Paste job description",
-                value=st.session_state.get("jd_analysis_text", ""),
-                height=160,
-                placeholder="Paste the full job description here...",
-                key="jd_predictor_input",
-                label_visibility="collapsed",
-            )
-
-            _jd_run_col, _jd_clear_col = st.columns([3, 1])
-            with _jd_run_col:
-                _jd_can_run = bool(_jd_text_input.strip() and st.session_state.get("cv_profile"))
-                if st.button(
-                    "Analyse JD — Get Go/No-Go",
-                    key="btn_jd_predict",
-                    type="primary",
-                    disabled=not _jd_can_run,
-                    use_container_width=True,
-                ):
-                    if not _qa_key:
-                        st.warning("Add your OpenAI key to run this analysis.")
-                    else:
-                        with st.spinner("Extracting requirements · Matching profile · Predicting outcome…"):
-                            _jd_result = analyze_jd(
-                                _qa_key,
-                                jd_text=_jd_text_input,
-                                cv_profile=st.session_state.get("cv_profile", {}),
-                                pivot_dna=st.session_state.get("pivot_dna", {}),
-                                skill_gap_results=st.session_state.get("skill_gap_results", {}),
-                                calibration_data=st.session_state.get("calibration_data"),
-                            )
-                            st.session_state.jd_analysis_result = _jd_result
-                            st.session_state.jd_analysis_text   = _jd_text_input
-                            # Log prediction to Brier calibration engine
-                            if _jd_result:
-                                import hashlib as _hl
-                                _jd_pid = _hl.md5((_jd_text_input[:200]).encode()).hexdigest()[:12]
-                                brier_log_prediction(
-                                    _SQLITE_DB_PATH,
-                                    prediction_id=_jd_pid,
-                                    company=_jd_result.get("company", "Unknown"),
-                                    job_title=_jd_result.get("job_title", "Unknown"),
-                                    predicted_prob=float(_jd_result.get("offer_probability", 0) or 0),
-                                    fit_score=float(_jd_result.get("fit_score", 0) or 0),
-                                    go_no_go=_jd_result.get("go_no_go", ""),
-                                )
-            with _jd_clear_col:
-                if st.button("Clear", key="btn_jd_clear", use_container_width=True):
-                    st.session_state.jd_analysis_result = None
-                    st.session_state.jd_analysis_text   = ""
-                    st.rerun()
-
-            if not _jd_can_run and not st.session_state.get("jd_analysis_result"):
-                st.caption("Upload your CV first to enable prediction.")
-
-            _jda = st.session_state.get("jd_analysis_result")
-            if _jda:
-                _jda_verdict  = _jda.get("go_no_go", "borderline")
-                _jda_vcol     = go_no_go_color(_jda_verdict)
-                _jda_vlabel   = go_no_go_label(_jda_verdict)
-                _jda_prob     = int(_jda.get("offer_probability", 0))
-                _jda_prob_col = offer_prob_color(_jda_prob)
-                _jda_fit      = int(_jda.get("fit_score", 0))
-                _jda_ats      = _jda.get("ats_risk", "medium")
-                _jda_ats_col  = {"low":"#057642","medium":"#D97706","high":"#DC2626"}.get(_jda_ats,"#555")
-                _jda_cred     = _jda.get("pivot_credibility","moderate")
-                _jda_cred_col = {"strong":"#057642","moderate":"#D97706","weak":"#DC2626"}.get(_jda_cred,"#555")
-
-                # ── Main verdict banner ──────────────────────────────────────────
-                st.markdown(
-                    f'<div style="background:{_jda_vcol}10;border:2px solid {_jda_vcol};'
-                    f'border-radius:10px;padding:14px 18px;margin-top:8px;display:flex;align-items:center;gap:18px">'
-                    f'<div style="text-align:center;min-width:70px">'
-                    f'<div style="font-size:36px;font-weight:900;color:{_jda_prob_col};line-height:1">{_jda_prob}%</div>'
-                    f'<div style="font-size:9px;font-weight:800;color:rgba(0,0,0,0.4);letter-spacing:0.06em;'
-                    f'text-transform:uppercase">Offer prob.</div>'
-                    f'</div>'
-                    f'<div style="flex:1">'
-                    f'<div style="font-size:14px;font-weight:800;color:{_jda_vcol}">{_jda_vlabel}</div>'
-                    f'<div style="font-size:11px;color:rgba(0,0,0,0.6);margin-top:3px">'
-                    f'{_jda.get("go_no_go_reason","")}</div>'
-                    f'<div style="display:flex;gap:12px;margin-top:8px">'
-                    f'<span style="font-size:10px;background:{_jda_vcol}20;color:{_jda_vcol};'
-                    f'padding:2px 8px;border-radius:4px;font-weight:700">Fit {_jda_fit}/100</span>'
-                    f'<span style="font-size:10px;background:{_jda_ats_col}20;color:{_jda_ats_col};'
-                    f'padding:2px 8px;border-radius:4px;font-weight:700">ATS risk: {_jda_ats.upper()}</span>'
-                    f'<span style="font-size:10px;background:{_jda_cred_col}20;color:{_jda_cred_col};'
-                    f'padding:2px 8px;border-radius:4px;font-weight:700">Pivot cred: {_jda_cred.upper()}</span>'
-                    f'</div></div></div>',
-                    unsafe_allow_html=True,
-                )
-
-                # ── 3-column breakdown ───────────────────────────────────────────
-                _jda_c1, _jda_c2, _jda_c3 = st.columns(3)
-
-                with _jda_c1:
-                    st.markdown('<div style="font-size:10px;font-weight:800;letter-spacing:0.06em;text-transform:uppercase;color:#057642;margin-top:10px">Skills you have</div>', unsafe_allow_html=True)
-                    for _sk in (_jda.get("required_skills_found") or [])[:6]:
-                        st.markdown(f'<div style="font-size:11px;color:rgba(0,0,0,0.7);padding:1px 0">{check_icon(11)} {_sk}</div>', unsafe_allow_html=True)
-
-                with _jda_c2:
-                    st.markdown('<div style="font-size:10px;font-weight:800;letter-spacing:0.06em;text-transform:uppercase;color:#DC2626;margin-top:10px">Skills missing</div>', unsafe_allow_html=True)
-                    for _sk in (_jda.get("required_skills_missing") or [])[:6]:
-                        st.markdown(f'<div style="font-size:11px;color:rgba(0,0,0,0.7);padding:1px 0">{warn_icon(11)} {_sk}</div>', unsafe_allow_html=True)
-
-                with _jda_c3:
-                    _ats_absent = _jda.get("ats_keywords_absent") or []
-                    if _ats_absent:
-                        st.markdown('<div style="font-size:10px;font-weight:800;letter-spacing:0.06em;text-transform:uppercase;color:#D97706;margin-top:10px">Add to CV NOW (ATS)</div>', unsafe_allow_html=True)
-                        for _kw in _ats_absent[:6]:
-                            st.markdown(f'<div style="font-size:11px;font-weight:600;color:#A05A00;padding:1px 0">{icon("alert-triangle",10,"#D97706")} {_kw}</div>', unsafe_allow_html=True)
-
-                # ── Strengths + Risks ────────────────────────────────────────────
-                _str_col, _risk_col = st.columns(2)
-                with _str_col:
-                    if _jda.get("top_strengths"):
-                        st.markdown('<div style="margin-top:8px;font-size:10px;font-weight:800;letter-spacing:0.06em;text-transform:uppercase;color:rgba(0,0,0,0.35)">Why this could work</div>', unsafe_allow_html=True)
-                        for _s in _jda["top_strengths"][:3]:
-                            st.markdown(f'<div style="font-size:11px;color:rgba(0,0,0,0.7);line-height:1.4;padding:2px 0">{check_icon(10)} {_s}</div>', unsafe_allow_html=True)
-                with _risk_col:
-                    if _jda.get("top_risks"):
-                        st.markdown('<div style="margin-top:8px;font-size:10px;font-weight:800;letter-spacing:0.06em;text-transform:uppercase;color:rgba(0,0,0,0.35)">Likely rejection reasons</div>', unsafe_allow_html=True)
-                        for _r in _jda["top_risks"][:3]:
-                            st.markdown(f'<div style="font-size:11px;color:rgba(0,0,0,0.7);line-height:1.4;padding:2px 0">{warn_icon(10)} {_r}</div>', unsafe_allow_html=True)
-
-                if _jda.get("pivot_credibility_reason"):
-                    st.markdown(
-                        f'<div style="margin-top:8px;background:{_jda_cred_col}10;border-radius:6px;'
-                        f'padding:8px 12px;font-size:11px;color:rgba(0,0,0,0.7)">'
-                        f'<strong>Pivot credibility for this role:</strong> {_jda["pivot_credibility_reason"]}</div>',
-                        unsafe_allow_html=True,
-                    )
-                st.caption(f"Role: {_jda.get('role_title','')} · Seniority match: {_jda.get('seniority_match','?')}")
-
-        # ════════════════════════════════════════════════════════════════════════
-        # PIVOT ROADMAP — 30/60/90 Day Execution Plan
-        # ════════════════════════════════════════════════════════════════════════
-        with st.expander(
-            "Pivot Roadmap — Your 30/60/90-day execution plan",
-            expanded=False,
-        ):
-            st.markdown(
-                '<div style="font-size:11px;color:rgba(0,0,0,0.55);line-height:1.6;margin-bottom:10px">'
-                'Not generic career advice. A week-by-week plan calibrated to <em>your</em> gap profile, '
-                'pipeline state, and cohort timeline benchmarks. Every task is specific and completable.'
-                '</div>',
-                unsafe_allow_html=True,
-            )
-
-            _rm_has_data = bool(st.session_state.get("pivot_dna") or st.session_state.get("cv_profile"))
-            _rm = st.session_state.get("pivot_roadmap")
-
-            if st.button(
-                "Generate My Roadmap" if not _rm else "Regenerate Roadmap",
-                key="btn_gen_roadmap",
-                type="primary" if not _rm else "secondary",
-                disabled=not _rm_has_data,
-                use_container_width=True,
-            ):
-                with st.spinner("Building your personalised execution plan…"):
-                    # Try to get bridge occupations from existing pivot path result
-                    _pp_for_rm = st.session_state.get("pivot_path_result") or {}
-                    _bridges_rm = _pp_for_rm.get("bridge_occupations", [])
-                    _rm_result = generate_pivot_roadmap(
-                        _qa_key,
-                        current_occ=str(current) if "current" in dir() else "",
-                        target_occ=str(target)   if "target"  in dir() else "",
-                        skill_gap_results=st.session_state.get("skill_gap_results"),
-                        cohort_intelligence=st.session_state.get("cohort_intelligence"),
-                        pivot_dna=st.session_state.get("pivot_dna"),
-                        pipeline_jobs=st.session_state.get("pipeline_jobs"),
-                        outcome_log=st.session_state.get("outcome_log"),
-                        calibration_data=st.session_state.get("calibration_data"),
-                        bridge_occupations=_bridges_rm,
-                    )
-                    st.session_state.pivot_roadmap = _rm_result
-                    _rm = _rm_result
-
-            if not _rm_has_data:
-                st.caption("Upload your CV and build a Pivot DNA to unlock the roadmap.")
-
-            if _rm:
-                # Critical path banner
-                st.markdown(
-                    f'<div style="background:#7C3AED12;border:1.5px solid #7C3AED40;border-radius:8px;'
-                    f'padding:12px 16px;margin-bottom:12px">'
-                    f'<div style="font-size:10px;font-weight:800;letter-spacing:0.06em;text-transform:uppercase;'
-                    f'color:#7C3AED;margin-bottom:4px">Critical Path — Do this first</div>'
-                    f'<div style="font-size:13px;font-weight:700;color:#0A0A0A">{_rm.get("critical_path","")}</div>'
-                    f'<div style="font-size:11px;color:rgba(0,0,0,0.5);margin-top:4px">'
-                    f'Timeline: {_rm.get("timeline_estimate","")} · Cadence: {_rm.get("weekly_cadence","")}'
-                    f'</div></div>',
-                    unsafe_allow_html=True,
-                )
-
-                # Blocking gaps
-                _rm_gaps = _rm.get("blocking_gaps", [])
-                if _rm_gaps:
-                    st.markdown(
-                        '<div style="font-size:10px;font-weight:800;letter-spacing:0.06em;text-transform:uppercase;'
-                        'color:#DC2626;margin-bottom:4px">Skills to close BEFORE primary applications</div>',
-                        unsafe_allow_html=True,
-                    )
-                    for _rg in _rm_gaps:
-                        st.markdown(f'<div style="font-size:11px;color:rgba(0,0,0,0.7)">{warn_icon(10)} {_rg}</div>', unsafe_allow_html=True)
-
-                # Phase timeline
-                _rm_phases = _rm.get("phases", {})
-                _phase_order = ["kickoff", "bridge", "primary", "compound"]
-                _phase_colors = {"kickoff":"#0A66C2","bridge":"#7C3AED","primary":"#057642","compound":"#D97706"}
-
-                for _ph_key in _phase_order:
-                    _ph = _rm_phases.get(_ph_key, {})
-                    if not _ph:
-                        continue
-                    _ph_col = _phase_colors.get(_ph_key, "#555")
-                    st.markdown(
-                        f'<div style="background:{_ph_col}08;border-left:3px solid {_ph_col};'
-                        f'padding:10px 14px;border-radius:0 6px 6px 0;margin:8px 0">'
-                        f'<div style="font-size:11px;font-weight:800;color:{_ph_col};margin-bottom:6px">'
-                        f'{_ph.get("label","")}</div>',
-                        unsafe_allow_html=True,
-                    )
-                    for _task in (_ph.get("tasks") or []):
-                        _task_str = _task if isinstance(_task, str) else _task.get("task","")
-                        _why_str  = "" if isinstance(_task, str) else _task.get("why","")
-                        _time_str = "" if isinstance(_task, str) else _task.get("time_estimate","")
-                        _time_span = f'  <span style="font-size:9px;color:rgba(0,0,0,0.35);font-weight:400">{_time_str}</span>' if _time_str else ""
-                        _why_div   = f'<div style="font-size:10px;color:rgba(0,0,0,0.5);line-height:1.4">{_why_str}</div>' if _why_str else ""
-                        st.markdown(
-                            f'<div style="display:flex;gap:8px;padding:3px 0">'
-                            f'<div style="color:{_ph_col};flex-shrink:0;margin-top:1px">{check_icon(11)}</div>'
-                            f'<div>'
-                            f'<div style="font-size:11px;font-weight:600;color:#0A0A0A">{_task_str}{_time_span}</div>'
-                            f'{_why_div}'
-                            f'</div></div>',
-                            unsafe_allow_html=True,
-                        )
-                    st.markdown('</div>', unsafe_allow_html=True)
-
-                # Milestones
-                _rm_ms = _rm.get("milestones", [])
-                if _rm_ms:
-                    st.markdown(
-                        '<div style="margin-top:8px;font-size:10px;font-weight:800;letter-spacing:0.06em;'
-                        'text-transform:uppercase;color:rgba(0,0,0,0.35)">Key milestones</div>',
-                        unsafe_allow_html=True,
-                    )
-                    for _ms in _rm_ms:
-                        _ms_week = _ms.get("week","?")
-                        _ms_text = _ms.get("milestone","")
-                        st.markdown(
-                            f'<div style="display:flex;gap:10px;align-items:center;padding:3px 0">'
-                            f'<div style="font-size:9px;font-weight:800;color:#7C3AED;min-width:42px;'
-                            f'text-align:right">Week {_ms_week}</div>'
-                            f'<div style="width:8px;height:8px;background:#7C3AED;border-radius:50%;flex-shrink:0"></div>'
-                            f'<div style="font-size:11px;color:rgba(0,0,0,0.7)">{_ms_text}</div>'
-                            f'</div>',
-                            unsafe_allow_html=True,
-                        )
-
-        # ════════════════════════════════════════════════════════════════════════
-        # PIVOT OS COMMAND CENTER — Diagnosis → Action → Measure
-        # One number (P(offer)) drives every section below.
-        # The Command Center identifies the binding constraint and ranks actions.
-        # ════════════════════════════════════════════════════════════════════════
-        # Use pre-computed P(offer) globals (defined before mode branching above)
-        _ops_for_ns   = _ns_ops_val
-        _cal_for_ns   = _ns_cal_data
-        _brier_for_ns = _ns_brier_data
-        _mp_for_ns    = st.session_state.get("market_pulse_result") or {}
-        _ns_col       = _ns_prob_col
-
-        _pipeline_now = st.session_state.get("pipeline_jobs") or []
-        _active_apps  = sum(1 for j in _pipeline_now if j.get("status") in ("applied", "first_round", "final_round"))
-        _csv_matches_ns = len(st.session_state.get("csv_warm_intros") or [])
-
-        # ── Lever definitions: (name, current_val_str, factor, optimal_factor, unlock_action, section_label, color, progress_pct) ──
-        _lv_ops_pct  = round(_ops_for_ns)
-        _lv_ops_prog = round(_lv_ops_pct)  # 0-100 where 100 = OPS 100
-        _lv_cal_prog = 100 if _ns_cal_factor != 1.0 else 0
-        _lv_br_prog  = 50 if not _brier_for_ns.get("insufficient_data") else 0
-        _lv_net_prog = min(100, _csv_matches_ns * 10)
-
-        # Binding constraint = lever with lowest progress (most room to improve)
-        _lv_progress = {
-            "OPS":         (_lv_ops_prog,  _ns_ops_factor),
-            "Calibration": (_lv_cal_prog,  _ns_cal_factor),
-            "Brier":       (_lv_br_prog,   _ns_brier_factor),
-            "Network":     (_lv_net_prog,  1.0),
-        }
-        _binding_lever = min(_lv_progress, key=lambda k: _lv_progress[k][0])
-
-        _binding_actions = {
-            "OPS":         ("Upload your CV and run the OPS scorer — every 10pt OPS gain = +0.5pp P(offer)",  "Skill Gap section ↓"),
-            "Calibration": ("Log your first 3 outcomes — unlocks personal calibration of all AI predictions",  "Outcome Tracker ↓"),
-            "Brier":       ("Run JD Analyzer on 3 jobs and log their outcomes — unlocks Brier correction",     "JD Analyzer → Outcome Tracker ↓"),
-            "Network":     ("Upload LinkedIn CSV — warm intros convert 12× better than cold applications",     "LinkedIn Network Engine ↓"),
-        }
-        _binding_action_text, _binding_section_ref = _binding_actions.get(_binding_lever, ("", ""))
-
-        # Ranked levers: sorted by progress (ascending = most urgent first)
-        _ranked_levers = [
-            # (label, current_display, factor, progress_pct, section_ref, color, action_text)
-            ("OPS · Skill Match",
-             f"OPS {_lv_ops_pct}/100",
-             _ns_ops_factor,
-             _lv_ops_prog,
-             "Skill Gap section ↓",
-             "#60A5FA",
-             f"Upload CV → OPS score. Current: {_lv_ops_pct}/100, target: ≥65. Impact: each +10pt OPS = ×{1.0+10/100:.2f} on P(offer)."),
-            ("Calibration · Personal ROI",
-             f"×{_ns_cal_factor:.2f}",
-             _ns_cal_factor,
-             _lv_cal_prog,
-             "Outcome Tracker ↓",
-             "#A78BFA",
-             "Log 5+ outcomes. Calibration corrects AI predictions to YOUR response rate, not industry average."),
-            ("Brier · AI Accuracy",
-             f"×{_ns_brier_factor:.2f}",
-             _ns_brier_factor,
-             _lv_br_prog,
-             "JD Analyzer + Outcome Tracker ↓",
-             "#34D399",
-             "Run JD Analyzer → log outcomes → Brier score measures how well-calibrated AI predictions are. Correction auto-applied."),
-            ("Network · Warm Intros",
-             f"{_csv_matches_ns} matches",
-             1.0,
-             _lv_net_prog,
-             "LinkedIn Network Engine ↓",
-             "#FCD34D",
-             f"Upload LinkedIn CSV. {_csv_matches_ns} matches found. Warm referrals: 35-50% response vs 2-3% cold."),
-        ]
-        _ranked_levers.sort(key=lambda x: x[3])  # sort by progress ascending (most urgent first)
-
-        # ── Render: Command Center (LinkedIn card style) ─────────────────────────
-        # Tier label for P(offer) number
-        _cc_tier     = "Getting started" if _ns_prob_pct < 5 else ("Building" if _ns_prob_pct < 15 else ("Target reached" if _ns_prob_pct < 25 else "Elite"))
-        _cc_tier_col = "#B71C1C" if _ns_prob_pct < 5 else ("#A05A00" if _ns_prob_pct < 15 else ("#057642" if _ns_prob_pct < 25 else "#057642"))
-        # Friendly lever names (no ALL_CAPS)
-        _lv_names  = ["Skill match", "Calibration", "Network", "Prediction accuracy"]
-        _lv_icons  = ["bar-chart-2", "sliders", "users", "target"]
-        _lv_status = ["Not started" if pct == 0 else ("In progress" if pct < 80 else "Active")
-                      for _, _, _, pct, _, _, _ in _ranked_levers]
-
-        st.markdown(
-            f'<div class="li-section" style="margin-bottom:16px;padding:0">'
-
-            # ── Header: P(offer) + tier + next action ──────────────────────────
-            f'<div style="padding:20px 20px 16px 20px;display:flex;align-items:center;gap:20px;'
-            f'border-bottom:1px solid rgba(0,0,0,0.08)">'
-
-            # Big number
-            f'<div style="flex-shrink:0;text-align:center">'
-            f'<div style="font-size:44px;font-weight:900;color:{_ns_col};line-height:1;letter-spacing:-2px">{_ns_prob_pct}%</div>'
-            f'<div style="font-size:11px;font-weight:700;color:{_cc_tier_col};margin-top:2px">{_cc_tier}</div>'
-            f'<div style="font-size:10px;color:rgba(0,0,0,0.35);margin-top:1px">P(offer)</div>'
-            f'</div>'
-
-            # Divider
-            f'<div style="width:1px;height:52px;background:rgba(0,0,0,0.08);flex-shrink:0"></div>'
-
-            # Right: title + next action
-            f'<div style="flex:1">'
-            f'<div style="font-size:15px;font-weight:800;color:#1D2226;margin-bottom:6px">P(offer) Command Center</div>'
-            f'<div style="font-size:12px;color:rgba(0,0,0,0.55);line-height:1.5;margin-bottom:10px">'
-            f'Four levers drive this number. Your most urgent one is highlighted below.</div>'
-            # Next action highlight
-            f'<div style="background:#EEF3FB;border-radius:8px;padding:8px 12px;display:flex;align-items:center;gap:8px">'
-            f'<div style="width:6px;height:6px;background:#0A66C2;border-radius:50%;flex-shrink:0"></div>'
-            f'<div style="font-size:12px;font-weight:600;color:#0A66C2">{_binding_action_text}</div>'
-            f'</div>'
-            f'</div>'
-            f'</div>'  # end header
-
-            # ── 4 levers grid ──────────────────────────────────────────────────
-            f'<div style="display:grid;grid-template-columns:repeat(4,1fr)">'
-            + "".join([
-                (
-                    f'<div style="padding:16px;'
-                    + (f'background:#EEF3FB;' if i == 0 else f'background:#fff;')
-                    + (f'border-right:1px solid rgba(0,0,0,0.06);' if i < 3 else '')
-                    + f'">'
-                    # Status dot + lever name
-                    + f'<div style="display:flex;align-items:center;gap:6px;margin-bottom:10px">'
-                    + f'<div style="width:8px;height:8px;border-radius:50%;flex-shrink:0;background:{"#0A66C2" if i==0 else ("rgba(0,0,0,0.15)" if pct==0 else "#057642")}"></div>'
-                    + f'<div style="font-size:11px;font-weight:700;color:{"#0A66C2" if i==0 else "rgba(0,0,0,0.65)"}">{_lv_names[i]}</div>'
-                    + (f'<div style="margin-left:auto;font-size:9px;font-weight:800;color:#0A66C2;background:#C7D8F0;border-radius:8px;padding:1px 6px">Priority</div>' if i == 0 else '')
-                    + f'</div>'
-                    # Value
-                    + f'<div style="font-size:20px;font-weight:900;color:{"#0A66C2" if i==0 else "rgba(0,0,0,0.75)"};margin-bottom:6px">{val}</div>'
-                    # Progress bar
-                    + f'<div style="height:4px;background:rgba(0,0,0,0.07);border-radius:2px;margin-bottom:8px">'
-                    + f'<div style="width:{pct}%;height:4px;background:{"#0A66C2" if i==0 else "#057642"};border-radius:2px;transition:width 1s"></div>'
-                    + f'</div>'
-                    # Status
-                    + f'<div style="font-size:10px;color:rgba(0,0,0,0.45)">{_lv_status[i]}</div>'
-                    + f'</div>'
-                )
-                for i, (lbl, val, fac, pct, ref, col, _) in enumerate(_ranked_levers)
-            ])
-            + f'</div>'  # end grid
-            f'</div>',  # end card
-            unsafe_allow_html=True,
-        )
-
-        # ════════════════════════════════════════════════════════════════════════
-        # CLOSED LOOP ARCHITECTURE — "How the system learns"
-        # This section makes the evaluate → improve → calibrate loop explicit.
-        # Professor criteria: "Leverage of technical enablers" +
-        #                     "Evaluating AI capabilities in your zero-shot task"
-        # ════════════════════════════════════════════════════════════════════════
-        _cl_stages = loop_stage_summary(
-            cv_profile=st.session_state.get("cv_profile") or {},
-            jd_result=st.session_state.get("jd_analysis_result") or {},
-            app_package=st.session_state.get("qa_package") or {},
-            app_eval=st.session_state.get("qa_eval") or {},
-            debate_result=st.session_state.get("qa_debate") or {},
-            outcome_log=st.session_state.get("outcome_log") or [],
-            calibration_data=st.session_state.get("calibration_data") or {},
-            brier_stats=st.session_state.get("brier_stats") or {},
-        )
-        _cl_done_count = sum(1 for s in _cl_stages if s["status"] == "done")
-        _cl_pct = int(_cl_done_count / len(_cl_stages) * 100)
-
-        st.markdown(
-            f'<div class="li-section" style="margin-bottom:16px">'
-
-            # Header
-            f'<div style="padding:14px 20px 0 20px;display:flex;align-items:center;justify-content:space-between">'
-            f'<div>'
-            f'<div style="display:flex;align-items:center;gap:8px;margin-bottom:2px">'
-            f'{icon_box("ai", bg="#EEF3FB", color="#0A66C2", size=14, box_size=28, radius=6)}'
-            f'<div style="font-size:14px;font-weight:800;color:rgba(0,0,0,0.88)">Closed-Loop Learning System</div>'
-            f'</div>'
-            f'<div style="font-size:11px;color:rgba(0,0,0,0.50)">'
-            f'Predict → Generate → Evaluate → Submit → Measure → Calibrate. Every step improves the next.</div>'
-            f'</div>'
-            f'<div style="text-align:right;flex-shrink:0">'
-            f'<div style="font-size:22px;font-weight:900;color:{"#057642" if _cl_done_count==5 else "#0A66C2"}">'
-            f'{_cl_done_count}/5</div>'
-            f'<div style="font-size:10px;color:rgba(0,0,0,0.40)">stages active</div>'
-            f'</div>'
-            f'</div>'
-
-            # Progress bar
-            f'<div style="margin:10px 20px 0 20px;height:4px;background:rgba(0,0,0,0.07);border-radius:2px">'
-            f'<div style="width:{_cl_pct}%;height:4px;background:#0A66C2;border-radius:2px;transition:width 0.8s"></div>'
-            f'</div>'
-
-            # 5 stages grid
-            f'<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:0;'
-            f'border-top:1px solid rgba(0,0,0,0.07);margin-top:10px">'
-            + "".join([
-                (
-                    f'<div style="padding:12px 14px;border-right:{"none" if i==4 else "1px solid rgba(0,0,0,0.06)"};">'
-                    + f'<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">'
-                    + (
-                        f'<div style="width:18px;height:18px;border-radius:50%;background:#057642;'
-                        f'display:flex;align-items:center;justify-content:center;flex-shrink:0">'
-                        f'<div style="width:8px;height:8px;border-radius:50%;background:#fff"></div></div>'
-                        if s["status"] == "done" else
-                        f'<div style="width:18px;height:18px;border-radius:50%;background:#EEF3FB;border:2px solid #0A66C2;'
-                        f'display:flex;align-items:center;justify-content:center;flex-shrink:0">'
-                        f'<div style="width:6px;height:6px;border-radius:50%;background:#0A66C2"></div></div>'
-                        if s["status"] == "partial" else
-                        f'<div style="width:18px;height:18px;border-radius:50%;background:rgba(0,0,0,0.06);'
-                        f'display:flex;align-items:center;justify-content:center;flex-shrink:0">'
-                        f'<div style="font-size:9px;font-weight:900;color:rgba(0,0,0,0.35)">{s["num"]}</div></div>'
-                    )
-                    + f'<div>'
-                    + f'<div style="font-size:9px;font-weight:900;text-transform:uppercase;letter-spacing:0.08em;'
-                    + f'color:{"#057642" if s["status"]=="done" else "#0A66C2" if s["status"]=="partial" else "rgba(0,0,0,0.40)"}">'
-                    + f'{s["name"]}</div>'
-                    + f'<div style="font-size:9px;color:rgba(0,0,0,0.40)">{s["sub"]}</div>'
-                    + f'</div>'
-                    + f'</div>'
-                    + f'<div style="font-size:12px;font-weight:800;color:{s["metric_color"]};margin-bottom:4px">{s["metric"]}</div>'
-                    + f'<div style="font-size:10px;color:rgba(0,0,0,0.45);line-height:1.4">{s["detail"][:70]}</div>'
-                    + (f'<div style="margin-top:5px;font-size:9px;font-weight:700;color:#0A66C2">→ {s["action"]}</div>' if s.get("action") else '')
-                    + f'</div>'
-                )
-                for i, s in enumerate(_cl_stages)
-            ])
-            + f'</div>'
-
-            # Footer: P(offer) trend summary
-            + f'<div style="padding:8px 20px;border-top:1px solid rgba(0,0,0,0.06);'
-            f'display:flex;align-items:center;gap:6px;background:#F8FAFF">'
-            f'{icon("trending-up", 12, "#0A66C2")}'
-            f'<div style="font-size:11px;color:rgba(0,0,0,0.55)">'
-            f'{"System fully calibrated — predictions are personalised to your response rate." if _cl_done_count == 5 else f"Complete all 5 stages to fully personalise your P(offer) predictions. ({_cl_pct}% active)"}'
-            f'</div>'
-            f'</div>'
-            f'</div>',
-            unsafe_allow_html=True,
-        )
-
-        # ── P(offer) Goal Progress (shown when there's outcome data) ─────────────
-        _trend_data = compute_p_offer_trend(
-            outcome_log=st.session_state.get("outcome_log") or [],
-            base_prob=0.05,
-            ops_val=_ns_ops_val,
-            cal_factor=_ns_cal_factor,
-            brier_factor=_ns_brier_factor,
-        )
-        _goal = compute_goal_progress(_trend_data["current_p"])
-
-        if _trend_data.get("has_data"):
-            # Trend line chart
-            _trend_fig = go.Figure()
-            _trend_fig.add_trace(go.Scatter(
-                x=_trend_data["dates"],
-                y=_trend_data["p_offer_values"],
-                mode="lines+markers",
-                line=dict(color="#0A66C2", width=2.5),
-                marker=dict(size=6, color="#0A66C2"),
-                fill="tozeroy",
-                fillcolor="rgba(10,102,194,0.06)",
-                name="P(offer)",
-            ))
-            _trend_fig.add_hline(y=15, line_dash="dot", line_color="#057642",
-                                  annotation_text="Target 15%", annotation_position="right",
-                                  annotation_font_size=10, annotation_font_color="#057642")
-            _trend_fig.update_layout(
-                height=130, margin=dict(l=0, r=60, t=8, b=0),
-                plot_bgcolor="white", paper_bgcolor="white",
-                xaxis=dict(showgrid=False, tickfont=dict(size=9), color="rgba(0,0,0,0.35)"),
-                yaxis=dict(showgrid=True, gridcolor="rgba(0,0,0,0.06)", tickfont=dict(size=9),
-                           ticksuffix="%", color="rgba(0,0,0,0.35)", range=[0, 30]),
-                showlegend=False,
-            )
-
-            # Header row (self-contained)
-            _trend_arrow = "↑" if _trend_data["trend_direction"] == "up" else ("↓" if _trend_data["trend_direction"] == "down" else "→")
-            _trend_arrow_col = "#057642" if _trend_data["trend_direction"] == "up" else ("#B71C1C" if _trend_data["trend_direction"] == "down" else "#A05A00")
-            st.markdown(
-                f'<div class="li-section" style="margin-bottom:4px;border-bottom-left-radius:0;border-bottom-right-radius:0;border-bottom:none">'
-                f'<div style="padding:14px 20px;display:flex;align-items:center;justify-content:space-between">'
-                f'<div>'
-                f'<div style="font-size:14px;font-weight:800;color:rgba(0,0,0,0.88);margin-bottom:2px">P(offer) Over Time</div>'
-                f'<div style="font-size:11px;color:rgba(0,0,0,0.50)">{_trend_data["milestone_message"]}</div>'
-                f'</div>'
-                f'<div style="display:flex;gap:14px;align-items:center">'
-                f'<div style="text-align:center">'
-                f'<div style="font-size:9px;font-weight:700;color:rgba(0,0,0,0.35);text-transform:uppercase">Start</div>'
-                f'<div style="font-size:20px;font-weight:900;color:rgba(0,0,0,0.45)">{_trend_data["start_p"]}%</div>'
-                f'</div>'
-                f'<div style="font-size:22px;font-weight:700;color:{_trend_arrow_col}">{_trend_arrow}</div>'
-                f'<div style="text-align:center">'
-                f'<div style="font-size:9px;font-weight:700;color:rgba(0,0,0,0.35);text-transform:uppercase">Now</div>'
-                f'<div style="font-size:20px;font-weight:900;color:{_goal["tier_color"]}">{_trend_data["current_p"]}%</div>'
-                f'</div>'
-                f'</div>'
-                f'</div>'
-                f'</div>',
-                unsafe_allow_html=True,
-            )
-            # Chart in its own container
-            with st.container():
-                st.plotly_chart(_trend_fig, use_container_width=True, config={"displayModeBar": False})
-            # Goal progress bar (self-contained)
-            st.markdown(
-                f'<div class="li-section" style="margin-bottom:16px;border-top-left-radius:0;border-top-right-radius:0;border-top:none">'
-                f'<div style="padding:10px 20px;display:flex;align-items:center;gap:12px">'
-                f'<div style="flex:1;background:rgba(0,0,0,0.06);border-radius:4px;height:6px;overflow:hidden">'
-                f'<div style="width:{_goal["pct_to_next"]:.0f}%;height:6px;background:{_goal["tier_color"]};border-radius:4px;transition:width 0.8s"></div>'
-                f'</div>'
-                f'<div style="font-size:11px;font-weight:700;color:{_goal["tier_color"]};white-space:nowrap">'
-                f'{_goal["pct_to_next"]:.0f}% toward {_goal["next_tier_label"]} '
-                f'({int(_goal["target_p"] if _goal["next_tier_label"]=="Target" else _goal["elite_p"])}%+ goal)'
-                f'</div>'
-                f'</div>'
-                f'</div>',
-                unsafe_allow_html=True,
-            )
-
-        # ════════════════════════════════════════════════════════════════════════
-        # APPLICATION PIPELINE CRM — Search OS
-        # Tracks every application, every stage, every rejection.
-        # With enough data: diagnoses bottlenecks, predicts time-to-offer.
-        # ════════════════════════════════════════════════════════════════════════
-        _pl_jobs: list = st.session_state.pipeline_jobs or []
-        _pl_stats = compute_pipeline_stats(_pl_jobs)
-
-        with st.expander(
-            f"Pipeline · {_pl_stats['total']} tracked · "
-            f"{_pl_stats['response_rate']}% response rate · "
-            f"{'On track' if _pl_stats['response_rate'] >= 20 else ('Watch this' if _pl_stats['response_rate'] >= 10 else 'Bottleneck detected') if _pl_stats['total'] >= 3 else 'Log first applications to unlock pipeline diagnosis'}",
-            expanded=bool(_pl_jobs),
-        ):
-            # ── Pipeline header ──────────────────────────────────────────────
-            _pl_c1, _pl_c2, _pl_c3, _pl_c4, _pl_c5 = st.columns(5, gap="small")
-            for _plc, _plk, _pll, _plcol in [
-                (_pl_c1, "total",       "Total",        "#1D2226"),
-                (_pl_c2, "response_rate", "Response %", "#0A66C2"),
-                (_pl_c3, "interview_rate", "Interview %","#7A2A8A"),
-                (_pl_c4, "offers",      "Offers",       "#057642"),
-                (_pl_c5, "rejected",    "Rejected",     "#B71C1C"),
-            ]:
-                _plv = _pl_stats.get(_plk, 0)
-                with _plc:
-                    st.markdown(
-                        f'<div style="background:#F3F6F9;border-radius:8px;padding:10px 14px;text-align:center">'
-                        f'<div style="font-size:22px;font-weight:900;color:{_plcol}">'
-                        f'{_plv}{"%" if "rate" in _plk else ""}</div>'
-                        f'<div style="font-size:10px;font-weight:700;color:rgba(0,0,0,0.45);text-transform:uppercase;letter-spacing:0.05em">{_pll}</div>'
-                        f'</div>',
-                        unsafe_allow_html=True,
-                    )
-
-            st.markdown("<div style='margin:10px 0 4px 0'></div>", unsafe_allow_html=True)
-
-            # ── Stage Kanban ─────────────────────────────────────────────────
-            if _pl_jobs:
-                _kanban_stages = ["applied", "first_round", "final_round", "offer", "rejected"]
-                _kc = st.columns(len(_kanban_stages), gap="small")
-                for _ki, _ks in enumerate(_kanban_stages):
-                    _stage_jobs = [j for j in _pl_jobs if j["status"] == _ks]
-                    _sc = STATUS_COLORS.get(_ks, "#888")
-                    with _kc[_ki]:
-                        st.markdown(
-                            f'<div style="font-size:10px;font-weight:800;color:{_sc};text-transform:uppercase;'
-                            f'letter-spacing:0.06em;margin-bottom:6px">'
-                            f'{STATUS_LABELS.get(_ks, _ks)} ({len(_stage_jobs)})</div>',
-                            unsafe_allow_html=True,
-                        )
-                        for _sj in _stage_jobs[:4]:
-                            st.markdown(
-                                f'<div style="background:#fff;border:1px solid rgba(0,0,0,0.1);border-left:3px solid {_sc};'
-                                f'border-radius:0 6px 6px 0;padding:6px 8px;margin-bottom:5px;font-size:11px">'
-                                f'<div style="font-weight:700;color:#1D2226">{_sj["company"]}</div>'
-                                f'<div style="color:rgba(0,0,0,0.5)">{_sj["title"][:25]}</div>'
-                                f'{"<div style=color:#057642;font-size:10px>ATS: " + str(_sj["ats_score"]) + "</div>" if _sj.get("ats_score") else ""}'
-                                f'</div>',
-                                unsafe_allow_html=True,
-                            )
-                        if len(_stage_jobs) > 4:
-                            st.caption(f"+{len(_stage_jobs)-4} more")
-
-            st.markdown("---")
-
-            # ── Update status ────────────────────────────────────────────────
-            if _pl_jobs:
-                _upd_c1, _upd_c2, _upd_c3 = st.columns([3, 2, 2], gap="small")
-                with _upd_c1:
-                    _upd_idx = st.selectbox(
-                        "Update application",
-                        options=list(range(len(_pl_jobs))),
-                        format_func=lambda i: f"{_pl_jobs[i]['company']} — {_pl_jobs[i]['title']}",
-                        key="pl_update_idx",
-                        label_visibility="collapsed",
-                    )
-                with _upd_c2:
-                    _new_status = st.selectbox(
-                        "New status",
-                        options=APPLICATION_STATUSES,
-                        format_func=lambda s: STATUS_LABELS.get(s, s),
-                        key="pl_new_status",
-                        label_visibility="collapsed",
-                    )
-                with _upd_c3:
-                    if st.button("Update status", key="pl_update_btn", use_container_width=True):
-                        _notes = ""
-                        if _new_status == "rejected":
-                            _notes = st.session_state.get("pl_rejection_notes", "")
-                        _pl_jobs[_upd_idx] = update_pipeline_job_status(_pl_jobs[_upd_idx], _new_status, _notes)
-                        st.session_state.pipeline_jobs = _pl_jobs
-                        st.session_state.pipeline_diagnosis = None
-                        st.session_state.pipeline_rejection_analysis = None
-                        st.session_state.advisor_result = None  # force advisor refresh
-                        # Trigger rejection reframe for emotional + technical support
-                        if _new_status == "rejected" and _qa_key:
-                            _rj = _pl_jobs[_upd_idx]
-                            st.session_state.rejection_reframe_result = generate_rejection_reframe(
-                                job_title=_rj.get("title", ""),
-                                company=_rj.get("company", ""),
-                                rejection_stage=_notes or "unknown",
-                                search_context=f"{current} → {target}",
-                                total_applications=len(_pl_jobs),
+                    # Auto-run advisor if we have data but no result
+                    if not st.session_state.advisor_result and _qa_key:
+                        with st.spinner("AI Advisor synthesising your session…"):
+                            _adv_gaps = []
+                            if st.session_state.cv_gap_df is not None:
+                                try:
+                                    _adv_gaps = st.session_state.cv_gap_df.head(5)["skill"].tolist()
+                                except Exception:
+                                    pass
+                            _adv_fit = None
+                            if st.session_state.cv_profile and st.session_state.has_run:
+                                try:
+                                    _adv_core = build_cosine_core(True)
+                                    _adv_fit = get_score_distribution(True, str(current)).get("percentile_of_user")
+                                except Exception:
+                                    pass
+                            _adv_mock_score = None
+                            if st.session_state.mock_interview_report:
+                                _adv_mock_score = st.session_state.mock_interview_report.get("overall_score")
+                            st.session_state.advisor_result = synthesize_advisor_recommendation(
+                                fit_score=_adv_fit,
+                                target_role=str(target),
+                                current_role=str(current),
+                                top_skill_gaps=_adv_gaps or None,
+                                pipeline_stats=_adv_pl,
+                                pipeline_diagnosis=st.session_state.pipeline_diagnosis,
+                                rejection_analysis=st.session_state.pipeline_rejection_analysis,
+                                weeks_searching=st.session_state.pipeline_weeks_searching,
+                                avg_ats_score=_adv_pl.get("avg_ats_score"),
+                                last_ats_score=(st.session_state.ats_result or {}).get("ats_score") or
+                                               (st.session_state.qa_ats_paste or {}).get("ats_score"),
+                                has_cover_letter=bool(st.session_state.qa_package or st.session_state.qa_portfolio_packages),
+                                mock_interview_score=_adv_mock_score,
+                                mock_interview_complete=bool(st.session_state.mock_interview_report),
+                                has_offer=bool(st.session_state.negotiation_offer_analysis),
+                                offer_analyzed=bool(
+                                    st.session_state.negotiation_offer_analysis and
+                                    st.session_state.negotiation_offer_analysis.get("market_salary_mid")
+                                ),
+                                cv_uploaded=bool(st.session_state.cv_profile),
                                 model="gpt-4o-mini",
                                 api_key=_qa_key,
                                 prefer_online=True,
                             )
-                        else:
-                            st.session_state.rejection_reframe_result = None
-                        st.rerun()
 
-                if _new_status == "rejected":
-                    st.text_input(
-                        "Rejection stage/notes (optional)",
-                        key="pl_rejection_notes",
-                        placeholder="e.g. 'After first round — said they wanted more domain experience'",
-                    )
+                    _adv = st.session_state.advisor_result
+                    if _adv:
+                        _adv_phase = _adv.get("phase", "Exploration")
+                        _adv_phase_col = _adv_phase_colors.get(_adv_phase, "#0A66C2")
+                        _adv_momentum = _adv.get("momentum_score", 0)
+                        _adv_mom_col = "#117A37" if _adv_momentum >= 65 else ("#A05A00" if _adv_momentum >= 35 else "#B71C1C")
 
-                # ── Rejection Reframe Engine ─────────────────────────────────
-                _reframe = st.session_state.rejection_reframe_result
-                if _reframe and _reframe.get("reframe"):
-                    st.markdown(
-                        f'<div style="background:#FFF8F0;border:1px solid #F0C080;border-radius:10px;'
-                        f'padding:14px 18px;margin-top:8px">'
-                        f'<div style="font-size:11px;font-weight:800;text-transform:uppercase;'
-                        f'letter-spacing:0.06em;color:#A05A00;margin-bottom:8px">Rejection Reframe</div>'
-                        f'<div style="font-size:13px;line-height:1.65;color:#1D2226;margin-bottom:10px">'
-                        f'{_reframe.get("reframe","")}</div>'
-                        f'<div style="background:#fff;border-left:3px solid #C37D16;border-radius:0 6px 6px 0;'
-                        f'padding:8px 12px;margin-bottom:8px;font-size:12px;color:rgba(0,0,0,0.65)">'
-                        f'<strong>What the data says:</strong> {_reframe.get("statistical_context","")}</div>'
-                        f'<div style="font-size:12px;font-weight:700;color:#1D2226;margin-bottom:4px">'
-                        f'Technical diagnosis: {_reframe.get("technical_diagnosis","")}</div>'
-                        f'<div style="background:#EEF3FB;border-radius:6px;padding:8px 12px;'
-                        f'font-size:12px;color:#0A66C2;font-weight:700;margin-bottom:8px">'
-                        f'Next: {_reframe.get("next_action","")}</div>'
-                        f'<div style="font-size:11px;color:rgba(0,0,0,0.45);font-style:italic">'
-                        f'{_reframe.get("motivation_line","")}</div>'
-                        f'</div>',
-                        unsafe_allow_html=True,
-                    )
-
-            # ── Signal-Adaptive Engine ───────────────────────────────────────
-            # Detects rejection patterns and auto-updates application strategy.
-            # Closes the loop: data → diagnosis → automatic profile update.
-            _sa_rejected = [j for j in _pl_jobs if j.get("status") == "rejected"]
-            _sa_avg_ats = _pl_stats.get("avg_ats_score", 0)
-            _sa_response = _pl_stats.get("response_rate", 100)
-            _sa_suggestions: list = []
-
-            if len(_sa_rejected) >= 2:
-                # Pattern 1: ATS bottleneck
-                if _sa_avg_ats and _sa_avg_ats < 65 and _sa_response < 20:
-                    _sa_suggestions.append({
-                        "icon": icon("cpu", 14, "#B71C1C"),
-                        "title": "ATS Bottleneck Detected",
-                        "detail": f"Avg ATS {_sa_avg_ats}/100 · {_sa_response}% response rate. "
-                                  f"Most applications are filtered before a human reads them.",
-                        "action": "Run ATS Fix & Regenerate on your 3 most recent applications. Target 75+.",
-                        "color": "#B71C1C",
-                    })
-                # Pattern 2: Getting views but no calls
-                _viewed = len([j for j in _pl_jobs if j.get("status") == "viewed"])
-                if _viewed >= 2 and _pl_stats.get("interview_rate", 0) < 5:
-                    _sa_suggestions.append({
-                        "icon": icon("eye", 14, "#A05A00"),
-                        "title": "Profile Viewed But No Calls",
-                        "detail": f"{_viewed} applications viewed by recruiters — but no interview calls. "
-                                  f"Your CV is getting through ATS but not converting.",
-                        "action": "Your cover letter or CV narrative isn't landing. Run a new Adversarial Debate to find the weak point.",
-                        "color": "#A05A00",
-                    })
-                # Pattern 3: First-round rejection pattern
-                _first_rd_rej = [j for j in _sa_rejected if "first" in (j.get("rejection_stage","") or "").lower()]
-                if len(_first_rd_rej) >= 2:
-                    _sa_suggestions.append({
-                        "icon": icon("mic", 14, "#7A2A8A"),
-                        "title": "First-Round Rejection Pattern",
-                        "detail": f"{len(_first_rd_rej)} rejections after first interview. "
-                                  f"You're passing ATS and getting calls — but losing the first conversation.",
-                        "action": "Run 3 Mock Interview sessions before your next call. First-round issues are almost always coachable.",
-                        "color": "#7A2A8A",
-                    })
-
-            if _sa_suggestions:
-                st.markdown(
-                    '<div style="font-size:11px;font-weight:800;text-transform:uppercase;'
-                    'letter-spacing:0.06em;color:rgba(0,0,0,0.45);margin:8px 0 6px 0">'
-                    f'{icon("zap", 12, "rgba(0,0,0,0.45)")} Signal-Adaptive Engine — Pattern Detected</div>',
-                    unsafe_allow_html=True,
-                )
-                for _sug in _sa_suggestions:
-                    st.markdown(
-                        f'<div style="background:#fff;border-left:4px solid {_sug["color"]};'
-                        f'border-radius:0 8px 8px 0;padding:10px 14px;margin-bottom:6px;'
-                        f'box-shadow:0 1px 4px rgba(0,0,0,0.06)">'
-                        f'<div style="font-size:12px;font-weight:800;color:{_sug["color"]};margin-bottom:3px">'
-                        f'{_sug["icon"]} {_sug["title"]}</div>'
-                        f'<div style="font-size:11px;color:rgba(0,0,0,0.65);margin-bottom:5px">{_sug["detail"]}</div>'
-                        f'<div style="font-size:11px;font-weight:700;color:#1D2226">→ {_sug["action"]}</div>'
-                        f'</div>',
-                        unsafe_allow_html=True,
-                    )
-
-            # ── Manually add application ─────────────────────────────────────
-            if st.checkbox("+ Add application manually", key="pl_show_manual"):
-                _ma_c1, _ma_c2 = st.columns(2)
-                with _ma_c1:
-                    _ma_title = st.text_input("Job title", key="pl_manual_title")
-                    _ma_company = st.text_input("Company", key="pl_manual_company")
-                with _ma_c2:
-                    _ma_location = st.text_input("Location", key="pl_manual_location")
-                    _ma_ats = st.number_input("ATS score (optional)", 0, 100, value=0, key="pl_manual_ats")
-                if st.button("Add to pipeline", key="pl_manual_add", type="primary"):
-                    if _ma_title and _ma_company:
-                        _new_job = create_pipeline_job(
-                            title=_ma_title, company=_ma_company,
-                            location=_ma_location, ats_score=_ma_ats if _ma_ats else None,
-                            source="manual",
-                        )
-                        st.session_state.pipeline_jobs = _pl_jobs + [_new_job]
-                        st.rerun()
-
-            st.markdown("---")
-
-            # ── Pipeline Diagnosis ───────────────────────────────────────────
-            _pl_diag_c1, _pl_diag_c2 = st.columns([3, 1], gap="small")
-            with _pl_diag_c1:
-                _pl_weeks = st.slider("Weeks searching", 1, 26, st.session_state.pipeline_weeks_searching, key="pl_weeks")
-                st.session_state.pipeline_weeks_searching = _pl_weeks
-            with _pl_diag_c2:
-                if st.button("Run Diagnosis", key="pl_diagnose", use_container_width=True, disabled=len(_pl_jobs) < 3):
-                    with st.spinner("Analysing your pipeline…"):
-                        st.session_state.pipeline_diagnosis = generate_pipeline_diagnosis(
-                            jobs=_pl_jobs,
-                            current_role=str(current),
-                            target_role=str(target),
-                            weeks_searching=_pl_weeks,
-                            model="gpt-4o-mini",
-                            prefer_online=bool(_qa_key),
-                            api_key=_qa_key or None,
-                        )
-                        _rejected_jobs = [j for j in _pl_jobs if j["status"] == "rejected"]
-                        if len(_rejected_jobs) >= 2:
-                            st.session_state.pipeline_rejection_analysis = analyze_rejection_patterns(
-                                rejected_jobs=_rejected_jobs,
-                                pivot_profile={"current_role": str(current), "target_role": str(target)},
-                                model="gpt-4o-mini",
-                                prefer_online=bool(_qa_key),
-                                api_key=_qa_key or None,
-                            )
-                    st.rerun()
-
-            if len(_pl_jobs) < 3:
-                st.caption("Log at least 3 applications to unlock pipeline diagnosis.")
-
-            _pl_diag = st.session_state.pipeline_diagnosis
-            if _pl_diag:
-                _ph = _pl_diag.get("health_score", 0)
-                _ph_col = "#117A37" if _ph >= 65 else ("#A05A00" if _ph >= 35 else "#B71C1C")
-                st.markdown(
-                    f'<div style="background:#F3F6F9;border-radius:10px;padding:14px 18px;margin-top:8px">'
-                    f'<div style="display:flex;align-items:center;gap:14px;margin-bottom:10px">'
-                    f'<div style="font-size:30px;font-weight:900;color:{_ph_col}">{_ph}</div>'
-                    f'<div>'
-                    f'<div style="font-size:13px;font-weight:800;color:#1D2226">'
-                    f'Pipeline Health · {_pl_diag.get("overall_health","").title()}</div>'
-                    f'<div style="font-size:11px;color:rgba(0,0,0,0.55)">{_pl_diag.get("week_estimate","")}</div>'
-                    f'</div></div>'
-                    f'<div style="font-size:12px;color:#B71C1C;font-weight:700;margin-bottom:6px">'
-                    f'Bottleneck: {_pl_diag.get("top_bottleneck","")}</div>'
-                    f'<div style="background:#fff;border-left:3px solid #0A66C2;border-radius:0 6px 6px 0;'
-                    f'padding:8px 12px;font-size:12px;line-height:1.55">'
-                    f'<strong>Highest-leverage action:</strong> {_pl_diag.get("highest_leverage_action","")}'
-                    f'</div>'
-                    + (f'<div style="font-size:11px;color:rgba(0,0,0,0.5);margin-top:8px;font-style:italic">'
-                       f'{_pl_diag.get("benchmark_context","")}</div>' if _pl_diag.get("benchmark_context") else "")
-                    + f'</div>',
-                    unsafe_allow_html=True,
-                )
-
-            _pl_rej = st.session_state.pipeline_rejection_analysis
-            if _pl_rej and _pl_rej.get("root_cause"):
-                st.markdown(
-                    f'<div style="background:#FFF4F4;border:1px solid #F5C6C6;border-radius:8px;'
-                    f'padding:12px 16px;margin-top:8px">'
-                    f'<div style="font-size:11px;font-weight:800;text-transform:uppercase;color:#B71C1C;'
-                    f'letter-spacing:0.06em;margin-bottom:6px">Rejection Pattern Analysis</div>'
-                    f'<div style="font-size:12px;font-weight:700;color:#1D2226;margin-bottom:4px">'
-                    f'{_pl_rej.get("primary_pattern","")}</div>'
-                    f'<div style="font-size:12px;color:rgba(0,0,0,0.65);margin-bottom:8px">'
-                    f'{_pl_rej.get("root_cause","")}</div>'
-                    + "".join([
-                        f'<div style="background:#fff;border-left:3px solid #B71C1C;border-radius:0 4px 4px 0;'
-                        f'padding:5px 10px;margin-bottom:4px;font-size:11px">→ {fix}</div>'
-                        for fix in _pl_rej.get("actionable_fixes", [])[:3]
-                    ])
-                    + f'</div>',
-                    unsafe_allow_html=True,
-                )
-
-            st.markdown("---")
-
-            # ── Save / Load Pipeline ─────────────────────────────────────────
-            _save_c1, _save_c2 = st.columns(2)
-            with _save_c1:
-                if _pl_jobs:
-                    st.download_button(
-                        "Save Pipeline (JSON)",
-                        data=pipeline_to_json(_pl_jobs),
-                        file_name="job_pipeline.json",
-                        mime="application/json",
-                        key="pl_download",
-                        help="Download your pipeline data to reload in your next session",
-                    )
-            with _save_c2:
-                _pl_upload = st.file_uploader(
-                    "↑ Load Pipeline", type=["json"], key="pl_upload",
-                    label_visibility="collapsed",
-                    help="Upload a previously saved pipeline.json to continue your session",
-                )
-                if _pl_upload:
-                    _loaded = pipeline_from_json(_pl_upload.read().decode("utf-8"))
-                    if _loaded:
-                        st.session_state.pipeline_jobs = _loaded
-                        st.rerun()
-
-            if _pl_jobs and st.button("Clear pipeline", key="pl_clear", type="secondary"):
-                st.session_state.pipeline_jobs = []
-                st.session_state.pipeline_diagnosis = None
-                st.rerun()
-
-        # ════════════════════════════════════════════════════════════════════════
-        # OUTCOME TRACKER + CALIBRATION MOTOR
-        # Record what actually happened → calibrate your personal ROI model
-        # ════════════════════════════════════════════════════════════════════════
-        # ── Pattern Alert — runs automatically whenever outcome_log updates ──────
-        _ot_log_check: list = st.session_state.outcome_log or []
-        _ql_check: list     = st.session_state.get("quality_log") or []
-        if _ot_log_check:
-            _pa = detect_rejection_pattern(
-                _ot_log_check, _ql_check,
-                st.session_state.get("cohort_intelligence"),
-            )
-            st.session_state.pattern_alert = _pa
-            if _pa:
-                _pa_sev   = _pa.get("severity","mild")
-                _pa_col   = pattern_severity_color(_pa_sev)
-                _pa_icon  = pattern_severity_icon(_pa_sev)
-                _pa_consec = _pa.get("consecutive_count", 0)
-                st.markdown(
-                    f'<div style="background:{_pa_col}12;border:2px solid {_pa_col};border-radius:10px;'
-                    f'padding:14px 18px;margin-bottom:10px">'
-                    f'<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">'
-                    f'<span style="font-size:18px">{_pa_icon}</span>'
-                    f'<div>'
-                    f'<div style="font-size:13px;font-weight:800;color:{_pa_col}">'
-                    f'Pattern Alert — {_pa.get("alert_title","")}</div>'
-                    f'<div style="font-size:10px;font-weight:600;color:{_pa_col};opacity:0.8;letter-spacing:0.05em">'
-                    f'{_pa_sev.upper()} · {_pa_consec} consecutive · confidence {int(_pa.get("pattern_confidence",0)*100)}%'
-                    f'</div></div></div>'
-                    f'<div style="font-size:12px;color:rgba(0,0,0,0.75);line-height:1.55;margin-bottom:8px">'
-                    f'{_pa.get("alert_message","")}</div>'
-                    f'<div style="background:{_pa_col}20;border-radius:6px;padding:8px 12px">'
-                    f'<div style="font-size:10px;font-weight:800;color:{_pa_col};letter-spacing:0.06em;'
-                    f'text-transform:uppercase;margin-bottom:3px">What to do</div>'
-                    f'<div style="font-size:11px;color:rgba(0,0,0,0.8);line-height:1.5">'
-                    f'{_pa.get("recommended_action","")}</div>'
-                    f'</div></div>',
-                    unsafe_allow_html=True,
-                )
-
-        with st.expander("Outcome Tracker · Calibration lever — Brier score + cross-rejection synthesis", expanded=False):
-            st.markdown(
-                '<div style="font-size:12px;color:rgba(0,0,0,0.55);line-height:1.6;margin-bottom:12px">'
-                'Record the outcome of each application. The Calibration Motor compares your predicted ROI '
-                'vs. actual results and adjusts your personal response rate. After 5+ outcomes, your ROI scores '
-                'are calibrated to <em>your</em> profile — not industry averages.'
-                '</div>',
-                unsafe_allow_html=True,
-            )
-
-            _ot_log: list = st.session_state.outcome_log or []
-            _ot_pipeline = st.session_state.pipeline_jobs or []
-
-            # ── Log new outcome ────────────────────────────────────────────────
-            st.markdown("**Log an outcome**")
-            _ot_c1, _ot_c2, _ot_c3 = st.columns([2, 2, 2])
-            with _ot_c1:
-                # Pre-fill from pipeline if possible
-                _ot_pipeline_options = [f"{j.get('title','')} @ {j.get('company','')}" for j in _ot_pipeline] + ["Other (manual entry)"]
-                _ot_job_sel = st.selectbox("Application", _ot_pipeline_options, key="ot_job_sel", label_visibility="collapsed")
-            with _ot_c2:
-                _ot_stage = st.selectbox(
-                    "Outcome",
-                    options=OUTCOME_STAGES,
-                    format_func=lambda x: STAGE_LABELS.get(x, x),
-                    key="ot_stage_sel",
-                    label_visibility="collapsed",
-                )
-            with _ot_c3:
-                _ot_log_btn = st.button("Log outcome", key="ot_log_btn", use_container_width=True)
-
-            if _ot_log_btn:
-                # Find job details
-                _ot_sel_idx = _ot_pipeline_options.index(_ot_job_sel) if _ot_job_sel in _ot_pipeline_options else -1
-                if _ot_sel_idx >= 0 and _ot_sel_idx < len(_ot_pipeline):
-                    _ot_job = _ot_pipeline[_ot_sel_idx]
-                    _ot_predicted = None
-                    _ot_roi_key = f"{_ot_job.get('company','')}_{_ot_job.get('title','')}"
-                    if isinstance(st.session_state.roi_results, dict):
-                        _ot_predicted = st.session_state.roi_results.get(_ot_roi_key, {}).get("ei_per_app")
-                    _ot_entry = create_outcome_entry(
-                        job_id=_ot_job.get("id", ""),
-                        job_title=_ot_job.get("title", ""),
-                        company=_ot_job.get("company", ""),
-                        predicted_roi=_ot_predicted,
-                        actual_stage=_ot_stage,
-                    )
-                else:
-                    _ot_entry = create_outcome_entry("manual", _ot_job_sel, "", None, _ot_stage)
-
-                if st.session_state.outcome_log is None:
-                    st.session_state.outcome_log = []
-                st.session_state.outcome_log.append(_ot_entry)
-                # Recompute calibration
-                st.session_state.calibration_data = compute_calibration(st.session_state.outcome_log)
-                # Resolve Brier prediction for this job (if a JD analysis was run for it)
-                _ot_is_offer = _ot_stage in ("offer",)
-                if _ot_sel_idx >= 0 and _ot_sel_idx < len(_ot_pipeline):
-                    _ot_job_for_brier = _ot_pipeline[_ot_sel_idx]
-                    _jda_cached = st.session_state.get("jd_analysis_result") or {}
-                    if _jda_cached.get("company") == _ot_job_for_brier.get("company"):
-                        import hashlib as _hl2
-                        _jda_text_for_id = st.session_state.get("jd_analysis_text", "")
-                        if _jda_text_for_id:
-                            _brier_pid = _hl2.md5((_jda_text_for_id[:200]).encode()).hexdigest()[:12]
-                            brier_resolve_prediction(_SQLITE_DB_PATH, _brier_pid, got_offer=_ot_is_offer)
-                # Invalidate daily brief
-                st.session_state.daily_brief_date = ""
-                save_profile(st.session_state)
-                st.rerun()
-
-            # ── Outcome log ────────────────────────────────────────────────────
-            if _ot_log:
-                st.divider()
-                _cal = st.session_state.calibration_data or {}
-                _funnel = get_funnel_stats(_ot_log)
-                _diagnosis = diagnose_rejection_pattern(_ot_log)
-
-                # Funnel metrics
-                _fc1, _fc2, _fc3, _fc4 = st.columns(4)
-                _f_metrics = [
-                    ("Applied", _funnel.get("applied", 0), None),
-                    ("Responded", f"{_funnel.get('response_rate',0):.0f}%", None),
-                    ("Interviews", f"{_funnel.get('interview_rate',0):.0f}%", None),
-                    ("Offers", _funnel.get("offers", 0), "#057642"),
-                ]
-                for _fc, (_lbl, _val, _col) in zip([_fc1, _fc2, _fc3, _fc4], _f_metrics):
-                    with _fc:
-                        _vc = _col or ("#057642" if str(_val).endswith("%") and float(str(_val).rstrip("%")) >= 20 else "#0A66C2")
+                        # Phase + Momentum bar
                         st.markdown(
-                            f'<div style="text-align:center">'
-                            f'<div style="font-size:22px;font-weight:900;color:{_vc}">{_val}</div>'
-                            f'<div style="font-size:10px;color:rgba(0,0,0,0.45);font-weight:600">{_lbl}</div>'
+                            f'<div style="display:flex;align-items:center;gap:16px;margin:10px 0 14px 0">'
+                            f'<div style="background:{_adv_phase_col};color:#fff;border-radius:20px;'
+                            f'padding:3px 12px;font-size:11px;font-weight:800">{_adv_phase}</div>'
+                            f'<div style="flex:1">'
+                            f'<div style="display:flex;justify-content:space-between;font-size:10px;'
+                            f'font-weight:700;color:rgba(0,0,0,0.5);margin-bottom:3px">'
+                            f'<span>Momentum</span><span style="color:{_adv_mom_col}">'
+                            f'{_adv.get("momentum_label","?")} · {_adv_momentum}/100</span></div>'
+                            f'<div style="background:rgba(0,0,0,0.07);height:6px;border-radius:3px;overflow:hidden">'
+                            f'<div style="background:{_adv_mom_col};height:6px;width:{_adv_momentum}%;'
+                            f'border-radius:3px"></div></div>'
+                            f'</div></div>',
+                            unsafe_allow_html=True,
+                        )
+
+                        # Status summary
+                        st.markdown(
+                            f'<div style="font-size:12px;color:rgba(0,0,0,0.65);line-height:1.6;'
+                            f'margin-bottom:10px">{_adv.get("status_summary","")}</div>',
+                            unsafe_allow_html=True,
+                        )
+
+                        # Primary action — the one thing to do
+                        st.markdown(
+                            f'<div style="background:#EEF3FB;border-left:4px solid #0A66C2;'
+                            f'border-radius:0 8px 8px 0;padding:10px 14px;margin-bottom:8px">'
+                            f'<div style="font-size:10px;font-weight:800;text-transform:uppercase;'
+                            f'letter-spacing:0.08em;color:#0A66C2;margin-bottom:4px">Primary Action</div>'
+                            f'<div style="font-size:13px;font-weight:800;color:#1D2226;margin-bottom:3px">'
+                            f'{_adv.get("primary_action","")}</div>'
+                            f'<div style="font-size:11px;color:rgba(0,0,0,0.55)">'
+                            f'{_adv.get("primary_action_why","")}</div>'
                             f'</div>',
                             unsafe_allow_html=True,
                         )
 
-                # Calibration insight
-                if _cal.get("calibrated"):
-                    _adj = _cal.get("adjustment_factor", 1.0)
-                    _adj_color = "#057642" if _adj > 1.1 else ("#B71C1C" if _adj < 0.85 else "#0A66C2")
-                    st.markdown(
-                        f'<div style="background:#F8FAFF;border:1px solid #C7D8F0;border-radius:8px;'
-                        f'padding:10px 14px;margin:10px 0;font-size:12px;line-height:1.6">'
-                        f'<span style="font-weight:700;color:{_adj_color}">Calibration: {_adj:.2f}x</span> · '
-                        f'{_cal.get("insight","")}'
-                        f'</div>',
-                        unsafe_allow_html=True,
-                    )
+                        # Supporting actions + signals
+                        _adv_sa = _adv.get("supporting_actions", [])
+                        _adv_gs = _adv.get("green_signals", [])
+                        _adv_ws = _adv.get("warning_signals", [])
 
-                # Rejection diagnosis
-                if _diagnosis:
-                    _sev_colors = {"critical": "#B71C1C", "high": "#A05A00", "moderate": "#0A66C2"}
-                    _sev_c = _sev_colors.get(_diagnosis.get("severity",""), "#5F6B7A")
-                    st.markdown(
-                        f'<div style="background:#FFF8F8;border-left:3px solid {_sev_c};border-radius:0 8px 8px 0;'
-                        f'padding:10px 14px;margin:8px 0">'
-                        f'<div style="font-size:11px;font-weight:800;color:{_sev_c};margin-bottom:4px">'
-                        f'{_diagnosis.get("severity_label","")} — {_diagnosis.get("dominant_pct",0):.0f}% of rejections at {_diagnosis.get("dominant_label","")}'
-                        f'</div>'
-                        f'<div style="font-size:12px;color:rgba(0,0,0,0.7);margin-bottom:6px">'
-                        f'Root cause: {_diagnosis.get("root_cause","")}'
-                        f'</div>'
-                        f'<div style="font-size:11px;font-weight:700;color:rgba(0,0,0,0.55);margin-bottom:4px">Fix:</div>',
-                        unsafe_allow_html=True,
-                    )
-                    for _act in _diagnosis.get("actions", [])[:3]:
-                        st.markdown(f"→ {_act}")
-                    st.markdown("</div>", unsafe_allow_html=True)
-
-                # Rejection Interpreter — instant actionable diagnosis per rejection
-                _rej_log_items = [o for o in _ot_log if not o.get("is_offer")]
-                if _rej_log_items:
-                    st.markdown(
-                        f'<div style="font-size:10px;font-weight:800;letter-spacing:0.08em;'
-                        f'text-transform:uppercase;color:rgba(0,0,0,0.38);margin-top:12px;margin-bottom:6px">'
-                        f'Rejection Interpreter</div>',
-                        unsafe_allow_html=True,
-                    )
-                    _ri_sel_opts = [
-                        f"{o.get('job_title','Role')} @ {o.get('company','?')} — {STAGE_LABELS.get(o.get('actual_stage',''),'')}"
-                        for o in _rej_log_items[-8:]
-                    ]
-                    _ri_sel = st.selectbox("Select a rejection to interpret", _ri_sel_opts,
-                                           key="ri_select", label_visibility="collapsed")
-                    _ri_idx = _ri_sel_opts.index(_ri_sel) if _ri_sel in _ri_sel_opts else 0
-                    _ri_entry = _rej_log_items[-(8 - _ri_idx)] if _ri_idx < len(_rej_log_items) else _rej_log_items[-1]
-                    _ri_entry_id = _ri_entry.get("id", "") or _ri_entry.get("date","") + _ri_entry.get("company","")
-
-                    _ri_feedback = st.text_area(
-                        "Paste feedback (optional — leave blank for pattern-based diagnosis)",
-                        key="ri_feedback", height=55,
-                        placeholder="e.g. 'We decided to go with a candidate with more direct experience in X'",
-                    )
-
-                    _ri_interp = st.session_state.get("rejection_interpretations", {}).get(_ri_entry_id)
-                    if st.button("Interpret this rejection", key="ri_run", use_container_width=True):
-                        with st.spinner("Diagnosing rejection…"):
-                            _ri_result = interpret_rejection(
-                                _qa_key or "",
-                                feedback_text=_ri_feedback or "",
-                                stage=_ri_entry.get("actual_stage", "no_response"),
-                                job_title=_ri_entry.get("job_title", ""),
-                                company=_ri_entry.get("company", ""),
-                                cv_profile=st.session_state.get("cv_profile") or {},
-                                pivot_dna=st.session_state.get("pivot_dna") or {},
-                            )
-                            _ri_interps = st.session_state.get("rejection_interpretations") or {}
-                            _ri_interps[_ri_entry_id] = _ri_result
-                            st.session_state.rejection_interpretations = _ri_interps
-                            _ri_interp = _ri_result
-                            save_profile(st.session_state)
-
-                    if _ri_interp:
-                        _ri_meta = _ri_interp.get("type_meta", {})
-                        _ri_col = _ri_meta.get("color", "#5F6B7A")
-                        st.markdown(
-                            f'<div style="background:#F8FAFF;border-left:3px solid {_ri_col};'
-                            f'border-radius:0 10px 10px 0;padding:12px 14px;margin-top:8px">'
-                            f'<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">'
-                            f'{icon_box(_ri_meta.get("icon","help-circle"), bg=_ri_col+"20", color=_ri_col, size=14, box_size=28, radius=6)}'
-                            f'<div><div style="font-size:12px;font-weight:800;color:{_ri_col}">'
-                            f'{_ri_meta.get("label","Rejection")} · {_ri_interp.get("confidence",0)}% confidence</div>'
-                            f'<div style="font-size:11px;color:rgba(0,0,0,0.5)">{_ri_meta.get("summary","")}</div>'
-                            f'</div></div>'
-                            f'<div style="font-size:12px;color:rgba(0,0,0,0.75);margin-bottom:8px;line-height:1.5">'
-                            f'<strong>Root cause:</strong> {_ri_interp.get("root_cause","")}</div>'
-                            f'<div style="background:{_ri_col}15;border-radius:6px;padding:8px 10px;margin-bottom:8px">'
-                            f'<div style="font-size:10px;font-weight:800;color:{_ri_col};margin-bottom:3px">DO THIS TODAY</div>'
-                            f'<div style="font-size:12px;font-weight:600;color:rgba(0,0,0,0.8)">'
-                            f'{_ri_interp.get("immediate_action","")}</div>'
-                            f'</div>',
-                            unsafe_allow_html=True,
-                        )
-                        _ri_plan = _ri_interp.get("week_plan") or []
-                        if _ri_plan:
-                            st.markdown(
-                                '<div style="font-size:10px;font-weight:800;color:rgba(0,0,0,0.38);'
-                                'margin-bottom:4px">THIS WEEK</div>',
-                                unsafe_allow_html=True,
-                            )
-                            for _rp in _ri_plan:
+                        _adv_sc1, _adv_sc2 = st.columns(2, gap="medium")
+                        with _adv_sc1:
+                            if _adv_sa:
                                 st.markdown(
-                                    f'<div style="font-size:11px;color:rgba(0,0,0,0.7);padding:2px 0">'
-                                    f'{check_icon(11)} {_rp}</div>',
+                                    '<div style="font-size:10px;font-weight:800;text-transform:uppercase;'
+                                    'letter-spacing:0.06em;color:rgba(0,0,0,0.4);margin-bottom:6px">Also do</div>',
                                     unsafe_allow_html=True,
                                 )
-                        if _ri_interp.get("reframe"):
-                            st.markdown(
-                                f'<div style="margin-top:8px;font-size:11px;color:rgba(0,0,0,0.55);'
-                                f'font-style:italic;line-height:1.5">{_ri_interp["reframe"]}</div>',
-                                unsafe_allow_html=True,
-                            )
-                        if _ri_interp.get("ops_impact"):
-                            st.markdown(
-                                f'<div style="margin-top:6px;font-size:11px;font-weight:600;color:#0A66C2">'
-                                f'{icon("trending-up",11,"#0A66C2")} {_ri_interp["ops_impact"]}</div>',
-                                unsafe_allow_html=True,
-                            )
-                        st.markdown('</div>', unsafe_allow_html=True)
+                                for _sa in _adv_sa[:3]:
+                                    st.markdown(f"→ {_sa}")
+                        with _adv_sc2:
+                            for _gs in _adv_gs[:2]:
+                                st.markdown(f'<span style="color:#057642">{check_icon(12)} {_gs}</span>', unsafe_allow_html=True)
+                            for _ws in _adv_ws[:2]:
+                                st.markdown(f'<span style="color:#B71C1C">{warn_icon(12)} {_ws}</span>', unsafe_allow_html=True)
 
-                # ── Brier Score — AI Prediction Accuracy ─────────────────────────
-                _brier = compute_brier_stats(_SQLITE_DB_PATH)
-                st.session_state.brier_stats = _brier
-                _br_n = _brier.get("n_resolved", 0)
-                _br_pending = _brier.get("n_pending", 0)
+                        if _adv.get("time_to_offer_estimate"):
+                            st.caption(f"Time to offer estimate: {_adv['time_to_offer_estimate']}")
 
+                    elif not _qa_key:
+                        st.info("Add OpenAI API key in Streamlit secrets to activate the AI Advisor.")
+
+            # ── Portfolio ROI Summary (deterministic — always shown when data exists)
+            _roi_all = list(st.session_state.roi_results.values())
+            if _roi_all:
+                _roi_summary = get_portfolio_roi_summary(_roi_all, _adv_pl)
+                _roi_high = _roi_summary.get("high_roi_count", 0)
+                _roi_avg_pct = _roi_summary.get("avg_ei_pct", 0)
+                _roi_exp = _roi_summary.get("expected_interviews_total", 0)
+                _roi_sum_col = "#117A37" if _roi_avg_pct >= 25 else ("#A05A00" if _roi_avg_pct >= 12 else "#B71C1C")
+
+                st.markdown(
+                    f'<div style="background:#F3F6F9;border-radius:8px;padding:10px 16px;margin-top:8px;'
+                    f'display:flex;align-items:center;gap:20px">'
+                    f'<div style="font-size:10px;font-weight:800;text-transform:uppercase;'
+                    f'letter-spacing:0.06em;color:rgba(0,0,0,0.4)">Portfolio ROI</div>'
+                    f'<div style="display:flex;gap:16px;flex:1">'
+                    f'<div style="text-align:center">'
+                    f'<div style="font-size:18px;font-weight:900;color:{_roi_sum_col}">{_roi_avg_pct:.0f}%</div>'
+                    f'<div style="font-size:10px;color:rgba(0,0,0,0.45)">Avg interview prob.</div>'
+                    f'</div>'
+                    f'<div style="text-align:center">'
+                    f'<div style="font-size:18px;font-weight:900;color:#0A66C2">{_roi_exp:.1f}</div>'
+                    f'<div style="font-size:10px;color:rgba(0,0,0,0.45)">Expected interviews</div>'
+                    f'</div>'
+                    f'<div style="text-align:center">'
+                    f'<div style="font-size:18px;font-weight:900;color:#057642">{_roi_high}</div>'
+                    f'<div style="font-size:10px;color:rgba(0,0,0,0.45)">High-ROI roles</div>'
+                    f'</div>'
+                    f'</div>'
+                    f'<div style="font-size:11px;color:rgba(0,0,0,0.55);max-width:300px;line-height:1.4">'
+                    f'{_roi_summary.get("top_recommendation","")}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+
+        with st.expander("Cohort Intelligence & Momentum", expanded=False):
+            # ════════════════════════════════════════════════════════════════════════
+            # COHORT INTELLIGENCE + MOMENTUM ENGINE
+            # What people in your exact situation actually experienced.
+            # + Behavioral science against the psychological crash.
+            # ════════════════════════════════════════════════════════════════════════
+            _cohort_key = f"{current}→{target}"
+            _cohort_stale = st.session_state.get("cohort_intelligence") and \
+                            st.session_state.get("cohort_pivot_key") != _cohort_key
+
+            if _cohort_stale:
+                st.session_state.cohort_intelligence = None
+
+            _cohort_col, _momentum_col = st.columns([3, 2], gap="medium")
+
+            with _cohort_col:
                 with st.expander(
-                    f"AI Calibration · Brier Score"
-                    + (f" — {_brier.get('brier_quality','?')} ({_brier.get('brier_score','?')})" if not _brier.get("insufficient_data") else f" — {_br_n}/{_brier.get('min_required',3)} predictions resolved"),
-                    expanded=not _brier.get("insufficient_data"),
+                    "Cohort Intelligence — What people in your exact situation did",
+                    expanded=bool(st.session_state.cohort_intelligence),
                 ):
                     st.markdown(
-                        '<div style="font-size:11px;color:rgba(0,0,0,0.5);margin-bottom:10px;line-height:1.6">'
-                        '<strong>#1 Mistake with AI backends: not evaluating AI in zero-shot tasks.</strong> '
-                        'Every time the JD Analyzer predicts P(offer), it is logged here. '
-                        'Every time you record an actual outcome, the prediction is resolved. '
-                        'The Brier Score measures how well-calibrated the AI predictions are against your ground truth. '
-                        'The Correction Factor is applied to ALL future predictions.'
+                        '<div style="font-size:11px;color:rgba(0,0,0,0.5);margin-bottom:8px">'
+                        'Real benchmarks for your specific pivot path — not industry averages. '
+                        'Timeline, application counts, what worked, what didn\'t.'
                         '</div>',
                         unsafe_allow_html=True,
                     )
-
-                    if _brier.get("insufficient_data"):
-                        _needed = _brier.get("min_required", 3) - _br_n
-                        st.info(
-                            f"**{_br_n}/{_brier.get('min_required',3)} predictions resolved.** "
-                            f"Run the JD Analyzer on {_br_pending} pending predictions and log their outcomes to unlock Brier score. "
-                            f"Need {max(0, _needed)} more resolved predictions."
-                        )
-                        if _br_pending > 0:
-                            st.markdown(f"**{_br_pending} unresolved predictions waiting for outcomes:**")
-                            for _bp in _brier.get("pending", [])[:5]:
-                                st.markdown(
-                                    f'<div style="font-size:11px;color:rgba(0,0,0,0.65);padding:2px 0">'
-                                    f'→ {_bp.get("job_title","")} @ {_bp.get("company","")} — '
-                                    f'Predicted: <strong>{_bp.get("predicted_prob",0):.0f}%</strong> · '
-                                    f'Log the actual outcome above to resolve.'
-                                    f'</div>',
-                                    unsafe_allow_html=True,
-                                )
-                    else:
-                        _bq_col = _brier.get("brier_quality_color", "#0A66C2")
-                        _bc1, _bc2, _bc3, _bc4 = st.columns(4)
-                        with _bc1:
-                            st.markdown(
-                                f'<div style="text-align:center">'
-                                f'<div style="font-size:22px;font-weight:900;color:{_bq_col}">{_brier.get("brier_score","?")}</div>'
-                                f'<div style="font-size:10px;color:rgba(0,0,0,0.45);font-weight:700;text-transform:uppercase">Brier Score</div>'
-                                f'<div style="font-size:9px;color:{_bq_col};font-weight:700">{_brier.get("brier_quality","")}</div>'
-                                f'</div>',
-                                unsafe_allow_html=True,
-                            )
-                        with _bc2:
-                            _cfactor = _brier.get("correction_factor", 1.0)
-                            _cf_col = "#057642" if 0.85 <= _cfactor <= 1.15 else "#D97706"
-                            st.markdown(
-                                f'<div style="text-align:center">'
-                                f'<div style="font-size:22px;font-weight:900;color:{_cf_col}">{_cfactor:.2f}×</div>'
-                                f'<div style="font-size:10px;color:rgba(0,0,0,0.45);font-weight:700;text-transform:uppercase">Correction Factor</div>'
-                                f'<div style="font-size:9px;color:{_cf_col};font-weight:700">{_brier.get("bias_direction","")}</div>'
-                                f'</div>',
-                                unsafe_allow_html=True,
-                            )
-                        with _bc3:
-                            st.markdown(
-                                f'<div style="text-align:center">'
-                                f'<div style="font-size:22px;font-weight:900;color:#0A66C2">{_brier.get("mean_predicted_pct","?")}%</div>'
-                                f'<div style="font-size:10px;color:rgba(0,0,0,0.45);font-weight:700;text-transform:uppercase">Avg AI Prediction</div>'
-                                f'</div>',
-                                unsafe_allow_html=True,
-                            )
-                        with _bc4:
-                            _emp_col = "#057642" if _brier.get("mean_actual_pct", 0) > 20 else "#D97706"
-                            st.markdown(
-                                f'<div style="text-align:center">'
-                                f'<div style="font-size:22px;font-weight:900;color:{_emp_col}">{_brier.get("mean_actual_pct","?")}%</div>'
-                                f'<div style="font-size:10px;color:rgba(0,0,0,0.45);font-weight:700;text-transform:uppercase">Empirical Offer Rate</div>'
-                                f'</div>',
-                                unsafe_allow_html=True,
-                            )
-
-                        st.markdown(
-                            f'<div style="background:#F0F4FF;border-radius:8px;padding:8px 12px;margin:10px 0;'
-                            f'font-size:11px;color:rgba(0,0,0,0.65);line-height:1.5">'
-                            f'{_brier.get("bias_note","")}'
-                            f'</div>',
-                            unsafe_allow_html=True,
-                        )
-
-                        # Reliability diagram
-                        _rel = _brier.get("reliability", [])
-                        if _rel:
-                            st.markdown(
-                                '<div style="font-size:10px;font-weight:800;letter-spacing:0.08em;'
-                                'text-transform:uppercase;color:rgba(0,0,0,0.38);margin-bottom:6px">'
-                                'Reliability Diagram — predicted vs. actual offer rate per bucket</div>',
-                                unsafe_allow_html=True,
-                            )
-                            for _rb in _rel:
-                                _rg = _rb.get("gap", 0)
-                                _rg_col = "#DC2626" if abs(_rg) > 15 else ("#D97706" if abs(_rg) > 8 else "#057642")
-                                st.markdown(
-                                    f'<div style="display:flex;align-items:center;gap:8px;'
-                                    f'padding:4px 8px;margin-bottom:2px;background:#F8FAFF;border-radius:6px">'
-                                    f'<div style="font-size:10px;font-weight:700;color:#0A66C2;width:70px">{_rb["bucket"]}</div>'
-                                    f'<div style="font-size:10px;color:rgba(0,0,0,0.55);width:80px">Predicted: {_rb["mean_predicted"]}%</div>'
-                                    f'<div style="font-size:10px;color:rgba(0,0,0,0.55);width:70px">Actual: {_rb["mean_actual"]}%</div>'
-                                    f'<div style="font-size:10px;font-weight:700;color:{_rg_col}">'
-                                    f'{"▲" if _rg < 0 else "▼"} {abs(_rg):.0f}pt {"under" if _rg < 0 else "over"}confidence</div>'
-                                    f'<div style="font-size:9px;color:rgba(0,0,0,0.3)">n={_rb["n"]}</div>'
-                                    f'</div>',
-                                    unsafe_allow_html=True,
-                                )
-
-                        st.caption(
-                            f"Brier Score 0.0 = perfect · 0.25 = uninformative (guessing 50%). "
-                            f"Based on {_br_n} resolved predictions. "
-                            f"Correction factor {_cfactor:.2f}× is applied to all future JD Analyzer predictions automatically."
-                        )
-
-                # ── Cross-Rejection Synthesis ─────────────────────────────────────
-                _rej_entries = [o for o in _ot_log if not o.get("is_offer")]
-                if len(_rej_entries) >= 2:
-                    _stage_dist = compute_stage_distribution(_ot_log)
-                    _dominant = _stage_dist.get("dominant_stage")
-                    _dominant_pct = _stage_dist.get("dominant_pct", 0)
-                    _dominant_col = bottleneck_color(_dominant or "")
-
-                    with st.expander(
-                        f"Cross-Rejection Synthesis — {_stage_dist.get('n_rejections',0)} rejections · bottleneck: {_dominant or '?'} ({_dominant_pct}%)",
-                        expanded=len(_rej_entries) >= 3,
-                    ):
-                        st.markdown(
-                            '<div style="font-size:11px;color:rgba(0,0,0,0.5);margin-bottom:10px;line-height:1.6">'
-                            'Individual rejection diagnosis answers: "what went wrong with this one?" '
-                            'Cross-rejection synthesis answers: "what do all my rejections collectively say about my search strategy?" '
-                            'The distinction between <strong>fixable execution issues</strong> and <strong>structural strategy problems</strong> is what changes the approach.'
-                            '</div>',
-                            unsafe_allow_html=True,
-                        )
-
-                        # Stage distribution (pure Python — no API needed)
-                        _sd_counts = _stage_dist.get("stage_counts", {})
-                        if _sd_counts:
-                            _sd_html = '<div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">'
-                            for _stage, _cnt in sorted(_sd_counts.items(), key=lambda x: -x[1]):
-                                _sc = bottleneck_color(_stage)
-                                _sd_pct = round(_cnt / max(1, _stage_dist.get("n_rejections", 1)) * 100)
-                                _sd_html += (
-                                    f'<div style="background:{_sc}15;border:1px solid {_sc}40;border-radius:20px;'
-                                    f'padding:3px 12px;font-size:11px;font-weight:700;color:{_sc}">'
-                                    f'{_stage}: {_cnt} ({_sd_pct}%)</div>'
-                                )
-                            _sd_html += "</div>"
-                            st.markdown(_sd_html, unsafe_allow_html=True)
-
-                        # GPT synthesis (on button press)
-                        _synth = st.session_state.get("rejection_synthesis")
-                        if st.button("Synthesise rejection pattern", key="synth_run", use_container_width=True, type="primary"):
-                            with st.spinner("Analysing cross-rejection pattern…"):
-                                # Build input from outcome log + any rejection interpreter results
-                                _ri_all = st.session_state.get("rejection_interpretations", {})
-                                _rej_input = []
-                                for _re in _rej_entries:
-                                    _re_id = _re.get("id","") or _re.get("date","") + _re.get("company","")
-                                    _ri_data = _ri_all.get(_re_id) or {}
-                                    _rej_input.append({
-                                        "company":          _re.get("company", ""),
-                                        "job_title":        _re.get("job_title", ""),
-                                        "rejection_stage":  _re.get("actual_stage", "no_response"),
-                                        "likely_cause":     _ri_data.get("root_cause", ""),
-                                        "root_cause_hypothesis": _ri_data.get("root_cause", ""),
-                                        "fixable":          _ri_data.get("fixable"),
-                                    })
-                                _synth = synthesize_rejections(
-                                    _qa_key or "",
-                                    rejections=_rej_input,
-                                    outcome_log=_ot_log,
-                                )
-                                st.session_state.rejection_synthesis = _synth
-                                save_profile(st.session_state)
-
-                        if _synth:
-                            _syn_struct = _synth.get("is_structural", False)
-                            _syn_bc = bottleneck_color(_synth.get("bottleneck_stage", ""))
-                            _syn_badge = "STRUCTURAL — strategy must change" if _syn_struct else "EXECUTION — fixable without strategy change"
-                            _syn_badge_col = "#DC2626" if _syn_struct else "#D97706"
-                            st.markdown(
-                                f'<div style="background:{_syn_badge_col}15;border:1.5px solid {_syn_badge_col}50;'
-                                f'border-radius:10px;padding:14px 16px;margin-bottom:10px">'
-                                f'<div style="font-size:10px;font-weight:900;letter-spacing:0.08em;text-transform:uppercase;'
-                                f'color:{_syn_badge_col};margin-bottom:6px">{_syn_badge}</div>'
-                                f'<div style="font-size:13px;font-weight:700;color:rgba(0,0,0,0.88);margin-bottom:6px">'
-                                f'{_synth.get("root_cause","")}</div>'
-                                f'<div style="font-size:11px;color:rgba(0,0,0,0.6);line-height:1.5">'
-                                f'Bottleneck: <strong style="color:{_syn_bc}">{_synth.get("bottleneck_stage","")} ({_synth.get("bottleneck_pct",0)}%)</strong>'
-                                f' · Confidence: <strong>{_synth.get("bottleneck_confidence","?")}</strong>'
-                                f'</div></div>',
-                                unsafe_allow_html=True,
-                            )
-
-                            _syn_c1, _syn_c2 = st.columns(2)
-                            with _syn_c1:
-                                st.markdown(
-                                    f'<div style="background:#F0FAF4;border-left:3px solid #057642;border-radius:0 8px 8px 0;'
-                                    f'padding:10px 12px">'
-                                    f'<div style="font-size:10px;font-weight:800;color:#057642;margin-bottom:4px">HIGHEST-EV FIX</div>'
-                                    f'<div style="font-size:12px;font-weight:600;color:rgba(0,0,0,0.8)">{_synth.get("highest_ev_fix","")}</div>'
-                                    f'<div style="font-size:10px;color:rgba(0,0,0,0.5);margin-top:4px">Effort: {_synth.get("fix_effort","")} · '
-                                    f'~{_synth.get("weeks_to_improvement","?")} weeks to improvement</div>'
-                                    f'</div>',
-                                    unsafe_allow_html=True,
-                                )
-                            with _syn_c2:
-                                st.markdown(
-                                    f'<div style="background:#F0F4FF;border-left:3px solid #0A66C2;border-radius:0 8px 8px 0;'
-                                    f'padding:10px 12px">'
-                                    f'<div style="font-size:10px;font-weight:800;color:#0A66C2;margin-bottom:4px">WHAT\'S WORKING</div>'
-                                    f'<div style="font-size:12px;color:rgba(0,0,0,0.7);line-height:1.5">{_synth.get("encouraging_signal","")}</div>'
-                                    f'</div>',
-                                    unsafe_allow_html=True,
-                                )
-
-                            if _synth.get("pivot_strategy_change") and _synth.get("pivot_strategy_change") != "null":
-                                st.markdown(
-                                    f'<div style="background:#FFF8F0;border:1px solid #F0C06040;border-radius:8px;'
-                                    f'padding:10px 12px;margin-top:8px">'
-                                    f'<div style="font-size:10px;font-weight:800;color:#D97706;margin-bottom:4px">STRATEGY ADJUSTMENT RECOMMENDED</div>'
-                                    f'<div style="font-size:12px;color:rgba(0,0,0,0.7)">{_synth.get("pivot_strategy_change","")}</div>'
-                                    f'</div>',
-                                    unsafe_allow_html=True,
-                                )
-
-                # Log table
-                if st.checkbox(f"Show outcome log ({len(_ot_log)} entries)", key="ot_show_log"):
-                    for _oe in reversed(_ot_log[-10:]):
-                        _oc = STAGE_COLORS.get(_oe.get("actual_stage",""), "#5F6B7A")
-                        st.markdown(
-                            f'<div style="display:flex;align-items:center;gap:8px;padding:4px 0;'
-                            f'border-bottom:1px solid rgba(0,0,0,0.05);font-size:11px">'
-                            f'<span style="color:rgba(0,0,0,0.4)">{_oe.get("date","")}</span>'
-                            f'<span style="font-weight:600">{_oe.get("job_title","")} @ {_oe.get("company","")}</span>'
-                            f'<span style="padding:1px 7px;border-radius:20px;background:{_oc}18;'
-                            f'color:{_oc};font-weight:700;border:1px solid {_oc}40">'
-                            f'{STAGE_LABELS.get(_oe.get("actual_stage",""),"")}</span>'
-                            f'</div>',
-                            unsafe_allow_html=True,
-                        )
-            else:
-                st.caption("No outcomes logged yet. Log 3+ outcomes to unlock calibration and rejection diagnosis.")
-
-        # ════════════════════════════════════════════════════════════════════════
-        # JOB MARKET PULSE + WARM INTRO PATHFINDER
-        # ════════════════════════════════════════════════════════════════════════
-        _mp_col1, _mp_col2 = st.columns([1, 1], gap="medium")
-
-        with _mp_col1:
-            with st.expander("Job Market Pulse — Is now a good time?", expanded=False):
-                st.markdown(
-                    '<div style="font-size:11px;color:rgba(0,0,0,0.5);margin-bottom:8px">'
-                    'Live market timing for your target role — hiring velocity, sector health, '
-                    'top companies hiring now, salary momentum.'
-                    '</div>',
-                    unsafe_allow_html=True,
-                )
-                _mp_location = st.text_input(
-                    "Location", value="United States", key="mp_location",
-                    placeholder="e.g. Remote, New York, London",
-                )
-                _mp_sector = st.text_input(
-                    "Sector (optional)", value="", key="mp_sector",
-                    placeholder="e.g. Fintech, SaaS, Healthcare",
-                )
-                if st.button("Get Market Pulse", key="mp_run", type="primary", use_container_width=True):
-                    with st.spinner("Analysing job market for your target role…"):
-                        st.session_state.market_pulse_result = get_market_pulse(
-                            target_role=str(target),
-                            sector=_mp_sector,
-                            location=_mp_location,
-                            current_month=4,
-                            current_year=2025,
-                            model="gpt-4o-mini",
-                            api_key=_qa_key or None,
-                            prefer_online=bool(_qa_key),
-                        )
-                        st.session_state.market_pulse_role = str(target)
-
-                _mp = st.session_state.market_pulse_result
-                if _mp:
-                    _mp_ts = _mp.get("timing_score", 50)
-                    _mp_tc = "#117A37" if _mp_ts >= 65 else ("#A05A00" if _mp_ts >= 35 else "#B71C1C")
-                    _mp_vel_icons = {
-                        "accelerating": "↑↑", "steady": "→", "decelerating": "↓", "frozen": "—"
-                    }
-                    _mp_vel_icon = _mp_vel_icons.get(_mp.get("hiring_velocity", ""), "·")
-
-                    st.markdown(
-                        f'<div style="background:#F3F6F9;border-radius:8px;padding:12px 16px;margin-top:6px">'
-                        f'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">'
-                        f'<div style="font-size:13px;font-weight:800">{_mp_vel_icon} '
-                        f'{_mp.get("timing_verdict","")}</div>'
-                        f'<div style="font-size:22px;font-weight:900;color:{_mp_tc}">{_mp_ts}</div>'
-                        f'</div>'
-                        f'<div style="font-size:11px;color:rgba(0,0,0,0.55);margin-bottom:8px">'
-                        f'Hiring velocity: <strong>{_mp.get("hiring_velocity","?")}</strong> · '
-                        f'Sector: <strong>{_mp.get("sector_health","?")}</strong> · '
-                        f'Salary: <strong>{_mp.get("salary_momentum","?")}</strong></div>'
-                        f'<div style="font-size:11px;line-height:1.6;color:rgba(0,0,0,0.65);margin-bottom:8px">'
-                        f'{_mp.get("current_month_context","")}</div>'
-                        f'</div>',
-                        unsafe_allow_html=True,
-                    )
-
-                    if _mp.get("top_companies_hiring"):
-                        st.markdown("**Companies actively hiring:**")
-                        for _co in _mp["top_companies_hiring"][:4]:
-                            st.markdown(f"→ {_co}")
-
-                    if _mp.get("sourcing_tip"):
-                        st.info(f"**Sourcing tip:** {_mp['sourcing_tip']}")
-
-                    if _mp.get("demand_drivers") or _mp.get("risk_factors"):
-                        _mp_dc1, _mp_dc2 = st.columns(2)
-                        with _mp_dc1:
-                            for _dd in _mp.get("demand_drivers", [])[:2]:
-                                st.markdown(f'<span style="color:#057642;font-size:11px">▲ {_dd}</span>', unsafe_allow_html=True)
-                        with _mp_dc2:
-                            for _rf in _mp.get("risk_factors", [])[:2]:
-                                st.markdown(f'<span style="color:#B71C1C;font-size:11px">▼ {_rf}</span>', unsafe_allow_html=True)
-
-                    st.caption(f"Verdict: {_mp.get('one_line_verdict','')} · *{_mp.get('source','')}*")
-
-        with _mp_col2:
-            with st.expander("Warm Intro Pathfinder — Network Activation", expanded=False):
-                st.markdown(
-                    '<div style="font-size:11px;color:rgba(0,0,0,0.5);margin-bottom:8px">'
-                    'Cold outreach: &lt;3% response rate. '
-                    'Warm intro: 35-50%. This generates a 3-touch sequence to activate your network.'
-                    '</div>',
-                    unsafe_allow_html=True,
-                )
-                _wi_company = st.text_input("Target company", key="wi_company",
-                                            placeholder="e.g. Stripe, Anthropic, Linear")
-                _wi_conn = st.text_input("Connection name / description", key="wi_conn",
-                                         placeholder="e.g. Jane Smith (former colleague), 2nd-degree LinkedIn")
-                _wi_conn_type = st.selectbox(
-                    "Connection type",
-                    ["LinkedIn 2nd-degree", "Former colleague", "University alumni", "Conference contact", "Cold (no mutual)"],
-                    key="wi_conn_type",
-                )
-                _wi_name = st.text_input("Your name (for personalisation)", key="wi_name",
-                                         placeholder="e.g. Alex Chen")
-                _wi_bg = st.text_area("Your background (1-2 sentences)", key="wi_bg", height=60,
-                                      placeholder="e.g. 5 years in finance analytics, transitioning to product management")
-
-                if st.button("Generate Outreach Sequence", key="wi_run", type="primary", use_container_width=True):
-                    if _wi_company:
-                        with st.spinner("Crafting your 3-touch outreach sequence…"):
-                            st.session_state.warm_intro_result = generate_warm_intro_sequence(
-                                target_company=_wi_company,
+                    if st.button("Get Cohort Benchmarks", key="cohort_run", type="primary", use_container_width=True,
+                                 disabled=not bool(_qa_key)):
+                        with st.spinner(f"Analysing {current} → {target} cohort data…"):
+                            _cv_p = st.session_state.cv_profile or {}
+                            st.session_state.cohort_intelligence = get_cohort_intelligence(
+                                current_role=str(current),
                                 target_role=str(target),
-                                your_name=_wi_name,
-                                your_background=_wi_bg,
-                                mutual_connection=_wi_conn,
-                                connection_type=_wi_conn_type,
+                                years_experience=float(_cv_p.get("years_experience", 0) or 0),
                                 model="gpt-4o-mini",
                                 api_key=_qa_key or None,
                                 prefer_online=bool(_qa_key),
                             )
-                    else:
-                        st.warning("Enter target company name first.")
+                            st.session_state.cohort_pivot_key = _cohort_key
+                        st.rerun()
 
-                _wi = st.session_state.warm_intro_result
-                if _wi and _wi.get("touch_1_message"):
-                    st.markdown("**Touch 1 — Connection / First Email:**")
-                    if _wi.get("touch_1_subject"):
-                        st.caption(f"Subject: {_wi['touch_1_subject']}")
-                    st.text_area("Message 1", value=_wi["touch_1_message"], height=120,
-                                 key="wi_msg1", label_visibility="collapsed")
+                    if not _qa_key:
+                        st.caption("Add OpenAI API key to unlock cohort benchmarks.")
 
-                    if _wi.get("touch_2_message"):
-                        st.markdown("**Touch 2 — Follow-up (5-7 days later):**")
-                        st.text_area("Message 2", value=_wi["touch_2_message"], height=90,
-                                     key="wi_msg2", label_visibility="collapsed")
-
-                    if _wi.get("touch_3_message"):
-                        st.markdown("**Touch 3 — The Ask:**")
-                        st.text_area("Message 3", value=_wi["touch_3_message"], height=100,
-                                     key="wi_msg3", label_visibility="collapsed")
-
-                    if _wi.get("strategy_note"):
-                        st.info(_wi["strategy_note"])
-
-                    _wi_dos = _wi.get("dos", [])
-                    _wi_donts = _wi.get("donts", [])
-                    if _wi_dos or _wi_donts:
-                        _wi_dc1, _wi_dc2 = st.columns(2)
-                        with _wi_dc1:
-                            for _d in _wi_dos[:3]:
-                                st.markdown(f'<span style="color:#057642;font-size:11px">{check_icon(11)} {_d}</span>', unsafe_allow_html=True)
-                        with _wi_dc2:
-                            for _d in _wi_donts[:3]:
-                                st.markdown(f'<span style="color:#B71C1C;font-size:11px">{x_icon(11)} {_d}</span>', unsafe_allow_html=True)
-
-        with _mp_col2:
-            with st.expander(
-                "Hiring Window Intelligence — Company Timing Analysis",
-                expanded=False,
-            ):
-                st.markdown(
-                    '<div style="font-size:11px;color:rgba(0,0,0,0.5);margin-bottom:10px;line-height:1.6">'
-                    'Timing is the most underrated hiring variable. A strong application to a company with '
-                    'a hiring freeze gets the same result as a weak one. This tells you <em>when</em> to apply — '
-                    'not just where.'
-                    '</div>',
-                    unsafe_allow_html=True,
-                )
-                _hw_company = st.text_input(
-                    "Target company", key="hw_company",
-                    placeholder="e.g. Stripe, Notion, Linear",
-                )
-                _hw_role = st.text_input(
-                    "Target role", key="hw_role",
-                    placeholder=str(target) if target else "e.g. Product Manager",
-                    value=str(target) if target else "",
-                )
-                if st.button("Analyse Hiring Window", key="hw_run", type="primary", use_container_width=True):
-                    if _hw_company:
-                        with st.spinner(f"Analysing {_hw_company} hiring signals…"):
-                            st.session_state.hiring_window_result = analyze_hiring_window(
-                                _qa_key or "",
-                                company_name=_hw_company,
-                                target_role=_hw_role or str(target),
-                                cv_profile=st.session_state.get("cv_profile") or {},
-                            )
-                            st.session_state.hiring_window_company = _hw_company
-                    else:
-                        st.warning("Enter a company name first.")
-
-                _hw = st.session_state.get("hiring_window_result")
-                if _hw and st.session_state.get("hiring_window_company"):
-                    _hw_score = _hw.get("timing_score", 50)
-                    _hw_color = timing_score_color(_hw_score)
-                    _hw_label = timing_score_label(_hw_score)
-
-                    st.markdown(
-                        f'<div style="background:#F3F6F9;border-radius:10px;padding:14px 16px;margin-top:8px">'
-                        f'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">'
-                        f'<div>'
-                        f'<div style="font-size:14px;font-weight:800;color:rgba(0,0,0,0.88)">'
-                        f'{st.session_state.hiring_window_company}</div>'
-                        f'<div style="font-size:11px;color:rgba(0,0,0,0.5);margin-top:1px">{_hw_label}</div>'
-                        f'</div>'
-                        f'<div style="text-align:right">'
-                        f'<div style="font-size:30px;font-weight:900;color:{_hw_color};line-height:1">{_hw_score}</div>'
-                        f'<div style="font-size:10px;color:rgba(0,0,0,0.4)">/ 100 timing score</div>'
-                        f'</div>'
-                        f'</div>'
-                        f'<div style="font-size:12px;color:rgba(0,0,0,0.7);font-style:italic;margin-bottom:10px">'
-                        f'"{_hw.get("window_verdict","")}"'
-                        f'</div>',
-                        unsafe_allow_html=True,
-                    )
-
-                    # Signals
-                    _hw_sigs = _hw.get("signals") or []
-                    if _hw_sigs:
-                        st.markdown(
-                            '<div style="font-size:10px;font-weight:800;letter-spacing:0.06em;'
-                            'text-transform:uppercase;color:rgba(0,0,0,0.38);margin-bottom:6px">Signals detected</div>',
-                            unsafe_allow_html=True,
-                        )
-                        for _sig in _hw_sigs[:4]:
-                            _sig_meta = _sig.get("meta", {})
-                            _sig_dir = _sig.get("direction", "neutral")
-                            _sig_col = "#057642" if _sig_dir == "positive" else ("#B71C1C" if _sig_dir == "negative" else "#5F6B7A")
-                            _sig_icon_name = _sig_meta.get("icon", "info")
-                            st.markdown(
-                                f'<div style="display:flex;gap:8px;align-items:flex-start;'
-                                f'padding:5px 0;border-bottom:1px solid rgba(0,0,0,0.05)">'
-                                f'<div style="flex-shrink:0;margin-top:1px">{icon(_sig_icon_name, 12, _sig_col)}</div>'
-                                f'<div style="flex:1">'
-                                f'<div style="font-size:10px;font-weight:700;color:{_sig_col}">'
-                                f'{_sig_meta.get("label","")}</div>'
-                                f'<div style="font-size:11px;color:rgba(0,0,0,0.65)">{_sig.get("description","")}</div>'
-                                f'</div></div>',
-                                unsafe_allow_html=True,
-                            )
-
-                    st.markdown(
-                        f'<div style="margin-top:10px;font-size:11px;color:rgba(0,0,0,0.7);line-height:1.6">'
-                        f'<strong>How to approach:</strong> {_hw.get("strategic_approach","")}</div>',
-                        unsafe_allow_html=True,
-                    )
-
-                    _hw_pts = _hw.get("talking_points") or []
-                    if _hw_pts:
-                        st.markdown(
-                            '<div style="margin-top:8px;font-size:10px;font-weight:800;letter-spacing:0.06em;'
-                            'text-transform:uppercase;color:rgba(0,0,0,0.38)">Mention in outreach</div>',
-                            unsafe_allow_html=True,
-                        )
-                        for _pt in _hw_pts:
-                            st.markdown(
-                                f'<div style="font-size:11px;color:#0A66C2;padding:2px 0">'
-                                f'{check_icon(11)} {_pt}</div>',
-                                unsafe_allow_html=True,
-                            )
-
-                    if _hw.get("avoid"):
-                        st.markdown(
-                            f'<div style="margin-top:8px;background:#FFF0E5;border-radius:6px;padding:7px 10px;'
-                            f'font-size:11px;color:#A05A00">'
-                            f'{warn_icon(11)} <strong>Avoid:</strong> {_hw["avoid"]}</div>',
-                            unsafe_allow_html=True,
-                        )
-
-                    conf_badge = {"high": "High", "medium": "Medium", "low": "Low"}.get(
-                        _hw.get("data_confidence","medium"), "Medium"
-                    )
-                    st.caption(f"Data confidence: {conf_badge} · Best channel: {_hw.get('best_channel','').replace('_',' ')}")
-                    st.markdown('</div>', unsafe_allow_html=True)
-
-            # ── LinkedIn Connections CSV → Smart Warm Intro Engine ────────────────
-            # Upgrades warm intro from "type a name" to "upload your 2000 connections
-            # and let the system find every match at every target company."
-            _csv_n_conns = len(st.session_state.get("csv_connections") or [])
-            _csv_n_matches = len(st.session_state.get("csv_warm_intros") or [])
-            with st.expander(
-                "LinkedIn Network Engine"
-                + (f' — {_csv_n_conns} connections · {_csv_n_matches} matches found' if _csv_n_conns else " — Upload your connections CSV"),
-                expanded=False,
-            ):
-                st.markdown(
-                    '<div style="background:#F0FAF4;border-radius:8px;padding:12px 16px;margin-bottom:12px">'
-                    '<div style="font-size:12px;font-weight:800;color:#057642;margin-bottom:4px">'
-                    'Cold applications: 2-3% response rate &nbsp;|&nbsp; '
-                    'Warm intro via network: 35-50% response rate</div>'
-                    '<div style="font-size:11px;color:rgba(0,0,0,0.65);line-height:1.5">'
-                    'Upload your LinkedIn connections export and the system automatically finds '
-                    'everyone at your target companies, ranks them by seniority + PM-adjacency, '
-                    'and generates personalised DMs for the top matches — in parallel.'
-                    '<br><span style="font-size:10px;opacity:0.7">LinkedIn → Settings → Data Privacy → Get a copy of your data → Connections.csv</span>'
-                    '</div></div>',
-                    unsafe_allow_html=True,
-                )
-
-                _csv_file = st.file_uploader(
-                    "Upload LinkedIn Connections CSV", type=["csv"],
-                    key="csv_upload", label_visibility="collapsed",
-                    help="Download from LinkedIn: Settings → Data Privacy → Get a copy of your data → Connections",
-                )
-                if _csv_file:
-                    _csv_text = _csv_file.read().decode("utf-8", errors="replace")
-                    _parsed = parse_connections_csv(_csv_text)
-                    if _parsed:
-                        st.session_state.csv_connections = _parsed
-                        st.success(f"Parsed {len(_parsed)} connections.")
-                    else:
-                        st.warning("Could not parse CSV — check the file format.")
-
-                _csv_conns = st.session_state.get("csv_connections") or []
-
-                if _csv_conns:
-                    # Target companies from pivot_dna + manual override
-                    _csv_dna_companies = (st.session_state.get("pivot_dna") or {}).get("target_companies", [])
-                    _csv_tgt_default = ", ".join(_csv_dna_companies[:5]) if _csv_dna_companies else ""
-                    _csv_companies_input = st.text_input(
-                        "Target companies (comma-separated)",
-                        value=_csv_tgt_default,
-                        key="csv_companies",
-                        placeholder="e.g. Stripe, N26, Personio, Zalando, Contentful",
-                    )
-                    _csv_tgt_list = [c.strip() for c in _csv_companies_input.split(",") if c.strip()] if _csv_companies_input else []
-
-                    if _csv_tgt_list:
-                        _csv_matches = find_warm_intros(_csv_conns, _csv_tgt_list, max_per_company=3)
-                        st.session_state.csv_warm_intros = _csv_matches
-
-                        if _csv_matches:
-                            st.markdown(
-                                f'<div style="font-size:11px;font-weight:700;color:#057642;margin-bottom:8px">'
-                                f'Found {len(_csv_matches)} warm intro opportunities across {len(_csv_tgt_list)} target companies.</div>',
-                                unsafe_allow_html=True,
-                            )
-
-                            # Show ranked matches
-                            for _cm in _csv_matches[:8]:
-                                _cm_sc = csv_seniority_color(_cm.get("seniority_score", 2))
+                    _ch = st.session_state.cohort_intelligence
+                    if _ch:
+                        # Key metrics row
+                        _ch_c1, _ch_c2, _ch_c3 = st.columns(3, gap="small")
+                        for _chcol, _chval, _chlabel, _chcolor in [
+                            (_ch_c1, f"{_ch.get('median_timeline_weeks','?')}w", "Median Timeline", "#0A66C2"),
+                            (_ch_c2, str(_ch.get("median_applications","?")), "Median Apps", "#7A2A8A"),
+                            (_ch_c3, f"{_ch.get('warm_intro_rate','?')}%", "Via Warm Intro", "#057642"),
+                        ]:
+                            with _chcol:
                                 st.markdown(
-                                    f'<div style="display:flex;align-items:center;gap:10px;padding:6px 8px;'
-                                    f'background:#F8FAFF;border-radius:6px;margin-bottom:4px">'
-                                    f'<div style="width:8px;height:8px;border-radius:50%;background:{_cm_sc};flex-shrink:0"></div>'
-                                    f'<div style="flex:1">'
-                                    f'<div style="font-size:12px;font-weight:700;color:rgba(0,0,0,0.88)">'
-                                    f'{_cm.get("full_name","?")}</div>'
-                                    f'<div style="font-size:10px;color:rgba(0,0,0,0.5)">'
-                                    f'{_cm.get("position","")} · {_cm.get("company","")}</div>'
-                                    f'</div>'
-                                    f'<div style="font-size:9px;font-weight:700;padding:2px 8px;border-radius:10px;'
-                                    f'background:{_cm_sc}20;color:{_cm_sc}">'
-                                    f'{csv_seniority_label(_cm.get("seniority_score",2))}</div>'
-                                    f'<div style="font-size:10px;font-weight:700;color:#0A66C2">'
-                                    f'→ {_cm.get("target_company","")}</div>'
+                                    f'<div style="background:#F3F6F9;border-radius:6px;padding:8px;text-align:center">'
+                                    f'<div style="font-size:20px;font-weight:900;color:{_chcolor}">{_chval}</div>'
+                                    f'<div style="font-size:10px;color:rgba(0,0,0,0.5);font-weight:700">{_chlabel}</div>'
                                     f'</div>',
                                     unsafe_allow_html=True,
                                 )
 
-                            # Generate DMs
-                            if st.button(
-                                f"Generate {min(6, len(_csv_matches))} personalised DMs (parallel)",
-                                key="csv_dm_run", type="primary", use_container_width=True,
-                            ):
-                                if not (_qa_key or st.session_state.get("openai_key","")):
-                                    st.warning("Add your OpenAI API key to generate personalised DMs.")
-                                else:
-                                    with st.spinner(f"Generating {min(6, len(_csv_matches))} DMs in parallel…"):
-                                        _dm_key = _qa_key or st.session_state.get("openai_key","")
-                                        _csv_dms = bulk_draft_dms(
-                                            _dm_key,
-                                            _csv_matches,
-                                            target_role=str(target),
-                                            pivot_dna=st.session_state.get("pivot_dna"),
-                                            cv_profile=st.session_state.get("cv_profile"),
-                                            max_n=6,
-                                        )
-                                        st.session_state.csv_dms = _csv_dms
+                        if _ch.get("most_common_entry_companies"):
+                            st.markdown("**Where this pivot typically lands:**")
+                            for _cc in _ch["most_common_entry_companies"][:3]:
+                                st.markdown(f"→ {_cc}")
 
-                            # Display DMs
-                            _all_dms = st.session_state.get("csv_dms") or {}
-                            if _all_dms:
-                                st.markdown(
-                                    '<div style="font-size:10px;font-weight:800;letter-spacing:0.08em;'
-                                    'text-transform:uppercase;color:rgba(0,0,0,0.38);margin-top:12px;margin-bottom:8px">'
-                                    'Generated DMs — copy-paste ready</div>',
-                                    unsafe_allow_html=True,
-                                )
-                                for _match in _csv_matches[:6]:
-                                    _dm_key_str = f"{_match.get('full_name','')}_{_match.get('company','')}"
-                                    _dm_data = _all_dms.get(_dm_key_str)
-                                    if _dm_data:
-                                        with st.expander(
-                                            f"{_match.get('full_name','?')} @ {_match.get('company','')} "
-                                            f"· {csv_seniority_label(_match.get('seniority_score',2))}",
-                                            expanded=False,
-                                        ):
-                                            st.markdown(
-                                                f'<div style="font-size:11px;font-weight:700;color:#0A66C2;'
-                                                f'margin-bottom:8px;font-style:italic">'
-                                                f'"{_dm_data.get("subject_line","")}"</div>',
-                                                unsafe_allow_html=True,
-                                            )
-                                            st.text_area(
-                                                "DM", value=_dm_data.get("message", ""),
-                                                height=120, key=f"csv_dm_{_dm_key_str}",
-                                                label_visibility="collapsed",
-                                            )
-                                            if _dm_data.get("follow_up"):
-                                                st.caption(f"Follow-up (1 week later): {_dm_data['follow_up']}")
-                        else:
-                            st.info(f"No matches found between your {len(_csv_conns)} connections and the {len(_csv_tgt_list)} target companies. Try adding more target companies or expanding the list.")
-                    else:
-                        st.info("Enter target companies above to find matches in your network.")
+                        if _ch.get("what_worked"):
+                            st.markdown("**What worked for successful pivoters:**")
+                            for _cw in _ch["what_worked"][:3]:
+                                st.markdown(f'<span style="color:#057642;font-size:12px">{check_icon(12)} {_cw}</span>', unsafe_allow_html=True)
 
-                    st.caption(
-                        f"Architecture: pure Python fuzzy matching → seniority + PM-adjacency scoring "
-                        f"→ gpt-4o-mini (temp=0.6) DM generation via ThreadPoolExecutor (parallel). "
-                        f"No API needed for matching — only for DM generation."
-                    )
+                        if _ch.get("what_failed"):
+                            st.markdown("**Common failure patterns:**")
+                            for _cf in _ch["what_failed"][:3]:
+                                st.markdown(f'<span style="color:#B71C1C;font-size:12px">{x_icon(12)} {_cf}</span>', unsafe_allow_html=True)
 
-            # ── Occupation Space Navigator ─────────────────────────────────────────
-            # 894 O*NET occupations embedded in UMAP skill-space.
-            # Shows where you are, where you're going, and what bridge roles exist.
-            # Cluster names are LLM-evaluated with a Generate→Evaluate→Refine loop
-            # — the antidote to the #1 mistake: shipping zero-shot output without
-            # checking if the model actually did what you needed.
-            with st.expander(
-                "Occupation Space — Where does your pivot sit in the skill universe?",
-                expanded=False,
-            ):
-                st.markdown(
-                    '<div style="background:#F5F0FF;border-radius:8px;padding:14px 16px;margin-bottom:12px">'
-                    '<div style="font-size:11px;color:#4C1D95;font-weight:600;margin-bottom:4px">'
-                    '894 real O*NET occupations · UMAP skill-vector layout · LLM-evaluated cluster names</div>'
-                    '<div style="font-size:11px;color:rgba(0,0,0,0.65);line-height:1.5">'
-                    'Each dot is a real occupation. Proximity = similar skill profile. '
-                    'Pick your current and target occupation to see the pivot distance, '
-                    'bridge roles, and your exact position in the skill universe.'
-                    '</div></div>',
-                    unsafe_allow_html=True,
-                )
+                        if _ch.get("biggest_misconception"):
+                            st.info(f"**Biggest misconception:** {_ch['biggest_misconception']}")
 
-                # ── Step 1: Load / evaluate cluster names ─────────────────────────
-                _cn = st.session_state.get("cluster_names")
-                _oai_key = st.session_state.get("openai_key","")
-
-                _cn_col1, _cn_col2 = st.columns([3,1])
-                with _cn_col1:
-                    if _cn:
-                        _cn_status_parts = []
-                        for _cid, _cd in sorted(_cn.items()):
-                            _refined_badge = " ✓refined" if _cd.get("refined") else ""
-                            _eval_s = _cd.get("eval_score", 0)
-                            _eval_disp = f" (eval {_eval_s}/10)" if _eval_s > 0 else " (fallback)"
-                            _cn_status_parts.append(f'**{_cd["name"]}**{_refined_badge}{_eval_disp}')
-                        st.markdown(
-                            '<div style="font-size:10px;font-weight:800;letter-spacing:0.06em;'
-                            'text-transform:uppercase;color:rgba(0,0,0,0.38);margin-bottom:4px">'
-                            'Cluster names (LLM-evaluated)</div>',
-                            unsafe_allow_html=True,
-                        )
-                        for _cn_p in _cn_status_parts:
-                            st.markdown(f'<div style="font-size:11px;color:rgba(0,0,0,0.7)">{_cn_p}</div>', unsafe_allow_html=True)
-                    else:
-                        st.markdown(
-                            '<div style="font-size:11px;color:rgba(0,0,0,0.5);font-style:italic">'
-                            'Cluster names not yet evaluated. Click Evaluate to name clusters with GPT + self-evaluation loop.</div>',
-                            unsafe_allow_html=True,
-                        )
-                with _cn_col2:
-                    if st.button(
-                        "Evaluate Clusters" if not _cn else "Re-evaluate",
-                        key="btn_eval_clusters",
-                        type="primary" if not _cn else "secondary",
-                        use_container_width=True,
-                    ):
-                        if not _oai_key:
-                            st.warning("Add your OpenAI key in the sidebar first.")
-                        else:
-                            with st.spinner("Running Generate → Evaluate → Refine loop…"):
-                                try:
-                                    import json as _json
-                                    _ct = _json.load(open("artifacts/cluster_themes.json"))
-                                    _cl = _json.load(open("artifacts/clusters.json"))
-                                    _evaluated = evaluate_all_clusters(_oai_key, _ct, _cl)
-                                    st.session_state.cluster_names = _evaluated
-                                    _cn = _evaluated
-                                    _refined_count = sum(1 for v in _evaluated.values() if v.get("refined"))
-                                    st.success(f"Clusters named. {_refined_count} refined after self-evaluation.")
-                                except Exception as _e:
-                                    st.error(f"Evaluation failed: {_e}")
-
-                # Show cluster cards if evaluated
-                if _cn:
-                    _card_cols = st.columns(len(_cn))
-                    for _ci, (_cid, _cd) in enumerate(sorted(_cn.items())):
-                        _cluster_colors = {"0":"#4F8EF7","1":"#F7A84F","2":"#4FD196","3":"#B96FF7"}
-                        _cc = _cluster_colors.get(_cid, "#888")
-                        with _card_cols[_ci]:
-                            _reach = _cd.get("pivot_reachability", 3)
-                            _reach_stars = "★" * _reach + "☆" * (5 - _reach)
+                        if _ch.get("fastest_path"):
                             st.markdown(
-                                f'<div style="background:{_cc}18;border:1.5px solid {_cc}40;border-radius:8px;'
-                                f'padding:10px 11px;height:100%">'
-                                f'<div style="font-size:10px;font-weight:800;color:{_cc};letter-spacing:0.06em;'
-                                f'text-transform:uppercase;margin-bottom:3px">Cluster {_cid}</div>'
-                                f'<div style="font-size:12px;font-weight:700;color:#0A0A0A;margin-bottom:4px">{_cd["name"]}</div>'
-                                f'<div style="font-size:10px;color:rgba(0,0,0,0.6);line-height:1.4;margin-bottom:6px">{_cd.get("tagline","")[:90]}</div>'
-                                f'<div style="font-size:10px;color:{_cc};font-weight:600">{_reach_stars} pivot-friendliness</div>'
-                                f'</div>',
+                                f'<div style="background:#EEF3FB;border-left:3px solid #0A66C2;'
+                                f'border-radius:0 6px 6px 0;padding:8px 12px;font-size:12px;margin-top:6px">'
+                                f'<strong>Fastest path:</strong> {_ch["fastest_path"]}</div>',
                                 unsafe_allow_html=True,
                             )
 
-                st.markdown('<div style="height:14px"></div>', unsafe_allow_html=True)
-                st.divider()
+                        if _ch.get("your_week_estimate"):
+                            st.caption(f"Your timeline estimate: {_ch['your_week_estimate']} · Confidence: {_ch.get('confidence','?')}")
 
-                # ── Step 2: Pivot path computation ────────────────────────────────
+            with _momentum_col:
+                with st.expander("Momentum Engine — Your search streak", expanded=False):
+                    # Track daily activity
+                    from datetime import date as _date_cls
+                    _today_str = str(_date_cls.today())
+                    _last_day = st.session_state.momentum_last_date
+                    _streak = st.session_state.momentum_streak_days
+
+                    _pl_jobs_now = st.session_state.pipeline_jobs or []
+                    _activity_today = bool(
+                        st.session_state.get("_momentum_activity_today", False) or
+                        (st.session_state.qa_package and _today_str == st.session_state.get("_last_apply_date",""))
+                    )
+
+                    # Streak logic
+                    if _last_day == _today_str:
+                        pass  # already counted today
+                    elif _activity_today:
+                        _streak += 1
+                        st.session_state.momentum_streak_days = _streak
+                        st.session_state.momentum_last_date = _today_str
+
+                    # Streak display
+                    _streak_col = "#117A37" if _streak >= 7 else ("#A05A00" if _streak >= 3 else "#0A66C2")
+                    _streak_label = "On Fire" if _streak >= 14 else ("Strong" if _streak >= 7 else ("Building ↗" if _streak >= 3 else "Just Started"))
+                    st.markdown(
+                        f'<div style="text-align:center;padding:10px 0">'
+                        f'<div style="font-size:42px;font-weight:900;color:{_streak_col}">{_streak}</div>'
+                        f'<div style="font-size:13px;font-weight:800;color:{_streak_col}">{_streak_label}</div>'
+                        f'<div style="font-size:10px;color:rgba(0,0,0,0.45);margin-top:3px">day streak</div>'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
+
+                    # Weekly stats
+                    _total_apps = len(_pl_jobs_now)
+                    _this_week_apps = sum(
+                        1 for j in _pl_jobs_now
+                        if j.get("date_added", "") >= str(_date_cls.today()).rsplit("-", 1)[0] + "-"
+                    )
+
+                    _mom_c1, _mom_c2 = st.columns(2, gap="small")
+                    with _mom_c1:
+                        st.metric("Total apps", _total_apps)
+                    with _mom_c2:
+                        _offers = len([j for j in _pl_jobs_now if j.get("status") == "offer"])
+                        st.metric("Offers", _offers)
+
+                    # Cohort progress bar (if cohort data exists)
+                    _ch_data = st.session_state.cohort_intelligence
+                    if _ch_data and _ch_data.get("median_applications"):
+                        _pct_to_median = min(100, int(_total_apps / max(1, _ch_data["median_applications"]) * 100))
+                        st.markdown(
+                            f'<div style="font-size:10px;color:rgba(0,0,0,0.5);margin:6px 0 3px 0">'
+                            f'vs. cohort median ({_ch_data["median_applications"]} apps)</div>'
+                            f'<div style="background:rgba(0,0,0,0.07);height:5px;border-radius:3px">'
+                            f'<div style="background:#0A66C2;height:5px;width:{_pct_to_median}%;border-radius:3px"></div>'
+                            f'</div><div style="font-size:10px;color:#0A66C2;margin-top:2px">{_pct_to_median}% of way there</div>',
+                            unsafe_allow_html=True,
+                        )
+
+                    # Log activity button
+                    if st.button("Log today's activity", key="log_activity", use_container_width=True):
+                        st.session_state.momentum_streak_days = _streak + (0 if _last_day == _today_str else 1)
+                        st.session_state.momentum_last_date = _today_str
+                        st.session_state["_momentum_activity_today"] = True
+                        st.rerun()
+
+        with st.expander("Per-JD Offer Predictor", expanded=False):
+            # ════════════════════════════════════════════════════════════════════════
+            # PER-JD OFFER PREDICTOR — "Should I apply to THIS job?"
+            # ════════════════════════════════════════════════════════════════════════
+            with st.expander(
+                "Per-JD Offer Predictor — Paste a job description for instant Go/No-Go",
+                expanded=False,
+            ):
                 st.markdown(
-                    '<div style="font-size:11px;font-weight:800;letter-spacing:0.06em;'
-                    'text-transform:uppercase;color:rgba(0,0,0,0.38);margin-bottom:8px">'
-                    'Compute your pivot path</div>',
+                    '<div style="font-size:11px;color:rgba(0,0,0,0.55);line-height:1.6;margin-bottom:10px">'
+                    'Not keyword matching. An actual outcome prediction: <strong>P(offer | this JD, your profile)</strong>. '
+                    'Includes ATS risk, missing keywords you must add to your CV, and whether the pivot '
+                    'narrative will hold up for this specific company.'
+                    '</div>',
                     unsafe_allow_html=True,
                 )
 
-                _all_occs = get_all_occupations()
-                _pp_col1, _pp_col2 = st.columns(2)
+                _jd_text_input = st.text_area(
+                    "Paste job description",
+                    value=st.session_state.get("jd_analysis_text", ""),
+                    height=160,
+                    placeholder="Paste the full job description here...",
+                    key="jd_predictor_input",
+                    label_visibility="collapsed",
+                )
 
-                # Pre-select from session state if available
-                _pp_cur_default = 0
-                _pp_tgt_default = 1
-                _pp_cur_sess = st.session_state.get("pivot_path_current","")
-                _pp_tgt_sess = st.session_state.get("pivot_path_target","")
-                if _pp_cur_sess and _pp_cur_sess in _all_occs:
-                    _pp_cur_default = _all_occs.index(_pp_cur_sess)
-                elif st.session_state.get("onet_match"):
-                    _cur_onet = st.session_state.onet_match.get("occupation_title","")
-                    if _cur_onet in _all_occs:
-                        _pp_tgt_default = _all_occs.index(_cur_onet)
-                if _pp_tgt_sess and _pp_tgt_sess in _all_occs:
-                    _pp_tgt_default = _all_occs.index(_pp_tgt_sess)
+                _jd_run_col, _jd_clear_col = st.columns([3, 1])
+                with _jd_run_col:
+                    _jd_can_run = bool(_jd_text_input.strip() and st.session_state.get("cv_profile"))
+                    if st.button(
+                        "Analyse JD — Get Go/No-Go",
+                        key="btn_jd_predict",
+                        type="primary",
+                        disabled=not _jd_can_run,
+                        use_container_width=True,
+                    ):
+                        if not _qa_key:
+                            st.warning("Add your OpenAI key to run this analysis.")
+                        else:
+                            with st.spinner("Extracting requirements · Matching profile · Predicting outcome…"):
+                                _jd_result = analyze_jd(
+                                    _qa_key,
+                                    jd_text=_jd_text_input,
+                                    cv_profile=st.session_state.get("cv_profile", {}),
+                                    pivot_dna=st.session_state.get("pivot_dna", {}),
+                                    skill_gap_results=st.session_state.get("skill_gap_results", {}),
+                                    calibration_data=st.session_state.get("calibration_data"),
+                                )
+                                st.session_state.jd_analysis_result = _jd_result
+                                st.session_state.jd_analysis_text   = _jd_text_input
+                                # Log prediction to Brier calibration engine
+                                if _jd_result:
+                                    import hashlib as _hl
+                                    _jd_pid = _hl.md5((_jd_text_input[:200]).encode()).hexdigest()[:12]
+                                    brier_log_prediction(
+                                        _SQLITE_DB_PATH,
+                                        prediction_id=_jd_pid,
+                                        company=_jd_result.get("company", "Unknown"),
+                                        job_title=_jd_result.get("job_title", "Unknown"),
+                                        predicted_prob=float(_jd_result.get("offer_probability", 0) or 0),
+                                        fit_score=float(_jd_result.get("fit_score", 0) or 0),
+                                        go_no_go=_jd_result.get("go_no_go", ""),
+                                    )
+                with _jd_clear_col:
+                    if st.button("Clear", key="btn_jd_clear", use_container_width=True):
+                        st.session_state.jd_analysis_result = None
+                        st.session_state.jd_analysis_text   = ""
+                        st.rerun()
 
-                with _pp_col1:
-                    _pp_current = st.selectbox(
-                        "Your current occupation",
-                        options=_all_occs,
-                        index=_pp_cur_default,
-                        key="pp_current_select",
-                    )
-                with _pp_col2:
-                    _pp_target = st.selectbox(
-                        "Your target occupation",
-                        options=_all_occs,
-                        index=_pp_tgt_default,
-                        key="pp_target_select",
-                    )
+                if not _jd_can_run and not st.session_state.get("jd_analysis_result"):
+                    st.caption("Upload your CV first to enable prediction.")
 
-                if st.button("Compute Pivot Path", key="btn_pivot_path", type="primary", use_container_width=True):
-                    with st.spinner("Navigating occupation space…"):
-                        _pp_result = compute_pivot_path(
-                            _pp_current, _pp_target,
-                            cluster_names=st.session_state.get("cluster_names"),
-                        )
-                        st.session_state.pivot_path_result = _pp_result
-                        st.session_state.pivot_path_current = _pp_current
-                        st.session_state.pivot_path_target  = _pp_target
+                _jda = st.session_state.get("jd_analysis_result")
+                if _jda:
+                    _jda_verdict  = _jda.get("go_no_go", "borderline")
+                    _jda_vcol     = go_no_go_color(_jda_verdict)
+                    _jda_vlabel   = go_no_go_label(_jda_verdict)
+                    _jda_prob     = int(_jda.get("offer_probability", 0))
+                    _jda_prob_col = offer_prob_color(_jda_prob)
+                    _jda_fit      = int(_jda.get("fit_score", 0))
+                    _jda_ats      = _jda.get("ats_risk", "medium")
+                    _jda_ats_col  = {"low":"#057642","medium":"#D97706","high":"#DC2626"}.get(_jda_ats,"#555")
+                    _jda_cred     = _jda.get("pivot_credibility","moderate")
+                    _jda_cred_col = {"strong":"#057642","moderate":"#D97706","weak":"#DC2626"}.get(_jda_cred,"#555")
 
-                # ── Pivot path results ─────────────────────────────────────────────
-                _pp = st.session_state.get("pivot_path_result")
-                if _pp and _pp.get("current_found") and _pp.get("target_found"):
-                    _pd  = _pp.get("pivot_distance", 0)
-                    _pgr = _pp.get("pivot_distance_grade","?")
-                    _plb = _pp.get("pivot_distance_label","")
-                    _pgr_color = {"A":"#057642","B":"#2563EB","C":"#D97706","D":"#DC2626","F":"#7C2D12"}.get(_pgr,"#555")
-
-                    # Distance banner
+                    # ── Main verdict banner ──────────────────────────────────────────
                     st.markdown(
-                        f'<div style="background:{_pgr_color}12;border:1.5px solid {_pgr_color}40;'
-                        f'border-radius:8px;padding:12px 16px;display:flex;align-items:center;gap:16px;margin-top:8px">'
-                        f'<div style="font-size:36px;font-weight:900;color:{_pgr_color};line-height:1">{_pgr}</div>'
-                        f'<div>'
-                        f'<div style="font-size:14px;font-weight:700;color:#0A0A0A">{_plb}</div>'
-                        f'<div style="font-size:11px;color:rgba(0,0,0,0.55);margin-top:2px">'
-                        f'Cosine distance: {_pd:.2f} · Cluster journey: {_pp.get("cluster_journey","")}'
+                        f'<div style="background:{_jda_vcol}10;border:2px solid {_jda_vcol};'
+                        f'border-radius:10px;padding:14px 18px;margin-top:8px;display:flex;align-items:center;gap:18px">'
+                        f'<div style="text-align:center;min-width:70px">'
+                        f'<div style="font-size:36px;font-weight:900;color:{_jda_prob_col};line-height:1">{_jda_prob}%</div>'
+                        f'<div style="font-size:9px;font-weight:800;color:rgba(0,0,0,0.4);letter-spacing:0.06em;'
+                        f'text-transform:uppercase">Offer prob.</div>'
+                        f'</div>'
+                        f'<div style="flex:1">'
+                        f'<div style="font-size:14px;font-weight:800;color:{_jda_vcol}">{_jda_vlabel}</div>'
+                        f'<div style="font-size:11px;color:rgba(0,0,0,0.6);margin-top:3px">'
+                        f'{_jda.get("go_no_go_reason","")}</div>'
+                        f'<div style="display:flex;gap:12px;margin-top:8px">'
+                        f'<span style="font-size:10px;background:{_jda_vcol}20;color:{_jda_vcol};'
+                        f'padding:2px 8px;border-radius:4px;font-weight:700">Fit {_jda_fit}/100</span>'
+                        f'<span style="font-size:10px;background:{_jda_ats_col}20;color:{_jda_ats_col};'
+                        f'padding:2px 8px;border-radius:4px;font-weight:700">ATS risk: {_jda_ats.upper()}</span>'
+                        f'<span style="font-size:10px;background:{_jda_cred_col}20;color:{_jda_cred_col};'
+                        f'padding:2px 8px;border-radius:4px;font-weight:700">Pivot cred: {_jda_cred.upper()}</span>'
                         f'</div></div></div>',
                         unsafe_allow_html=True,
                     )
 
-                    # Skills 3-column breakdown
-                    _sk_c1, _sk_c2, _sk_c3 = st.columns(3)
-                    with _sk_c1:
-                        st.markdown(
-                            '<div style="margin-top:10px;font-size:10px;font-weight:800;letter-spacing:0.06em;'
-                            'text-transform:uppercase;color:#057642">You already have</div>',
-                            unsafe_allow_html=True,
-                        )
-                        for _sk in _pp.get("shared_skills",[])[:6]:
+                    # ── 3-column breakdown ───────────────────────────────────────────
+                    _jda_c1, _jda_c2, _jda_c3 = st.columns(3)
+
+                    with _jda_c1:
+                        st.markdown('<div style="font-size:10px;font-weight:800;letter-spacing:0.06em;text-transform:uppercase;color:#057642;margin-top:10px">Skills you have</div>', unsafe_allow_html=True)
+                        for _sk in (_jda.get("required_skills_found") or [])[:6]:
                             st.markdown(f'<div style="font-size:11px;color:rgba(0,0,0,0.7);padding:1px 0">{check_icon(11)} {_sk}</div>', unsafe_allow_html=True)
-                    with _sk_c2:
-                        st.markdown(
-                            '<div style="margin-top:10px;font-size:10px;font-weight:800;letter-spacing:0.06em;'
-                            'text-transform:uppercase;color:#DC2626">Gaps to bridge</div>',
-                            unsafe_allow_html=True,
-                        )
-                        for _sk in _pp.get("missing_skills",[])[:6]:
+
+                    with _jda_c2:
+                        st.markdown('<div style="font-size:10px;font-weight:800;letter-spacing:0.06em;text-transform:uppercase;color:#DC2626;margin-top:10px">Skills missing</div>', unsafe_allow_html=True)
+                        for _sk in (_jda.get("required_skills_missing") or [])[:6]:
                             st.markdown(f'<div style="font-size:11px;color:rgba(0,0,0,0.7);padding:1px 0">{warn_icon(11)} {_sk}</div>', unsafe_allow_html=True)
-                    with _sk_c3:
+
+                    with _jda_c3:
+                        _ats_absent = _jda.get("ats_keywords_absent") or []
+                        if _ats_absent:
+                            st.markdown('<div style="font-size:10px;font-weight:800;letter-spacing:0.06em;text-transform:uppercase;color:#D97706;margin-top:10px">Add to CV NOW (ATS)</div>', unsafe_allow_html=True)
+                            for _kw in _ats_absent[:6]:
+                                st.markdown(f'<div style="font-size:11px;font-weight:600;color:#A05A00;padding:1px 0">{icon("alert-triangle",10,"#D97706")} {_kw}</div>', unsafe_allow_html=True)
+
+                    # ── Strengths + Risks ────────────────────────────────────────────
+                    _str_col, _risk_col = st.columns(2)
+                    with _str_col:
+                        if _jda.get("top_strengths"):
+                            st.markdown('<div style="margin-top:8px;font-size:10px;font-weight:800;letter-spacing:0.06em;text-transform:uppercase;color:rgba(0,0,0,0.35)">Why this could work</div>', unsafe_allow_html=True)
+                            for _s in _jda["top_strengths"][:3]:
+                                st.markdown(f'<div style="font-size:11px;color:rgba(0,0,0,0.7);line-height:1.4;padding:2px 0">{check_icon(10)} {_s}</div>', unsafe_allow_html=True)
+                    with _risk_col:
+                        if _jda.get("top_risks"):
+                            st.markdown('<div style="margin-top:8px;font-size:10px;font-weight:800;letter-spacing:0.06em;text-transform:uppercase;color:rgba(0,0,0,0.35)">Likely rejection reasons</div>', unsafe_allow_html=True)
+                            for _r in _jda["top_risks"][:3]:
+                                st.markdown(f'<div style="font-size:11px;color:rgba(0,0,0,0.7);line-height:1.4;padding:2px 0">{warn_icon(10)} {_r}</div>', unsafe_allow_html=True)
+
+                    if _jda.get("pivot_credibility_reason"):
                         st.markdown(
-                            '<div style="margin-top:10px;font-size:10px;font-weight:800;letter-spacing:0.06em;'
-                            'text-transform:uppercase;color:#7C3AED">Bridge roles</div>',
+                            f'<div style="margin-top:8px;background:{_jda_cred_col}10;border-radius:6px;'
+                            f'padding:8px 12px;font-size:11px;color:rgba(0,0,0,0.7)">'
+                            f'<strong>Pivot credibility for this role:</strong> {_jda["pivot_credibility_reason"]}</div>',
                             unsafe_allow_html=True,
                         )
-                        for _br in _pp.get("bridge_occupations",[]):
-                            _br_pos = int(_br.get("path_position",0.5)*100)
+                    st.caption(f"Role: {_jda.get('role_title','')} · Seniority match: {_jda.get('seniority_match','?')}")
+
+        with st.expander("Pivot Roadmap — 30/60/90 Days", expanded=False):
+            # ════════════════════════════════════════════════════════════════════════
+            # PIVOT ROADMAP — 30/60/90 Day Execution Plan
+            # ════════════════════════════════════════════════════════════════════════
+            with st.expander(
+                "Pivot Roadmap — Your 30/60/90-day execution plan",
+                expanded=False,
+            ):
+                st.markdown(
+                    '<div style="font-size:11px;color:rgba(0,0,0,0.55);line-height:1.6;margin-bottom:10px">'
+                    'Not generic career advice. A week-by-week plan calibrated to <em>your</em> gap profile, '
+                    'pipeline state, and cohort timeline benchmarks. Every task is specific and completable.'
+                    '</div>',
+                    unsafe_allow_html=True,
+                )
+
+                _rm_has_data = bool(st.session_state.get("pivot_dna") or st.session_state.get("cv_profile"))
+                _rm = st.session_state.get("pivot_roadmap")
+
+                if st.button(
+                    "Generate My Roadmap" if not _rm else "Regenerate Roadmap",
+                    key="btn_gen_roadmap",
+                    type="primary" if not _rm else "secondary",
+                    disabled=not _rm_has_data,
+                    use_container_width=True,
+                ):
+                    with st.spinner("Building your personalised execution plan…"):
+                        # Try to get bridge occupations from existing pivot path result
+                        _pp_for_rm = st.session_state.get("pivot_path_result") or {}
+                        _bridges_rm = _pp_for_rm.get("bridge_occupations", [])
+                        _rm_result = generate_pivot_roadmap(
+                            _qa_key,
+                            current_occ=str(current) if "current" in dir() else "",
+                            target_occ=str(target)   if "target"  in dir() else "",
+                            skill_gap_results=st.session_state.get("skill_gap_results"),
+                            cohort_intelligence=st.session_state.get("cohort_intelligence"),
+                            pivot_dna=st.session_state.get("pivot_dna"),
+                            pipeline_jobs=st.session_state.get("pipeline_jobs"),
+                            outcome_log=st.session_state.get("outcome_log"),
+                            calibration_data=st.session_state.get("calibration_data"),
+                            bridge_occupations=_bridges_rm,
+                        )
+                        st.session_state.pivot_roadmap = _rm_result
+                        _rm = _rm_result
+
+                if not _rm_has_data:
+                    st.caption("Upload your CV and build a Pivot DNA to unlock the roadmap.")
+
+                if _rm:
+                    # Critical path banner
+                    st.markdown(
+                        f'<div style="background:#7C3AED12;border:1.5px solid #7C3AED40;border-radius:8px;'
+                        f'padding:12px 16px;margin-bottom:12px">'
+                        f'<div style="font-size:10px;font-weight:800;letter-spacing:0.06em;text-transform:uppercase;'
+                        f'color:#7C3AED;margin-bottom:4px">Critical Path — Do this first</div>'
+                        f'<div style="font-size:13px;font-weight:700;color:#0A0A0A">{_rm.get("critical_path","")}</div>'
+                        f'<div style="font-size:11px;color:rgba(0,0,0,0.5);margin-top:4px">'
+                        f'Timeline: {_rm.get("timeline_estimate","")} · Cadence: {_rm.get("weekly_cadence","")}'
+                        f'</div></div>',
+                        unsafe_allow_html=True,
+                    )
+
+                    # Blocking gaps
+                    _rm_gaps = _rm.get("blocking_gaps", [])
+                    if _rm_gaps:
+                        st.markdown(
+                            '<div style="font-size:10px;font-weight:800;letter-spacing:0.06em;text-transform:uppercase;'
+                            'color:#DC2626;margin-bottom:4px">Skills to close BEFORE primary applications</div>',
+                            unsafe_allow_html=True,
+                        )
+                        for _rg in _rm_gaps:
+                            st.markdown(f'<div style="font-size:11px;color:rgba(0,0,0,0.7)">{warn_icon(10)} {_rg}</div>', unsafe_allow_html=True)
+
+                    # Phase timeline
+                    _rm_phases = _rm.get("phases", {})
+                    _phase_order = ["kickoff", "bridge", "primary", "compound"]
+                    _phase_colors = {"kickoff":"#0A66C2","bridge":"#7C3AED","primary":"#057642","compound":"#D97706"}
+
+                    for _ph_key in _phase_order:
+                        _ph = _rm_phases.get(_ph_key, {})
+                        if not _ph:
+                            continue
+                        _ph_col = _phase_colors.get(_ph_key, "#555")
+                        st.markdown(
+                            f'<div style="background:{_ph_col}08;border-left:3px solid {_ph_col};'
+                            f'padding:10px 14px;border-radius:0 6px 6px 0;margin:8px 0">'
+                            f'<div style="font-size:11px;font-weight:800;color:{_ph_col};margin-bottom:6px">'
+                            f'{_ph.get("label","")}</div>',
+                            unsafe_allow_html=True,
+                        )
+                        for _task in (_ph.get("tasks") or []):
+                            _task_str = _task if isinstance(_task, str) else _task.get("task","")
+                            _why_str  = "" if isinstance(_task, str) else _task.get("why","")
+                            _time_str = "" if isinstance(_task, str) else _task.get("time_estimate","")
+                            _time_span = f'  <span style="font-size:9px;color:rgba(0,0,0,0.35);font-weight:400">{_time_str}</span>' if _time_str else ""
+                            _why_div   = f'<div style="font-size:10px;color:rgba(0,0,0,0.5);line-height:1.4">{_why_str}</div>' if _why_str else ""
                             st.markdown(
-                                f'<div style="font-size:11px;color:rgba(0,0,0,0.7);padding:2px 0;line-height:1.3">'
-                                f'<span style="font-weight:600">{_br["occupation"]}</span>'
-                                f'<span style="font-size:9px;color:#7C3AED;margin-left:4px">{_br_pos}% of the way</span>'
+                                f'<div style="display:flex;gap:8px;padding:3px 0">'
+                                f'<div style="color:{_ph_col};flex-shrink:0;margin-top:1px">{check_icon(11)}</div>'
+                                f'<div>'
+                                f'<div style="font-size:11px;font-weight:600;color:#0A0A0A">{_task_str}{_time_span}</div>'
+                                f'{_why_div}'
+                                f'</div></div>',
+                                unsafe_allow_html=True,
+                            )
+                        st.markdown('</div>', unsafe_allow_html=True)
+
+                    # Milestones
+                    _rm_ms = _rm.get("milestones", [])
+                    if _rm_ms:
+                        st.markdown(
+                            '<div style="margin-top:8px;font-size:10px;font-weight:800;letter-spacing:0.06em;'
+                            'text-transform:uppercase;color:rgba(0,0,0,0.35)">Key milestones</div>',
+                            unsafe_allow_html=True,
+                        )
+                        for _ms in _rm_ms:
+                            _ms_week = _ms.get("week","?")
+                            _ms_text = _ms.get("milestone","")
+                            st.markdown(
+                                f'<div style="display:flex;gap:10px;align-items:center;padding:3px 0">'
+                                f'<div style="font-size:9px;font-weight:800;color:#7C3AED;min-width:42px;'
+                                f'text-align:right">Week {_ms_week}</div>'
+                                f'<div style="width:8px;height:8px;background:#7C3AED;border-radius:50%;flex-shrink:0"></div>'
+                                f'<div style="font-size:11px;color:rgba(0,0,0,0.7)">{_ms_text}</div>'
                                 f'</div>',
                                 unsafe_allow_html=True,
                             )
 
-                    # ── UMAP Scatter Plot ──────────────────────────────────────────
-                    _ud = _pp.get("umap_data", {})
-                    if _ud.get("background"):
-                        st.markdown('<div style="height:10px"></div>', unsafe_allow_html=True)
-                        _cluster_colors_map = _ud.get("cluster_colors", {})
-                        _cluster_names_map  = _ud.get("cluster_names", {})
+        with st.expander("P(offer) Command Center", expanded=False):
+            # ════════════════════════════════════════════════════════════════════════
+            # PIVOT OS COMMAND CENTER — Diagnosis → Action → Measure
+            # One number (P(offer)) drives every section below.
+            # The Command Center identifies the binding constraint and ranks actions.
+            # ════════════════════════════════════════════════════════════════════════
+            # Use pre-computed P(offer) globals (defined before mode branching above)
+            _ops_for_ns   = _ns_ops_val
+            _cal_for_ns   = _ns_cal_data
+            _brier_for_ns = _ns_brier_data
+            _mp_for_ns    = st.session_state.get("market_pulse_result") or {}
+            _ns_col       = _ns_prob_col
 
-                        _fig = go.Figure()
+            _pipeline_now = st.session_state.get("pipeline_jobs") or []
+            _active_apps  = sum(1 for j in _pipeline_now if j.get("status") in ("applied", "first_round", "final_round"))
+            _csv_matches_ns = len(st.session_state.get("csv_warm_intros") or [])
 
-                        # Background: all 894 occupations, colored by cluster
-                        _bg = _ud["background"]
-                        if _bg:
-                            _bg_by_cluster: Dict[str, list] = {}
-                            for _pt in _bg:
-                                _bg_by_cluster.setdefault(_pt["cid"], []).append(_pt)
+            # ── Lever definitions: (name, current_val_str, factor, optimal_factor, unlock_action, section_label, color, progress_pct) ──
+            _lv_ops_pct  = round(_ops_for_ns)
+            _lv_ops_prog = round(_lv_ops_pct)  # 0-100 where 100 = OPS 100
+            _lv_cal_prog = 100 if _ns_cal_factor != 1.0 else 0
+            _lv_br_prog  = 50 if not _brier_for_ns.get("insufficient_data") else 0
+            _lv_net_prog = min(100, _csv_matches_ns * 10)
 
-                            for _cid_plot, _pts in _bg_by_cluster.items():
-                                _col = _cluster_colors_map.get(_cid_plot, "#888888")
-                                _cname_plot = _cluster_names_map.get(_cid_plot, f"Cluster {_cid_plot}")
-                                _fig.add_trace(go.Scatter(
-                                    x=[p["x"] for p in _pts],
-                                    y=[p["y"] for p in _pts],
-                                    mode="markers",
-                                    name=_cname_plot,
-                                    marker=dict(size=3, color=_col, opacity=0.45),
-                                    text=[p["occ"] for p in _pts],
-                                    hovertemplate="<b>%{text}</b><br>" + _cname_plot + "<extra></extra>",
-                                ))
+            # Binding constraint = lever with lowest progress (most room to improve)
+            _lv_progress = {
+                "OPS":         (_lv_ops_prog,  _ns_ops_factor),
+                "Calibration": (_lv_cal_prog,  _ns_cal_factor),
+                "Brier":       (_lv_br_prog,   _ns_brier_factor),
+                "Network":     (_lv_net_prog,  1.0),
+            }
+            _binding_lever = min(_lv_progress, key=lambda k: _lv_progress[k][0])
 
-                        # Bridge occupations — larger gold dots
-                        _bridges = _ud.get("bridges", [])
-                        if _bridges:
-                            _fig.add_trace(go.Scatter(
-                                x=[p["x"] for p in _bridges],
-                                y=[p["y"] for p in _bridges],
-                                mode="markers+text",
-                                name="Bridge roles",
-                                marker=dict(size=9, color="#F59E0B", symbol="diamond", opacity=0.9,
-                                            line=dict(width=1.5, color="#92400E")),
-                                text=[p["occ"].split(" ")[-1] for p in _bridges],
-                                textposition="top center",
-                                textfont=dict(size=8, color="#92400E"),
-                                hovertemplate="<b>%{customdata}</b><br>Bridge role<extra></extra>",
-                                customdata=[p["occ"] for p in _bridges],
-                            ))
+            _binding_actions = {
+                "OPS":         ("Upload your CV and run the OPS scorer — every 10pt OPS gain = +0.5pp P(offer)",  "Skill Gap section ↓"),
+                "Calibration": ("Log your first 3 outcomes — unlocks personal calibration of all AI predictions",  "Outcome Tracker ↓"),
+                "Brier":       ("Run JD Analyzer on 3 jobs and log their outcomes — unlocks Brier correction",     "JD Analyzer → Outcome Tracker ↓"),
+                "Network":     ("Upload LinkedIn CSV — warm intros convert 12× better than cold applications",     "LinkedIn Network Engine ↓"),
+            }
+            _binding_action_text, _binding_section_ref = _binding_actions.get(_binding_lever, ("", ""))
 
-                        # Highlighted: current + target — big star + circle
-                        _hl = _ud.get("highlighted", [])
-                        for _hl_pt in _hl:
-                            _is_current = _hl_pt["occ"] == _ud.get("current_occ")
-                            _hl_sym     = "star" if _is_current else "circle"
-                            _hl_col     = "#0A66C2" if _is_current else "#DC2626"
-                            _hl_size    = 16 if _is_current else 14
-                            _hl_label   = "You (current)" if _is_current else "Target"
-                            _fig.add_trace(go.Scatter(
-                                x=[_hl_pt["x"]],
-                                y=[_hl_pt["y"]],
-                                mode="markers+text",
-                                name=_hl_label,
-                                marker=dict(size=_hl_size, color=_hl_col, symbol=_hl_sym,
-                                            line=dict(width=2, color="white")),
-                                text=[_hl_label],
-                                textposition="top center",
-                                textfont=dict(size=9, color=_hl_col, family="Arial Black"),
-                                hovertemplate=f"<b>{_hl_pt['occ']}</b><br>{_hl_label}<extra></extra>",
-                            ))
+            # Ranked levers: sorted by progress (ascending = most urgent first)
+            _ranked_levers = [
+                # (label, current_display, factor, progress_pct, section_ref, color, action_text)
+                ("OPS · Skill Match",
+                 f"OPS {_lv_ops_pct}/100",
+                 _ns_ops_factor,
+                 _lv_ops_prog,
+                 "Skill Gap section ↓",
+                 "#60A5FA",
+                 f"Upload CV → OPS score. Current: {_lv_ops_pct}/100, target: ≥65. Impact: each +10pt OPS = ×{1.0+10/100:.2f} on P(offer)."),
+                ("Calibration · Personal ROI",
+                 f"×{_ns_cal_factor:.2f}",
+                 _ns_cal_factor,
+                 _lv_cal_prog,
+                 "Outcome Tracker ↓",
+                 "#A78BFA",
+                 "Log 5+ outcomes. Calibration corrects AI predictions to YOUR response rate, not industry average."),
+                ("Brier · AI Accuracy",
+                 f"×{_ns_brier_factor:.2f}",
+                 _ns_brier_factor,
+                 _lv_br_prog,
+                 "JD Analyzer + Outcome Tracker ↓",
+                 "#34D399",
+                 "Run JD Analyzer → log outcomes → Brier score measures how well-calibrated AI predictions are. Correction auto-applied."),
+                ("Network · Warm Intros",
+                 f"{_csv_matches_ns} matches",
+                 1.0,
+                 _lv_net_prog,
+                 "LinkedIn Network Engine ↓",
+                 "#FCD34D",
+                 f"Upload LinkedIn CSV. {_csv_matches_ns} matches found. Warm referrals: 35-50% response vs 2-3% cold."),
+            ]
+            _ranked_levers.sort(key=lambda x: x[3])  # sort by progress ascending (most urgent first)
 
-                        # Arrow from current to target
-                        _hl_current = next((p for p in _hl if p["occ"] == _ud.get("current_occ")), None)
-                        _hl_target  = next((p for p in _hl if p["occ"] == _ud.get("target_occ")),  None)
-                        if _hl_current and _hl_target:
-                            _fig.add_annotation(
-                                x=_hl_target["x"],  y=_hl_target["y"],
-                                ax=_hl_current["x"], ay=_hl_current["y"],
-                                xref="x", yref="y", axref="x", ayref="y",
-                                showarrow=True,
-                                arrowhead=2, arrowsize=1.5, arrowwidth=2.5,
-                                arrowcolor="#7C3AED",
-                            )
+            # ── Render: Command Center (LinkedIn card style) ─────────────────────────
+            # Tier label for P(offer) number
+            _cc_tier     = "Getting started" if _ns_prob_pct < 5 else ("Building" if _ns_prob_pct < 15 else ("Target reached" if _ns_prob_pct < 25 else "Elite"))
+            _cc_tier_col = "#B71C1C" if _ns_prob_pct < 5 else ("#A05A00" if _ns_prob_pct < 15 else ("#057642" if _ns_prob_pct < 25 else "#057642"))
+            # Friendly lever names (no ALL_CAPS)
+            _lv_names  = ["Skill match", "Calibration", "Network", "Prediction accuracy"]
+            _lv_icons  = ["bar-chart-2", "sliders", "users", "target"]
+            _lv_status = ["Not started" if pct == 0 else ("In progress" if pct < 80 else "Active")
+                          for _, _, _, pct, _, _, _ in _ranked_levers]
 
-                        _fig.update_layout(
-                            height=460,
-                            margin=dict(l=0, r=0, t=28, b=0),
-                            plot_bgcolor="#FAFAFA",
-                            paper_bgcolor="#FAFAFA",
-                            showlegend=True,
-                            legend=dict(
-                                orientation="h", yanchor="bottom", y=1.01,
-                                xanchor="left", x=0, font=dict(size=10),
-                            ),
-                            xaxis=dict(showticklabels=False, showgrid=False, zeroline=False, title=""),
-                            yaxis=dict(showticklabels=False, showgrid=False, zeroline=False, title=""),
-                            title=dict(
-                                text="Occupation Space — UMAP skill-vector layout",
-                                font=dict(size=12, color="rgba(0,0,0,0.5)"),
-                                x=0.5, xanchor="center",
-                            ),
-                        )
-                        st.plotly_chart(_fig, use_container_width=True, config={"displayModeBar": False})
-                        st.caption(
-                            f"894 O*NET occupations · 119 skills · UMAP(cosine) · "
-                            f"Purple arrow = your pivot path · ◆ = bridge roles"
-                        )
-
-                elif _pp and (not _pp.get("current_found") or not _pp.get("target_found")):
-                    _not_found = []
-                    if not _pp.get("current_found"): _not_found.append(f'"{st.session_state.get("pivot_path_current","")}"')
-                    if not _pp.get("target_found"):  _not_found.append(f'"{st.session_state.get("pivot_path_target","")}"')
-                    st.warning(f"Occupation not found in O*NET matrix: {', '.join(_not_found)}. Try selecting from the dropdown.")
-
-                    # Still show the map even if exact match failed
-                    _ud = _pp.get("umap_data", {})
-                    if _ud.get("background"):
-                        _bg2 = _ud["background"]
-                        _fig2 = go.Figure()
-                        _bg2_by_cluster: Dict[str, list] = {}
-                        for _pt2 in _bg2:
-                            _bg2_by_cluster.setdefault(_pt2["cid"], []).append(_pt2)
-                        _cluster_colors_map2 = _ud.get("cluster_colors", {})
-                        _cluster_names_map2  = _ud.get("cluster_names", {})
-                        for _cid2, _pts2 in _bg2_by_cluster.items():
-                            _col2 = _cluster_colors_map2.get(_cid2, "#888")
-                            _cname2 = _cluster_names_map2.get(_cid2, f"Cluster {_cid2}")
-                            _fig2.add_trace(go.Scatter(
-                                x=[p["x"] for p in _pts2], y=[p["y"] for p in _pts2],
-                                mode="markers", name=_cname2,
-                                marker=dict(size=3, color=_col2, opacity=0.45),
-                                text=[p["occ"] for p in _pts2],
-                                hovertemplate="<b>%{text}</b><extra></extra>",
-                            ))
-                        _fig2.update_layout(
-                            height=380, margin=dict(l=0,r=0,t=28,b=0),
-                            plot_bgcolor="#FAFAFA", paper_bgcolor="#FAFAFA",
-                            showlegend=True,
-                            legend=dict(orientation="h", yanchor="bottom", y=1.01, xanchor="left", x=0, font=dict(size=10)),
-                            xaxis=dict(showticklabels=False, showgrid=False, zeroline=False),
-                            yaxis=dict(showticklabels=False, showgrid=False, zeroline=False),
-                        )
-                        st.plotly_chart(_fig2, use_container_width=True, config={"displayModeBar": False})
-
-        # ════════════════════════════════════════════════════════════════════════
-        # DECISION MATRIX — The 3 hardest decisions in any pivot
-        # ════════════════════════════════════════════════════════════════════════
-        with st.expander(
-            "Decision Matrix — Two offers? Bridge vs. direct? Counter-offer?",
-            expanded=False,
-        ):
             st.markdown(
-                '<div style="font-size:11px;color:rgba(0,0,0,0.55);line-height:1.6;margin-bottom:12px">'
-                'The three hardest decisions in any pivot — with a structured framework and a clear recommendation. '
-                'Not "it depends." An actual call, with reasoning.'
-                '</div>',
+                f'<div class="li-section" style="margin-bottom:16px;padding:0">'
+
+                # ── Header: P(offer) + tier + next action ──────────────────────────
+                f'<div style="padding:20px 20px 16px 20px;display:flex;align-items:center;gap:20px;'
+                f'border-bottom:1px solid rgba(0,0,0,0.08)">'
+
+                # Big number
+                f'<div style="flex-shrink:0;text-align:center">'
+                f'<div style="font-size:44px;font-weight:900;color:{_ns_col};line-height:1;letter-spacing:-2px">{_ns_prob_pct}%</div>'
+                f'<div style="font-size:11px;font-weight:700;color:{_cc_tier_col};margin-top:2px">{_cc_tier}</div>'
+                f'<div style="font-size:10px;color:rgba(0,0,0,0.35);margin-top:1px">P(offer)</div>'
+                f'</div>'
+
+                # Divider
+                f'<div style="width:1px;height:52px;background:rgba(0,0,0,0.08);flex-shrink:0"></div>'
+
+                # Right: title + next action
+                f'<div style="flex:1">'
+                f'<div style="font-size:15px;font-weight:800;color:#1D2226;margin-bottom:6px">P(offer) Command Center</div>'
+                f'<div style="font-size:12px;color:rgba(0,0,0,0.55);line-height:1.5;margin-bottom:10px">'
+                f'Four levers drive this number. Your most urgent one is highlighted below.</div>'
+                # Next action highlight
+                f'<div style="background:#EEF3FB;border-radius:8px;padding:8px 12px;display:flex;align-items:center;gap:8px">'
+                f'<div style="width:6px;height:6px;background:#0A66C2;border-radius:50%;flex-shrink:0"></div>'
+                f'<div style="font-size:12px;font-weight:600;color:#0A66C2">{_binding_action_text}</div>'
+                f'</div>'
+                f'</div>'
+                f'</div>'  # end header
+
+                # ── 4 levers grid ──────────────────────────────────────────────────
+                f'<div style="display:grid;grid-template-columns:repeat(4,1fr)">'
+                + "".join([
+                    (
+                        f'<div style="padding:16px;'
+                        + (f'background:#EEF3FB;' if i == 0 else f'background:#fff;')
+                        + (f'border-right:1px solid rgba(0,0,0,0.06);' if i < 3 else '')
+                        + f'">'
+                        # Status dot + lever name
+                        + f'<div style="display:flex;align-items:center;gap:6px;margin-bottom:10px">'
+                        + f'<div style="width:8px;height:8px;border-radius:50%;flex-shrink:0;background:{"#0A66C2" if i==0 else ("rgba(0,0,0,0.15)" if pct==0 else "#057642")}"></div>'
+                        + f'<div style="font-size:11px;font-weight:700;color:{"#0A66C2" if i==0 else "rgba(0,0,0,0.65)"}">{_lv_names[i]}</div>'
+                        + (f'<div style="margin-left:auto;font-size:9px;font-weight:800;color:#0A66C2;background:#C7D8F0;border-radius:8px;padding:1px 6px">Priority</div>' if i == 0 else '')
+                        + f'</div>'
+                        # Value
+                        + f'<div style="font-size:20px;font-weight:900;color:{"#0A66C2" if i==0 else "rgba(0,0,0,0.75)"};margin-bottom:6px">{val}</div>'
+                        # Progress bar
+                        + f'<div style="height:4px;background:rgba(0,0,0,0.07);border-radius:2px;margin-bottom:8px">'
+                        + f'<div style="width:{pct}%;height:4px;background:{"#0A66C2" if i==0 else "#057642"};border-radius:2px;transition:width 1s"></div>'
+                        + f'</div>'
+                        # Status
+                        + f'<div style="font-size:10px;color:rgba(0,0,0,0.45)">{_lv_status[i]}</div>'
+                        + f'</div>'
+                    )
+                    for i, (lbl, val, fac, pct, ref, col, _) in enumerate(_ranked_levers)
+                ])
+                + f'</div>'  # end grid
+                f'</div>',  # end card
                 unsafe_allow_html=True,
             )
 
-            _dm_scenario = st.radio(
-                "Which decision are you facing?",
-                options=["Two offers at the same time", "Bridge role vs. direct PM application", "Counter-offer from current employer"],
-                key="dm_scenario_radio",
-                horizontal=True,
+        with st.expander("Closed-Loop Architecture", expanded=False):
+            # ════════════════════════════════════════════════════════════════════════
+            # CLOSED LOOP ARCHITECTURE — "How the system learns"
+            # This section makes the evaluate → improve → calibrate loop explicit.
+            # Professor criteria: "Leverage of technical enablers" +
+            #                     "Evaluating AI capabilities in your zero-shot task"
+            # ════════════════════════════════════════════════════════════════════════
+            _cl_stages = loop_stage_summary(
+                cv_profile=st.session_state.get("cv_profile") or {},
+                jd_result=st.session_state.get("jd_analysis_result") or {},
+                app_package=st.session_state.get("qa_package") or {},
+                app_eval=st.session_state.get("qa_eval") or {},
+                debate_result=st.session_state.get("qa_debate") or {},
+                outcome_log=st.session_state.get("outcome_log") or [],
+                calibration_data=st.session_state.get("calibration_data") or {},
+                brier_stats=st.session_state.get("brier_stats") or {},
+            )
+            _cl_done_count = sum(1 for s in _cl_stages if s["status"] == "done")
+            _cl_pct = int(_cl_done_count / len(_cl_stages) * 100)
+
+            st.markdown(
+                f'<div class="li-section" style="margin-bottom:16px">'
+
+                # Header
+                f'<div style="padding:14px 20px 0 20px;display:flex;align-items:center;justify-content:space-between">'
+                f'<div>'
+                f'<div style="display:flex;align-items:center;gap:8px;margin-bottom:2px">'
+                f'{icon_box("ai", bg="#EEF3FB", color="#0A66C2", size=14, box_size=28, radius=6)}'
+                f'<div style="font-size:14px;font-weight:800;color:rgba(0,0,0,0.88)">Closed-Loop Learning System</div>'
+                f'</div>'
+                f'<div style="font-size:11px;color:rgba(0,0,0,0.50)">'
+                f'Predict → Generate → Evaluate → Submit → Measure → Calibrate. Every step improves the next.</div>'
+                f'</div>'
+                f'<div style="text-align:right;flex-shrink:0">'
+                f'<div style="font-size:22px;font-weight:900;color:{"#057642" if _cl_done_count==5 else "#0A66C2"}">'
+                f'{_cl_done_count}/5</div>'
+                f'<div style="font-size:10px;color:rgba(0,0,0,0.40)">stages active</div>'
+                f'</div>'
+                f'</div>'
+
+                # Progress bar
+                f'<div style="margin:10px 20px 0 20px;height:4px;background:rgba(0,0,0,0.07);border-radius:2px">'
+                f'<div style="width:{_cl_pct}%;height:4px;background:#0A66C2;border-radius:2px;transition:width 0.8s"></div>'
+                f'</div>'
+
+                # 5 stages grid
+                f'<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:0;'
+                f'border-top:1px solid rgba(0,0,0,0.07);margin-top:10px">'
+                + "".join([
+                    (
+                        f'<div style="padding:12px 14px;border-right:{"none" if i==4 else "1px solid rgba(0,0,0,0.06)"};">'
+                        + f'<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">'
+                        + (
+                            f'<div style="width:18px;height:18px;border-radius:50%;background:#057642;'
+                            f'display:flex;align-items:center;justify-content:center;flex-shrink:0">'
+                            f'<div style="width:8px;height:8px;border-radius:50%;background:#fff"></div></div>'
+                            if s["status"] == "done" else
+                            f'<div style="width:18px;height:18px;border-radius:50%;background:#EEF3FB;border:2px solid #0A66C2;'
+                            f'display:flex;align-items:center;justify-content:center;flex-shrink:0">'
+                            f'<div style="width:6px;height:6px;border-radius:50%;background:#0A66C2"></div></div>'
+                            if s["status"] == "partial" else
+                            f'<div style="width:18px;height:18px;border-radius:50%;background:rgba(0,0,0,0.06);'
+                            f'display:flex;align-items:center;justify-content:center;flex-shrink:0">'
+                            f'<div style="font-size:9px;font-weight:900;color:rgba(0,0,0,0.35)">{s["num"]}</div></div>'
+                        )
+                        + f'<div>'
+                        + f'<div style="font-size:9px;font-weight:900;text-transform:uppercase;letter-spacing:0.08em;'
+                        + f'color:{"#057642" if s["status"]=="done" else "#0A66C2" if s["status"]=="partial" else "rgba(0,0,0,0.40)"}">'
+                        + f'{s["name"]}</div>'
+                        + f'<div style="font-size:9px;color:rgba(0,0,0,0.40)">{s["sub"]}</div>'
+                        + f'</div>'
+                        + f'</div>'
+                        + f'<div style="font-size:12px;font-weight:800;color:{s["metric_color"]};margin-bottom:4px">{s["metric"]}</div>'
+                        + f'<div style="font-size:10px;color:rgba(0,0,0,0.45);line-height:1.4">{s["detail"][:70]}</div>'
+                        + (f'<div style="margin-top:5px;font-size:9px;font-weight:700;color:#0A66C2">→ {s["action"]}</div>' if s.get("action") else '')
+                        + f'</div>'
+                    )
+                    for i, s in enumerate(_cl_stages)
+                ])
+                + f'</div>'
+
+                # Footer: P(offer) trend summary
+                + f'<div style="padding:8px 20px;border-top:1px solid rgba(0,0,0,0.06);'
+                f'display:flex;align-items:center;gap:6px;background:#F8FAFF">'
+                f'{icon("trending-up", 12, "#0A66C2")}'
+                f'<div style="font-size:11px;color:rgba(0,0,0,0.55)">'
+                f'{"System fully calibrated — predictions are personalised to your response rate." if _cl_done_count == 5 else f"Complete all 5 stages to fully personalise your P(offer) predictions. ({_cl_pct}% active)"}'
+                f'</div>'
+                f'</div>'
+                f'</div>',
+                unsafe_allow_html=True,
             )
 
-            if _dm_scenario == "Two offers at the same time":
-                _dm_c1, _dm_c2 = st.columns(2)
-                with _dm_c1:
-                    st.markdown('<div style="font-size:11px;font-weight:700;color:#0A66C2;margin-bottom:4px">Offer A</div>', unsafe_allow_html=True)
-                    _dm_co_a = st.text_input("Company", key="dm_co_a", placeholder="e.g. Personio")
-                    _dm_title_a = st.text_input("Role title", key="dm_title_a", placeholder="e.g. PM — Growth")
-                    _dm_sal_a = st.number_input("Salary (annual)", key="dm_sal_a", min_value=0, value=75000, step=1000)
-                    _dm_stage_a = st.selectbox("Company stage", ["Seed","Series A","Series B","Series C","Scale-up","Enterprise"], key="dm_stage_a")
-                    _dm_notes_a = st.text_area("Notes", key="dm_notes_a", height=60, placeholder="Anything else relevant...")
-                with _dm_c2:
-                    st.markdown('<div style="font-size:11px;font-weight:700;color:#7C3AED;margin-bottom:4px">Offer B</div>', unsafe_allow_html=True)
-                    _dm_co_b = st.text_input("Company", key="dm_co_b", placeholder="e.g. Linear")
-                    _dm_title_b = st.text_input("Role title", key="dm_title_b", placeholder="e.g. Product Manager")
-                    _dm_sal_b = st.number_input("Salary (annual)", key="dm_sal_b", min_value=0, value=82000, step=1000)
-                    _dm_stage_b = st.selectbox("Company stage", ["Seed","Series A","Series B","Series C","Scale-up","Enterprise"], key="dm_stage_b")
-                    _dm_notes_b = st.text_area("Notes", key="dm_notes_b", height=60, placeholder="Anything else relevant...")
+            # ── P(offer) Goal Progress (shown when there's outcome data) ─────────────
+            _trend_data = compute_p_offer_trend(
+                outcome_log=st.session_state.get("outcome_log") or [],
+                base_prob=0.05,
+                ops_val=_ns_ops_val,
+                cal_factor=_ns_cal_factor,
+                brier_factor=_ns_brier_factor,
+            )
+            _goal = compute_goal_progress(_trend_data["current_p"])
 
-                if st.button("Get Recommendation", key="btn_dm_two", type="primary", use_container_width=True):
-                    if not _qa_key:
-                        st.warning("Add your OpenAI key to the sidebar.")
-                    elif not _dm_co_a or not _dm_co_b:
-                        st.warning("Fill in both companies.")
-                    else:
-                        with st.spinner("Analysing both offers…"):
-                            _dm_result = compare_offers(
-                                _qa_key,
-                                offer_a={"company":_dm_co_a,"title":_dm_title_a,"salary":_dm_sal_a,"stage":_dm_stage_a,"notes":_dm_notes_a},
-                                offer_b={"company":_dm_co_b,"title":_dm_title_b,"salary":_dm_sal_b,"stage":_dm_stage_b,"notes":_dm_notes_b},
-                                pivot_dna=st.session_state.get("pivot_dna"),
-                                cv_profile=st.session_state.get("cv_profile"),
-                                ops_score=st.session_state.get("_ops_val"),
-                            )
-                            st.session_state.decision_matrix_result = _dm_result
-                            st.session_state.decision_matrix_scenario = "two_offers"
+            if _trend_data.get("has_data"):
+                # Trend line chart
+                _trend_fig = go.Figure()
+                _trend_fig.add_trace(go.Scatter(
+                    x=_trend_data["dates"],
+                    y=_trend_data["p_offer_values"],
+                    mode="lines+markers",
+                    line=dict(color="#0A66C2", width=2.5),
+                    marker=dict(size=6, color="#0A66C2"),
+                    fill="tozeroy",
+                    fillcolor="rgba(10,102,194,0.06)",
+                    name="P(offer)",
+                ))
+                _trend_fig.add_hline(y=15, line_dash="dot", line_color="#057642",
+                                      annotation_text="Target 15%", annotation_position="right",
+                                      annotation_font_size=10, annotation_font_color="#057642")
+                _trend_fig.update_layout(
+                    height=130, margin=dict(l=0, r=60, t=8, b=0),
+                    plot_bgcolor="white", paper_bgcolor="white",
+                    xaxis=dict(showgrid=False, tickfont=dict(size=9), color="rgba(0,0,0,0.35)"),
+                    yaxis=dict(showgrid=True, gridcolor="rgba(0,0,0,0.06)", tickfont=dict(size=9),
+                               ticksuffix="%", color="rgba(0,0,0,0.35)", range=[0, 30]),
+                    showlegend=False,
+                )
 
-            elif _dm_scenario == "Bridge role vs. direct PM application":
-                _dm_bridge_role = st.text_input("Bridge role you're considering", key="dm_bridge_role", placeholder="e.g. Product Analyst at Series B SaaS")
-                _dm_target_role = st.text_input("Direct target role", key="dm_target_role", placeholder="e.g. Product Manager")
-                _dm_cur_apps    = st.number_input("Applications sent so far", key="dm_cur_apps", min_value=0, value=len(st.session_state.get("pipeline_jobs") or []))
-                _dm_ops_now     = st.slider("Current OPS score", 0, 100, st.session_state.get("_ops_val", 40), key="dm_ops_slider")
-
-                if st.button("Get Recommendation", key="btn_dm_bridge", type="primary", use_container_width=True):
-                    if not _qa_key:
-                        st.warning("Add your OpenAI key.")
-                    else:
-                        with st.spinner("Computing expected value of each path…"):
-                            _sg_for_dm = [g.get("skill","") for g in ((st.session_state.get("skill_gap_results") or {}).get("gaps") or [])[:5]]
-                            _pp_for_dm = (st.session_state.get("pivot_path_result") or {}).get("bridge_occupations",[])
-                            _dm_result = bridge_vs_direct(
-                                _qa_key,
-                                bridge_role=_dm_bridge_role,
-                                target_role=_dm_target_role,
-                                current_ops=_dm_ops_now,
-                                current_applications=_dm_cur_apps,
-                                cohort_median_apps=int((st.session_state.get("cohort_intelligence") or {}).get("median_applications",32)),
-                                skill_gaps=_sg_for_dm,
-                                pivot_dna=st.session_state.get("pivot_dna"),
-                                bridge_occupations=_pp_for_dm,
-                            )
-                            st.session_state.decision_matrix_result = _dm_result
-                            st.session_state.decision_matrix_scenario = "bridge_direct"
-
-            else:  # Counter-offer
-                _dm_cc1, _dm_cc2, _dm_cc3 = st.columns(3)
-                with _dm_cc1:
-                    _dm_cur_sal = st.number_input("Current salary", key="dm_cur_sal", min_value=0, value=65000, step=1000)
-                with _dm_cc2:
-                    _dm_ext_sal = st.number_input("External offer", key="dm_ext_sal", min_value=0, value=82000, step=1000)
-                with _dm_cc3:
-                    _dm_cnt_sal = st.number_input("Counter-offer", key="dm_cnt_sal", min_value=0, value=75000, step=1000)
-                _dm_months = st.slider("Months in search", 0, 24, 3, key="dm_months_search")
-
-                if st.button("Get Recommendation", key="btn_dm_counter", type="primary", use_container_width=True):
-                    if not _qa_key:
-                        st.warning("Add your OpenAI key.")
-                    else:
-                        with st.spinner("Analysing counter-offer dynamics…"):
-                            _dm_result = analyze_counter_offer(
-                                _qa_key,
-                                external_offer_amount=_dm_ext_sal,
-                                counter_offer_amount=_dm_cnt_sal,
-                                current_salary=_dm_cur_sal,
-                                months_in_search=_dm_months,
-                                current_ops=st.session_state.get("_ops_val", 40),
-                                pivot_dna=st.session_state.get("pivot_dna"),
-                            )
-                            st.session_state.decision_matrix_result = _dm_result
-                            st.session_state.decision_matrix_scenario = "counter_offer"
-
-            # ── Display result ─────────────────────────────────────────────────
-            _dm_r = st.session_state.get("decision_matrix_result")
-            _dm_s = st.session_state.get("decision_matrix_scenario","")
-            if _dm_r:
-                _dm_rec   = _dm_r.get("recommendation","")
-                _dm_rec_c = recommendation_color(_dm_rec)
-                _dm_conf  = _dm_r.get("confidence","medium")
-                _dm_reason = _dm_r.get("decision_reason","")
-
+                # Header row (self-contained)
+                _trend_arrow = "↑" if _trend_data["trend_direction"] == "up" else ("↓" if _trend_data["trend_direction"] == "down" else "→")
+                _trend_arrow_col = "#057642" if _trend_data["trend_direction"] == "up" else ("#B71C1C" if _trend_data["trend_direction"] == "down" else "#A05A00")
                 st.markdown(
-                    f'<div style="background:{_dm_rec_c}12;border:2px solid {_dm_rec_c};border-radius:10px;'
-                    f'padding:16px 18px;margin-top:10px">'
-                    f'<div style="display:flex;align-items:center;gap:14px">'
-                    f'<div style="font-size:32px;font-weight:900;color:{_dm_rec_c};white-space:nowrap">'
-                    f'{_dm_rec.replace("_"," ").upper()}</div>'
+                    f'<div class="li-section" style="margin-bottom:4px;border-bottom-left-radius:0;border-bottom-right-radius:0;border-bottom:none">'
+                    f'<div style="padding:14px 20px;display:flex;align-items:center;justify-content:space-between">'
                     f'<div>'
-                    f'<div style="font-size:12px;font-weight:700;color:rgba(0,0,0,0.4);text-transform:uppercase;'
-                    f'letter-spacing:0.05em">{_dm_conf.upper()} CONFIDENCE</div>'
-                    f'<div style="font-size:13px;color:#0A0A0A;line-height:1.5;margin-top:4px">{_dm_reason}</div>'
-                    f'</div></div></div>',
+                    f'<div style="font-size:14px;font-weight:800;color:rgba(0,0,0,0.88);margin-bottom:2px">P(offer) Over Time</div>'
+                    f'<div style="font-size:11px;color:rgba(0,0,0,0.50)">{_trend_data["milestone_message"]}</div>'
+                    f'</div>'
+                    f'<div style="display:flex;gap:14px;align-items:center">'
+                    f'<div style="text-align:center">'
+                    f'<div style="font-size:9px;font-weight:700;color:rgba(0,0,0,0.35);text-transform:uppercase">Start</div>'
+                    f'<div style="font-size:20px;font-weight:900;color:rgba(0,0,0,0.45)">{_trend_data["start_p"]}%</div>'
+                    f'</div>'
+                    f'<div style="font-size:22px;font-weight:700;color:{_trend_arrow_col}">{_trend_arrow}</div>'
+                    f'<div style="text-align:center">'
+                    f'<div style="font-size:9px;font-weight:700;color:rgba(0,0,0,0.35);text-transform:uppercase">Now</div>'
+                    f'<div style="font-size:20px;font-weight:900;color:{_goal["tier_color"]}">{_trend_data["current_p"]}%</div>'
+                    f'</div>'
+                    f'</div>'
+                    f'</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+                # Chart in its own container
+                with st.container():
+                    st.plotly_chart(_trend_fig, use_container_width=True, config={"displayModeBar": False})
+                # Goal progress bar (self-contained)
+                st.markdown(
+                    f'<div class="li-section" style="margin-bottom:16px;border-top-left-radius:0;border-top-right-radius:0;border-top:none">'
+                    f'<div style="padding:10px 20px;display:flex;align-items:center;gap:12px">'
+                    f'<div style="flex:1;background:rgba(0,0,0,0.06);border-radius:4px;height:6px;overflow:hidden">'
+                    f'<div style="width:{_goal["pct_to_next"]:.0f}%;height:6px;background:{_goal["tier_color"]};border-radius:4px;transition:width 0.8s"></div>'
+                    f'</div>'
+                    f'<div style="font-size:11px;font-weight:700;color:{_goal["tier_color"]};white-space:nowrap">'
+                    f'{_goal["pct_to_next"]:.0f}% toward {_goal["next_tier_label"]} '
+                    f'({int(_goal["target_p"] if _goal["next_tier_label"]=="Target" else _goal["elite_p"])}%+ goal)'
+                    f'</div>'
+                    f'</div>'
+                    f'</div>',
                     unsafe_allow_html=True,
                 )
 
-                # Show the_one_question
-                _dm_q = _dm_r.get("the_one_question") or _dm_r.get("the_real_question","")
-                if _dm_q:
-                    st.markdown(
-                        f'<div style="background:#F5F0FF;border-radius:6px;padding:10px 14px;margin-top:8px">'
-                        f'<div style="font-size:10px;font-weight:800;color:#7C3AED;letter-spacing:0.06em;'
-                        f'text-transform:uppercase;margin-bottom:3px">The question that cuts through the noise</div>'
-                        f'<div style="font-size:13px;font-style:italic;color:#0A0A0A">"{_dm_q}"</div>'
-                        f'</div>',
-                        unsafe_allow_html=True,
-                    )
+        with st.expander("Application Pipeline", expanded=False):
+            # ════════════════════════════════════════════════════════════════════════
+            # APPLICATION PIPELINE CRM — Search OS
+            # Tracks every application, every stage, every rejection.
+            # With enough data: diagnoses bottlenecks, predicts time-to-offer.
+            # ════════════════════════════════════════════════════════════════════════
+            _pl_jobs: list = st.session_state.pipeline_jobs or []
+            _pl_stats = compute_pipeline_stats(_pl_jobs)
 
-                # Hidden risks / extra context
-                for _dm_k, _dm_label, _dm_col in [
-                    ("hidden_risk_a","Hidden risk of option A","#DC2626"),
-                    ("hidden_risk_b","Hidden risk of option B","#D97706"),
-                    ("negotiation_angle","Negotiation angle","#057642"),
-                    ("pivot_cost_of_staying","Cost to your pivot","#DC2626"),
-                    ("if_accept","If you accept","#D97706"),
-                    ("if_decline","If you decline","#057642"),
-                    ("hybrid_approach","Hybrid approach","#0A66C2"),
+            with st.expander(
+                f"Pipeline · {_pl_stats['total']} tracked · "
+                f"{_pl_stats['response_rate']}% response rate · "
+                f"{'On track' if _pl_stats['response_rate'] >= 20 else ('Watch this' if _pl_stats['response_rate'] >= 10 else 'Bottleneck detected') if _pl_stats['total'] >= 3 else 'Log first applications to unlock pipeline diagnosis'}",
+                expanded=bool(_pl_jobs),
+            ):
+                # ── Pipeline header ──────────────────────────────────────────────
+                _pl_c1, _pl_c2, _pl_c3, _pl_c4, _pl_c5 = st.columns(5, gap="small")
+                for _plc, _plk, _pll, _plcol in [
+                    (_pl_c1, "total",       "Total",        "#1D2226"),
+                    (_pl_c2, "response_rate", "Response %", "#0A66C2"),
+                    (_pl_c3, "interview_rate", "Interview %","#7A2A8A"),
+                    (_pl_c4, "offers",      "Offers",       "#057642"),
+                    (_pl_c5, "rejected",    "Rejected",     "#B71C1C"),
                 ]:
-                    if _dm_r.get(_dm_k):
+                    _plv = _pl_stats.get(_plk, 0)
+                    with _plc:
                         st.markdown(
-                            f'<div style="background:{_dm_col}08;border-left:2px solid {_dm_col};'
-                            f'border-radius:0 5px 5px 0;padding:7px 11px;margin-top:5px">'
-                            f'<div style="font-size:9px;font-weight:800;color:{_dm_col};letter-spacing:0.06em;'
-                            f'text-transform:uppercase">{_dm_label}</div>'
-                            f'<div style="font-size:11px;color:rgba(0,0,0,0.75)">{_dm_r[_dm_k]}</div>'
+                            f'<div style="background:#F3F6F9;border-radius:8px;padding:10px 14px;text-align:center">'
+                            f'<div style="font-size:22px;font-weight:900;color:{_plcol}">'
+                            f'{_plv}{"%" if "rate" in _plk else ""}</div>'
+                            f'<div style="font-size:10px;font-weight:700;color:rgba(0,0,0,0.45);text-transform:uppercase;letter-spacing:0.05em">{_pll}</div>'
                             f'</div>',
                             unsafe_allow_html=True,
                         )
 
-        # ════════════════════════════════════════════════════════════════════════
-        # COMPENSATION ENGINE — Negotiate with data, not gratitude
-        # ════════════════════════════════════════════════════════════════════════
-        with st.expander(
-            "Compensation Intelligence — Got an offer? Here's what it's worth.",
-            expanded=False,
-        ):
-            st.markdown(
-                '<div style="font-size:11px;color:rgba(0,0,0,0.55);line-height:1.6;margin-bottom:10px">'
-                'Career changers accept initial offers out of gratitude. The difference between '
-                'the first offer and the negotiated outcome is typically <strong>€5,000–€15,000</strong>. '
-                'This gives you the market range, negotiation scripts, and the walk-away threshold.'
-                '</div>',
-                unsafe_allow_html=True,
-            )
-            _comp_c1, _comp_c2, _comp_c3 = st.columns(3)
-            with _comp_c1:
-                _comp_offer = st.number_input("Offered salary (annual)", min_value=0, value=75000, step=1000, key="comp_offered")
-                _comp_curr  = st.number_input("Current salary (optional)", min_value=0, value=0, step=1000, key="comp_current")
-            with _comp_c2:
-                _comp_role  = st.text_input("Role title", key="comp_role", value=str(target) if "target" in dir() and target else "Product Manager")
-                _comp_co    = st.text_input("Company", key="comp_company", placeholder="e.g. Personio")
-            with _comp_c3:
-                _comp_loc   = st.text_input("Location", key="comp_location", value="Berlin, Germany")
-                _comp_stage = st.selectbox("Company stage", ["Seed","Series A","Series B","Series C","Scale-up","Enterprise"], key="comp_stage", index=2)
-            _comp_counter = st.checkbox("This is a counter-offer from my current employer", key="comp_is_counter")
+                st.markdown("<div style='margin:10px 0 4px 0'></div>", unsafe_allow_html=True)
 
-            if st.button("Analyse & Get Negotiation Scripts", key="btn_comp_run", type="primary", use_container_width=True):
-                if not _qa_key:
-                    st.warning("Add your OpenAI key to the sidebar.")
-                elif not _comp_offer:
-                    st.warning("Enter the offered salary.")
+                # ── Stage Kanban ─────────────────────────────────────────────────
+                if _pl_jobs:
+                    _kanban_stages = ["applied", "first_round", "final_round", "offer", "rejected"]
+                    _kc = st.columns(len(_kanban_stages), gap="small")
+                    for _ki, _ks in enumerate(_kanban_stages):
+                        _stage_jobs = [j for j in _pl_jobs if j["status"] == _ks]
+                        _sc = STATUS_COLORS.get(_ks, "#888")
+                        with _kc[_ki]:
+                            st.markdown(
+                                f'<div style="font-size:10px;font-weight:800;color:{_sc};text-transform:uppercase;'
+                                f'letter-spacing:0.06em;margin-bottom:6px">'
+                                f'{STATUS_LABELS.get(_ks, _ks)} ({len(_stage_jobs)})</div>',
+                                unsafe_allow_html=True,
+                            )
+                            for _sj in _stage_jobs[:4]:
+                                st.markdown(
+                                    f'<div style="background:#fff;border:1px solid rgba(0,0,0,0.1);border-left:3px solid {_sc};'
+                                    f'border-radius:0 6px 6px 0;padding:6px 8px;margin-bottom:5px;font-size:11px">'
+                                    f'<div style="font-weight:700;color:#1D2226">{_sj["company"]}</div>'
+                                    f'<div style="color:rgba(0,0,0,0.5)">{_sj["title"][:25]}</div>'
+                                    f'{"<div style=color:#057642;font-size:10px>ATS: " + str(_sj["ats_score"]) + "</div>" if _sj.get("ats_score") else ""}'
+                                    f'</div>',
+                                    unsafe_allow_html=True,
+                                )
+                            if len(_stage_jobs) > 4:
+                                st.caption(f"+{len(_stage_jobs)-4} more")
+
+                st.markdown("---")
+
+                # ── Update status ────────────────────────────────────────────────
+                if _pl_jobs:
+                    _upd_c1, _upd_c2, _upd_c3 = st.columns([3, 2, 2], gap="small")
+                    with _upd_c1:
+                        _upd_idx = st.selectbox(
+                            "Update application",
+                            options=list(range(len(_pl_jobs))),
+                            format_func=lambda i: f"{_pl_jobs[i]['company']} — {_pl_jobs[i]['title']}",
+                            key="pl_update_idx",
+                            label_visibility="collapsed",
+                        )
+                    with _upd_c2:
+                        _new_status = st.selectbox(
+                            "New status",
+                            options=APPLICATION_STATUSES,
+                            format_func=lambda s: STATUS_LABELS.get(s, s),
+                            key="pl_new_status",
+                            label_visibility="collapsed",
+                        )
+                    with _upd_c3:
+                        if st.button("Update status", key="pl_update_btn", use_container_width=True):
+                            _notes = ""
+                            if _new_status == "rejected":
+                                _notes = st.session_state.get("pl_rejection_notes", "")
+                            _pl_jobs[_upd_idx] = update_pipeline_job_status(_pl_jobs[_upd_idx], _new_status, _notes)
+                            st.session_state.pipeline_jobs = _pl_jobs
+                            st.session_state.pipeline_diagnosis = None
+                            st.session_state.pipeline_rejection_analysis = None
+                            st.session_state.advisor_result = None  # force advisor refresh
+                            # Trigger rejection reframe for emotional + technical support
+                            if _new_status == "rejected" and _qa_key:
+                                _rj = _pl_jobs[_upd_idx]
+                                st.session_state.rejection_reframe_result = generate_rejection_reframe(
+                                    job_title=_rj.get("title", ""),
+                                    company=_rj.get("company", ""),
+                                    rejection_stage=_notes or "unknown",
+                                    search_context=f"{current} → {target}",
+                                    total_applications=len(_pl_jobs),
+                                    model="gpt-4o-mini",
+                                    api_key=_qa_key,
+                                    prefer_online=True,
+                                )
+                            else:
+                                st.session_state.rejection_reframe_result = None
+                            st.rerun()
+
+                    if _new_status == "rejected":
+                        st.text_input(
+                            "Rejection stage/notes (optional)",
+                            key="pl_rejection_notes",
+                            placeholder="e.g. 'After first round — said they wanted more domain experience'",
+                        )
+
+                    # ── Rejection Reframe Engine ─────────────────────────────────
+                    _reframe = st.session_state.rejection_reframe_result
+                    if _reframe and _reframe.get("reframe"):
+                        st.markdown(
+                            f'<div style="background:#FFF8F0;border:1px solid #F0C080;border-radius:10px;'
+                            f'padding:14px 18px;margin-top:8px">'
+                            f'<div style="font-size:11px;font-weight:800;text-transform:uppercase;'
+                            f'letter-spacing:0.06em;color:#A05A00;margin-bottom:8px">Rejection Reframe</div>'
+                            f'<div style="font-size:13px;line-height:1.65;color:#1D2226;margin-bottom:10px">'
+                            f'{_reframe.get("reframe","")}</div>'
+                            f'<div style="background:#fff;border-left:3px solid #C37D16;border-radius:0 6px 6px 0;'
+                            f'padding:8px 12px;margin-bottom:8px;font-size:12px;color:rgba(0,0,0,0.65)">'
+                            f'<strong>What the data says:</strong> {_reframe.get("statistical_context","")}</div>'
+                            f'<div style="font-size:12px;font-weight:700;color:#1D2226;margin-bottom:4px">'
+                            f'Technical diagnosis: {_reframe.get("technical_diagnosis","")}</div>'
+                            f'<div style="background:#EEF3FB;border-radius:6px;padding:8px 12px;'
+                            f'font-size:12px;color:#0A66C2;font-weight:700;margin-bottom:8px">'
+                            f'Next: {_reframe.get("next_action","")}</div>'
+                            f'<div style="font-size:11px;color:rgba(0,0,0,0.45);font-style:italic">'
+                            f'{_reframe.get("motivation_line","")}</div>'
+                            f'</div>',
+                            unsafe_allow_html=True,
+                        )
+
+                # ── Signal-Adaptive Engine ───────────────────────────────────────
+                # Detects rejection patterns and auto-updates application strategy.
+                # Closes the loop: data → diagnosis → automatic profile update.
+                _sa_rejected = [j for j in _pl_jobs if j.get("status") == "rejected"]
+                _sa_avg_ats = _pl_stats.get("avg_ats_score", 0)
+                _sa_response = _pl_stats.get("response_rate", 100)
+                _sa_suggestions: list = []
+
+                if len(_sa_rejected) >= 2:
+                    # Pattern 1: ATS bottleneck
+                    if _sa_avg_ats and _sa_avg_ats < 65 and _sa_response < 20:
+                        _sa_suggestions.append({
+                            "icon": icon("cpu", 14, "#B71C1C"),
+                            "title": "ATS Bottleneck Detected",
+                            "detail": f"Avg ATS {_sa_avg_ats}/100 · {_sa_response}% response rate. "
+                                      f"Most applications are filtered before a human reads them.",
+                            "action": "Run ATS Fix & Regenerate on your 3 most recent applications. Target 75+.",
+                            "color": "#B71C1C",
+                        })
+                    # Pattern 2: Getting views but no calls
+                    _viewed = len([j for j in _pl_jobs if j.get("status") == "viewed"])
+                    if _viewed >= 2 and _pl_stats.get("interview_rate", 0) < 5:
+                        _sa_suggestions.append({
+                            "icon": icon("eye", 14, "#A05A00"),
+                            "title": "Profile Viewed But No Calls",
+                            "detail": f"{_viewed} applications viewed by recruiters — but no interview calls. "
+                                      f"Your CV is getting through ATS but not converting.",
+                            "action": "Your cover letter or CV narrative isn't landing. Run a new Adversarial Debate to find the weak point.",
+                            "color": "#A05A00",
+                        })
+                    # Pattern 3: First-round rejection pattern
+                    _first_rd_rej = [j for j in _sa_rejected if "first" in (j.get("rejection_stage","") or "").lower()]
+                    if len(_first_rd_rej) >= 2:
+                        _sa_suggestions.append({
+                            "icon": icon("mic", 14, "#7A2A8A"),
+                            "title": "First-Round Rejection Pattern",
+                            "detail": f"{len(_first_rd_rej)} rejections after first interview. "
+                                      f"You're passing ATS and getting calls — but losing the first conversation.",
+                            "action": "Run 3 Mock Interview sessions before your next call. First-round issues are almost always coachable.",
+                            "color": "#7A2A8A",
+                        })
+
+                if _sa_suggestions:
+                    st.markdown(
+                        '<div style="font-size:11px;font-weight:800;text-transform:uppercase;'
+                        'letter-spacing:0.06em;color:rgba(0,0,0,0.45);margin:8px 0 6px 0">'
+                        f'{icon("zap", 12, "rgba(0,0,0,0.45)")} Signal-Adaptive Engine — Pattern Detected</div>',
+                        unsafe_allow_html=True,
+                    )
+                    for _sug in _sa_suggestions:
+                        st.markdown(
+                            f'<div style="background:#fff;border-left:4px solid {_sug["color"]};'
+                            f'border-radius:0 8px 8px 0;padding:10px 14px;margin-bottom:6px;'
+                            f'box-shadow:0 1px 4px rgba(0,0,0,0.06)">'
+                            f'<div style="font-size:12px;font-weight:800;color:{_sug["color"]};margin-bottom:3px">'
+                            f'{_sug["icon"]} {_sug["title"]}</div>'
+                            f'<div style="font-size:11px;color:rgba(0,0,0,0.65);margin-bottom:5px">{_sug["detail"]}</div>'
+                            f'<div style="font-size:11px;font-weight:700;color:#1D2226">→ {_sug["action"]}</div>'
+                            f'</div>',
+                            unsafe_allow_html=True,
+                        )
+
+                # ── Manually add application ─────────────────────────────────────
+                if st.checkbox("+ Add application manually", key="pl_show_manual"):
+                    _ma_c1, _ma_c2 = st.columns(2)
+                    with _ma_c1:
+                        _ma_title = st.text_input("Job title", key="pl_manual_title")
+                        _ma_company = st.text_input("Company", key="pl_manual_company")
+                    with _ma_c2:
+                        _ma_location = st.text_input("Location", key="pl_manual_location")
+                        _ma_ats = st.number_input("ATS score (optional)", 0, 100, value=0, key="pl_manual_ats")
+                    if st.button("Add to pipeline", key="pl_manual_add", type="primary"):
+                        if _ma_title and _ma_company:
+                            _new_job = create_pipeline_job(
+                                title=_ma_title, company=_ma_company,
+                                location=_ma_location, ats_score=_ma_ats if _ma_ats else None,
+                                source="manual",
+                            )
+                            st.session_state.pipeline_jobs = _pl_jobs + [_new_job]
+                            st.rerun()
+
+                st.markdown("---")
+
+                # ── Pipeline Diagnosis ───────────────────────────────────────────
+                _pl_diag_c1, _pl_diag_c2 = st.columns([3, 1], gap="small")
+                with _pl_diag_c1:
+                    _pl_weeks = st.slider("Weeks searching", 1, 26, st.session_state.pipeline_weeks_searching, key="pl_weeks")
+                    st.session_state.pipeline_weeks_searching = _pl_weeks
+                with _pl_diag_c2:
+                    if st.button("Run Diagnosis", key="pl_diagnose", use_container_width=True, disabled=len(_pl_jobs) < 3):
+                        with st.spinner("Analysing your pipeline…"):
+                            st.session_state.pipeline_diagnosis = generate_pipeline_diagnosis(
+                                jobs=_pl_jobs,
+                                current_role=str(current),
+                                target_role=str(target),
+                                weeks_searching=_pl_weeks,
+                                model="gpt-4o-mini",
+                                prefer_online=bool(_qa_key),
+                                api_key=_qa_key or None,
+                            )
+                            _rejected_jobs = [j for j in _pl_jobs if j["status"] == "rejected"]
+                            if len(_rejected_jobs) >= 2:
+                                st.session_state.pipeline_rejection_analysis = analyze_rejection_patterns(
+                                    rejected_jobs=_rejected_jobs,
+                                    pivot_profile={"current_role": str(current), "target_role": str(target)},
+                                    model="gpt-4o-mini",
+                                    prefer_online=bool(_qa_key),
+                                    api_key=_qa_key or None,
+                                )
+                        st.rerun()
+
+                if len(_pl_jobs) < 3:
+                    st.caption("Log at least 3 applications to unlock pipeline diagnosis.")
+
+                _pl_diag = st.session_state.pipeline_diagnosis
+                if _pl_diag:
+                    _ph = _pl_diag.get("health_score", 0)
+                    _ph_col = "#117A37" if _ph >= 65 else ("#A05A00" if _ph >= 35 else "#B71C1C")
+                    st.markdown(
+                        f'<div style="background:#F3F6F9;border-radius:10px;padding:14px 18px;margin-top:8px">'
+                        f'<div style="display:flex;align-items:center;gap:14px;margin-bottom:10px">'
+                        f'<div style="font-size:30px;font-weight:900;color:{_ph_col}">{_ph}</div>'
+                        f'<div>'
+                        f'<div style="font-size:13px;font-weight:800;color:#1D2226">'
+                        f'Pipeline Health · {_pl_diag.get("overall_health","").title()}</div>'
+                        f'<div style="font-size:11px;color:rgba(0,0,0,0.55)">{_pl_diag.get("week_estimate","")}</div>'
+                        f'</div></div>'
+                        f'<div style="font-size:12px;color:#B71C1C;font-weight:700;margin-bottom:6px">'
+                        f'Bottleneck: {_pl_diag.get("top_bottleneck","")}</div>'
+                        f'<div style="background:#fff;border-left:3px solid #0A66C2;border-radius:0 6px 6px 0;'
+                        f'padding:8px 12px;font-size:12px;line-height:1.55">'
+                        f'<strong>Highest-leverage action:</strong> {_pl_diag.get("highest_leverage_action","")}'
+                        f'</div>'
+                        + (f'<div style="font-size:11px;color:rgba(0,0,0,0.5);margin-top:8px;font-style:italic">'
+                           f'{_pl_diag.get("benchmark_context","")}</div>' if _pl_diag.get("benchmark_context") else "")
+                        + f'</div>',
+                        unsafe_allow_html=True,
+                    )
+
+                _pl_rej = st.session_state.pipeline_rejection_analysis
+                if _pl_rej and _pl_rej.get("root_cause"):
+                    st.markdown(
+                        f'<div style="background:#FFF4F4;border:1px solid #F5C6C6;border-radius:8px;'
+                        f'padding:12px 16px;margin-top:8px">'
+                        f'<div style="font-size:11px;font-weight:800;text-transform:uppercase;color:#B71C1C;'
+                        f'letter-spacing:0.06em;margin-bottom:6px">Rejection Pattern Analysis</div>'
+                        f'<div style="font-size:12px;font-weight:700;color:#1D2226;margin-bottom:4px">'
+                        f'{_pl_rej.get("primary_pattern","")}</div>'
+                        f'<div style="font-size:12px;color:rgba(0,0,0,0.65);margin-bottom:8px">'
+                        f'{_pl_rej.get("root_cause","")}</div>'
+                        + "".join([
+                            f'<div style="background:#fff;border-left:3px solid #B71C1C;border-radius:0 4px 4px 0;'
+                            f'padding:5px 10px;margin-bottom:4px;font-size:11px">→ {fix}</div>'
+                            for fix in _pl_rej.get("actionable_fixes", [])[:3]
+                        ])
+                        + f'</div>',
+                        unsafe_allow_html=True,
+                    )
+
+                st.markdown("---")
+
+                # ── Save / Load Pipeline ─────────────────────────────────────────
+                _save_c1, _save_c2 = st.columns(2)
+                with _save_c1:
+                    if _pl_jobs:
+                        st.download_button(
+                            "Save Pipeline (JSON)",
+                            data=pipeline_to_json(_pl_jobs),
+                            file_name="job_pipeline.json",
+                            mime="application/json",
+                            key="pl_download",
+                            help="Download your pipeline data to reload in your next session",
+                        )
+                with _save_c2:
+                    _pl_upload = st.file_uploader(
+                        "↑ Load Pipeline", type=["json"], key="pl_upload",
+                        label_visibility="collapsed",
+                        help="Upload a previously saved pipeline.json to continue your session",
+                    )
+                    if _pl_upload:
+                        _loaded = pipeline_from_json(_pl_upload.read().decode("utf-8"))
+                        if _loaded:
+                            st.session_state.pipeline_jobs = _loaded
+                            st.rerun()
+
+                if _pl_jobs and st.button("Clear pipeline", key="pl_clear", type="secondary"):
+                    st.session_state.pipeline_jobs = []
+                    st.session_state.pipeline_diagnosis = None
+                    st.rerun()
+
+        with st.expander("Outcome Tracker & Calibration", expanded=False):
+            # ════════════════════════════════════════════════════════════════════════
+            # OUTCOME TRACKER + CALIBRATION MOTOR
+            # Record what actually happened → calibrate your personal ROI model
+            # ════════════════════════════════════════════════════════════════════════
+            # ── Pattern Alert — runs automatically whenever outcome_log updates ──────
+            _ot_log_check: list = st.session_state.outcome_log or []
+            _ql_check: list     = st.session_state.get("quality_log") or []
+            if _ot_log_check:
+                _pa = detect_rejection_pattern(
+                    _ot_log_check, _ql_check,
+                    st.session_state.get("cohort_intelligence"),
+                )
+                st.session_state.pattern_alert = _pa
+                if _pa:
+                    _pa_sev   = _pa.get("severity","mild")
+                    _pa_col   = pattern_severity_color(_pa_sev)
+                    _pa_icon  = pattern_severity_icon(_pa_sev)
+                    _pa_consec = _pa.get("consecutive_count", 0)
+                    st.markdown(
+                        f'<div style="background:{_pa_col}12;border:2px solid {_pa_col};border-radius:10px;'
+                        f'padding:14px 18px;margin-bottom:10px">'
+                        f'<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">'
+                        f'<span style="font-size:18px">{_pa_icon}</span>'
+                        f'<div>'
+                        f'<div style="font-size:13px;font-weight:800;color:{_pa_col}">'
+                        f'Pattern Alert — {_pa.get("alert_title","")}</div>'
+                        f'<div style="font-size:10px;font-weight:600;color:{_pa_col};opacity:0.8;letter-spacing:0.05em">'
+                        f'{_pa_sev.upper()} · {_pa_consec} consecutive · confidence {int(_pa.get("pattern_confidence",0)*100)}%'
+                        f'</div></div></div>'
+                        f'<div style="font-size:12px;color:rgba(0,0,0,0.75);line-height:1.55;margin-bottom:8px">'
+                        f'{_pa.get("alert_message","")}</div>'
+                        f'<div style="background:{_pa_col}20;border-radius:6px;padding:8px 12px">'
+                        f'<div style="font-size:10px;font-weight:800;color:{_pa_col};letter-spacing:0.06em;'
+                        f'text-transform:uppercase;margin-bottom:3px">What to do</div>'
+                        f'<div style="font-size:11px;color:rgba(0,0,0,0.8);line-height:1.5">'
+                        f'{_pa.get("recommended_action","")}</div>'
+                        f'</div></div>',
+                        unsafe_allow_html=True,
+                    )
+
+            with st.expander("Outcome Tracker · Calibration lever — Brier score + cross-rejection synthesis", expanded=False):
+                st.markdown(
+                    '<div style="font-size:12px;color:rgba(0,0,0,0.55);line-height:1.6;margin-bottom:12px">'
+                    'Record the outcome of each application. The Calibration Motor compares your predicted ROI '
+                    'vs. actual results and adjusts your personal response rate. After 5+ outcomes, your ROI scores '
+                    'are calibrated to <em>your</em> profile — not industry averages.'
+                    '</div>',
+                    unsafe_allow_html=True,
+                )
+
+                _ot_log: list = st.session_state.outcome_log or []
+                _ot_pipeline = st.session_state.pipeline_jobs or []
+
+                # ── Log new outcome ────────────────────────────────────────────────
+                st.markdown("**Log an outcome**")
+                _ot_c1, _ot_c2, _ot_c3 = st.columns([2, 2, 2])
+                with _ot_c1:
+                    # Pre-fill from pipeline if possible
+                    _ot_pipeline_options = [f"{j.get('title','')} @ {j.get('company','')}" for j in _ot_pipeline] + ["Other (manual entry)"]
+                    _ot_job_sel = st.selectbox("Application", _ot_pipeline_options, key="ot_job_sel", label_visibility="collapsed")
+                with _ot_c2:
+                    _ot_stage = st.selectbox(
+                        "Outcome",
+                        options=OUTCOME_STAGES,
+                        format_func=lambda x: STAGE_LABELS.get(x, x),
+                        key="ot_stage_sel",
+                        label_visibility="collapsed",
+                    )
+                with _ot_c3:
+                    _ot_log_btn = st.button("Log outcome", key="ot_log_btn", use_container_width=True)
+
+                if _ot_log_btn:
+                    # Find job details
+                    _ot_sel_idx = _ot_pipeline_options.index(_ot_job_sel) if _ot_job_sel in _ot_pipeline_options else -1
+                    if _ot_sel_idx >= 0 and _ot_sel_idx < len(_ot_pipeline):
+                        _ot_job = _ot_pipeline[_ot_sel_idx]
+                        _ot_predicted = None
+                        _ot_roi_key = f"{_ot_job.get('company','')}_{_ot_job.get('title','')}"
+                        if isinstance(st.session_state.roi_results, dict):
+                            _ot_predicted = st.session_state.roi_results.get(_ot_roi_key, {}).get("ei_per_app")
+                        _ot_entry = create_outcome_entry(
+                            job_id=_ot_job.get("id", ""),
+                            job_title=_ot_job.get("title", ""),
+                            company=_ot_job.get("company", ""),
+                            predicted_roi=_ot_predicted,
+                            actual_stage=_ot_stage,
+                        )
+                    else:
+                        _ot_entry = create_outcome_entry("manual", _ot_job_sel, "", None, _ot_stage)
+
+                    if st.session_state.outcome_log is None:
+                        st.session_state.outcome_log = []
+                    st.session_state.outcome_log.append(_ot_entry)
+                    # Recompute calibration
+                    st.session_state.calibration_data = compute_calibration(st.session_state.outcome_log)
+                    # Resolve Brier prediction for this job (if a JD analysis was run for it)
+                    _ot_is_offer = _ot_stage in ("offer",)
+                    if _ot_sel_idx >= 0 and _ot_sel_idx < len(_ot_pipeline):
+                        _ot_job_for_brier = _ot_pipeline[_ot_sel_idx]
+                        _jda_cached = st.session_state.get("jd_analysis_result") or {}
+                        if _jda_cached.get("company") == _ot_job_for_brier.get("company"):
+                            import hashlib as _hl2
+                            _jda_text_for_id = st.session_state.get("jd_analysis_text", "")
+                            if _jda_text_for_id:
+                                _brier_pid = _hl2.md5((_jda_text_for_id[:200]).encode()).hexdigest()[:12]
+                                brier_resolve_prediction(_SQLITE_DB_PATH, _brier_pid, got_offer=_ot_is_offer)
+                    # Invalidate daily brief
+                    st.session_state.daily_brief_date = ""
+                    save_profile(st.session_state)
+                    st.rerun()
+
+                # ── Outcome log ────────────────────────────────────────────────────
+                if _ot_log:
+                    st.divider()
+                    _cal = st.session_state.calibration_data or {}
+                    _funnel = get_funnel_stats(_ot_log)
+                    _diagnosis = diagnose_rejection_pattern(_ot_log)
+
+                    # Funnel metrics
+                    _fc1, _fc2, _fc3, _fc4 = st.columns(4)
+                    _f_metrics = [
+                        ("Applied", _funnel.get("applied", 0), None),
+                        ("Responded", f"{_funnel.get('response_rate',0):.0f}%", None),
+                        ("Interviews", f"{_funnel.get('interview_rate',0):.0f}%", None),
+                        ("Offers", _funnel.get("offers", 0), "#057642"),
+                    ]
+                    for _fc, (_lbl, _val, _col) in zip([_fc1, _fc2, _fc3, _fc4], _f_metrics):
+                        with _fc:
+                            _vc = _col or ("#057642" if str(_val).endswith("%") and float(str(_val).rstrip("%")) >= 20 else "#0A66C2")
+                            st.markdown(
+                                f'<div style="text-align:center">'
+                                f'<div style="font-size:22px;font-weight:900;color:{_vc}">{_val}</div>'
+                                f'<div style="font-size:10px;color:rgba(0,0,0,0.45);font-weight:600">{_lbl}</div>'
+                                f'</div>',
+                                unsafe_allow_html=True,
+                            )
+
+                    # Calibration insight
+                    if _cal.get("calibrated"):
+                        _adj = _cal.get("adjustment_factor", 1.0)
+                        _adj_color = "#057642" if _adj > 1.1 else ("#B71C1C" if _adj < 0.85 else "#0A66C2")
+                        st.markdown(
+                            f'<div style="background:#F8FAFF;border:1px solid #C7D8F0;border-radius:8px;'
+                            f'padding:10px 14px;margin:10px 0;font-size:12px;line-height:1.6">'
+                            f'<span style="font-weight:700;color:{_adj_color}">Calibration: {_adj:.2f}x</span> · '
+                            f'{_cal.get("insight","")}'
+                            f'</div>',
+                            unsafe_allow_html=True,
+                        )
+
+                    # Rejection diagnosis
+                    if _diagnosis:
+                        _sev_colors = {"critical": "#B71C1C", "high": "#A05A00", "moderate": "#0A66C2"}
+                        _sev_c = _sev_colors.get(_diagnosis.get("severity",""), "#5F6B7A")
+                        st.markdown(
+                            f'<div style="background:#FFF8F8;border-left:3px solid {_sev_c};border-radius:0 8px 8px 0;'
+                            f'padding:10px 14px;margin:8px 0">'
+                            f'<div style="font-size:11px;font-weight:800;color:{_sev_c};margin-bottom:4px">'
+                            f'{_diagnosis.get("severity_label","")} — {_diagnosis.get("dominant_pct",0):.0f}% of rejections at {_diagnosis.get("dominant_label","")}'
+                            f'</div>'
+                            f'<div style="font-size:12px;color:rgba(0,0,0,0.7);margin-bottom:6px">'
+                            f'Root cause: {_diagnosis.get("root_cause","")}'
+                            f'</div>'
+                            f'<div style="font-size:11px;font-weight:700;color:rgba(0,0,0,0.55);margin-bottom:4px">Fix:</div>',
+                            unsafe_allow_html=True,
+                        )
+                        for _act in _diagnosis.get("actions", [])[:3]:
+                            st.markdown(f"→ {_act}")
+                        st.markdown("</div>", unsafe_allow_html=True)
+
+                    # Rejection Interpreter — instant actionable diagnosis per rejection
+                    _rej_log_items = [o for o in _ot_log if not o.get("is_offer")]
+                    if _rej_log_items:
+                        st.markdown(
+                            f'<div style="font-size:10px;font-weight:800;letter-spacing:0.08em;'
+                            f'text-transform:uppercase;color:rgba(0,0,0,0.38);margin-top:12px;margin-bottom:6px">'
+                            f'Rejection Interpreter</div>',
+                            unsafe_allow_html=True,
+                        )
+                        _ri_sel_opts = [
+                            f"{o.get('job_title','Role')} @ {o.get('company','?')} — {STAGE_LABELS.get(o.get('actual_stage',''),'')}"
+                            for o in _rej_log_items[-8:]
+                        ]
+                        _ri_sel = st.selectbox("Select a rejection to interpret", _ri_sel_opts,
+                                               key="ri_select", label_visibility="collapsed")
+                        _ri_idx = _ri_sel_opts.index(_ri_sel) if _ri_sel in _ri_sel_opts else 0
+                        _ri_entry = _rej_log_items[-(8 - _ri_idx)] if _ri_idx < len(_rej_log_items) else _rej_log_items[-1]
+                        _ri_entry_id = _ri_entry.get("id", "") or _ri_entry.get("date","") + _ri_entry.get("company","")
+
+                        _ri_feedback = st.text_area(
+                            "Paste feedback (optional — leave blank for pattern-based diagnosis)",
+                            key="ri_feedback", height=55,
+                            placeholder="e.g. 'We decided to go with a candidate with more direct experience in X'",
+                        )
+
+                        _ri_interp = st.session_state.get("rejection_interpretations", {}).get(_ri_entry_id)
+                        if st.button("Interpret this rejection", key="ri_run", use_container_width=True):
+                            with st.spinner("Diagnosing rejection…"):
+                                _ri_result = interpret_rejection(
+                                    _qa_key or "",
+                                    feedback_text=_ri_feedback or "",
+                                    stage=_ri_entry.get("actual_stage", "no_response"),
+                                    job_title=_ri_entry.get("job_title", ""),
+                                    company=_ri_entry.get("company", ""),
+                                    cv_profile=st.session_state.get("cv_profile") or {},
+                                    pivot_dna=st.session_state.get("pivot_dna") or {},
+                                )
+                                _ri_interps = st.session_state.get("rejection_interpretations") or {}
+                                _ri_interps[_ri_entry_id] = _ri_result
+                                st.session_state.rejection_interpretations = _ri_interps
+                                _ri_interp = _ri_result
+                                save_profile(st.session_state)
+
+                        if _ri_interp:
+                            _ri_meta = _ri_interp.get("type_meta", {})
+                            _ri_col = _ri_meta.get("color", "#5F6B7A")
+                            st.markdown(
+                                f'<div style="background:#F8FAFF;border-left:3px solid {_ri_col};'
+                                f'border-radius:0 10px 10px 0;padding:12px 14px;margin-top:8px">'
+                                f'<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">'
+                                f'{icon_box(_ri_meta.get("icon","help-circle"), bg=_ri_col+"20", color=_ri_col, size=14, box_size=28, radius=6)}'
+                                f'<div><div style="font-size:12px;font-weight:800;color:{_ri_col}">'
+                                f'{_ri_meta.get("label","Rejection")} · {_ri_interp.get("confidence",0)}% confidence</div>'
+                                f'<div style="font-size:11px;color:rgba(0,0,0,0.5)">{_ri_meta.get("summary","")}</div>'
+                                f'</div></div>'
+                                f'<div style="font-size:12px;color:rgba(0,0,0,0.75);margin-bottom:8px;line-height:1.5">'
+                                f'<strong>Root cause:</strong> {_ri_interp.get("root_cause","")}</div>'
+                                f'<div style="background:{_ri_col}15;border-radius:6px;padding:8px 10px;margin-bottom:8px">'
+                                f'<div style="font-size:10px;font-weight:800;color:{_ri_col};margin-bottom:3px">DO THIS TODAY</div>'
+                                f'<div style="font-size:12px;font-weight:600;color:rgba(0,0,0,0.8)">'
+                                f'{_ri_interp.get("immediate_action","")}</div>'
+                                f'</div>',
+                                unsafe_allow_html=True,
+                            )
+                            _ri_plan = _ri_interp.get("week_plan") or []
+                            if _ri_plan:
+                                st.markdown(
+                                    '<div style="font-size:10px;font-weight:800;color:rgba(0,0,0,0.38);'
+                                    'margin-bottom:4px">THIS WEEK</div>',
+                                    unsafe_allow_html=True,
+                                )
+                                for _rp in _ri_plan:
+                                    st.markdown(
+                                        f'<div style="font-size:11px;color:rgba(0,0,0,0.7);padding:2px 0">'
+                                        f'{check_icon(11)} {_rp}</div>',
+                                        unsafe_allow_html=True,
+                                    )
+                            if _ri_interp.get("reframe"):
+                                st.markdown(
+                                    f'<div style="margin-top:8px;font-size:11px;color:rgba(0,0,0,0.55);'
+                                    f'font-style:italic;line-height:1.5">{_ri_interp["reframe"]}</div>',
+                                    unsafe_allow_html=True,
+                                )
+                            if _ri_interp.get("ops_impact"):
+                                st.markdown(
+                                    f'<div style="margin-top:6px;font-size:11px;font-weight:600;color:#0A66C2">'
+                                    f'{icon("trending-up",11,"#0A66C2")} {_ri_interp["ops_impact"]}</div>',
+                                    unsafe_allow_html=True,
+                                )
+                            st.markdown('</div>', unsafe_allow_html=True)
+
+                    # ── Brier Score — AI Prediction Accuracy ─────────────────────────
+                    _brier = compute_brier_stats(_SQLITE_DB_PATH)
+                    st.session_state.brier_stats = _brier
+                    _br_n = _brier.get("n_resolved", 0)
+                    _br_pending = _brier.get("n_pending", 0)
+
+                    with st.expander(
+                        f"AI Calibration · Brier Score"
+                        + (f" — {_brier.get('brier_quality','?')} ({_brier.get('brier_score','?')})" if not _brier.get("insufficient_data") else f" — {_br_n}/{_brier.get('min_required',3)} predictions resolved"),
+                        expanded=not _brier.get("insufficient_data"),
+                    ):
+                        st.markdown(
+                            '<div style="font-size:11px;color:rgba(0,0,0,0.5);margin-bottom:10px;line-height:1.6">'
+                            '<strong>#1 Mistake with AI backends: not evaluating AI in zero-shot tasks.</strong> '
+                            'Every time the JD Analyzer predicts P(offer), it is logged here. '
+                            'Every time you record an actual outcome, the prediction is resolved. '
+                            'The Brier Score measures how well-calibrated the AI predictions are against your ground truth. '
+                            'The Correction Factor is applied to ALL future predictions.'
+                            '</div>',
+                            unsafe_allow_html=True,
+                        )
+
+                        if _brier.get("insufficient_data"):
+                            _needed = _brier.get("min_required", 3) - _br_n
+                            st.info(
+                                f"**{_br_n}/{_brier.get('min_required',3)} predictions resolved.** "
+                                f"Run the JD Analyzer on {_br_pending} pending predictions and log their outcomes to unlock Brier score. "
+                                f"Need {max(0, _needed)} more resolved predictions."
+                            )
+                            if _br_pending > 0:
+                                st.markdown(f"**{_br_pending} unresolved predictions waiting for outcomes:**")
+                                for _bp in _brier.get("pending", [])[:5]:
+                                    st.markdown(
+                                        f'<div style="font-size:11px;color:rgba(0,0,0,0.65);padding:2px 0">'
+                                        f'→ {_bp.get("job_title","")} @ {_bp.get("company","")} — '
+                                        f'Predicted: <strong>{_bp.get("predicted_prob",0):.0f}%</strong> · '
+                                        f'Log the actual outcome above to resolve.'
+                                        f'</div>',
+                                        unsafe_allow_html=True,
+                                    )
+                        else:
+                            _bq_col = _brier.get("brier_quality_color", "#0A66C2")
+                            _bc1, _bc2, _bc3, _bc4 = st.columns(4)
+                            with _bc1:
+                                st.markdown(
+                                    f'<div style="text-align:center">'
+                                    f'<div style="font-size:22px;font-weight:900;color:{_bq_col}">{_brier.get("brier_score","?")}</div>'
+                                    f'<div style="font-size:10px;color:rgba(0,0,0,0.45);font-weight:700;text-transform:uppercase">Brier Score</div>'
+                                    f'<div style="font-size:9px;color:{_bq_col};font-weight:700">{_brier.get("brier_quality","")}</div>'
+                                    f'</div>',
+                                    unsafe_allow_html=True,
+                                )
+                            with _bc2:
+                                _cfactor = _brier.get("correction_factor", 1.0)
+                                _cf_col = "#057642" if 0.85 <= _cfactor <= 1.15 else "#D97706"
+                                st.markdown(
+                                    f'<div style="text-align:center">'
+                                    f'<div style="font-size:22px;font-weight:900;color:{_cf_col}">{_cfactor:.2f}×</div>'
+                                    f'<div style="font-size:10px;color:rgba(0,0,0,0.45);font-weight:700;text-transform:uppercase">Correction Factor</div>'
+                                    f'<div style="font-size:9px;color:{_cf_col};font-weight:700">{_brier.get("bias_direction","")}</div>'
+                                    f'</div>',
+                                    unsafe_allow_html=True,
+                                )
+                            with _bc3:
+                                st.markdown(
+                                    f'<div style="text-align:center">'
+                                    f'<div style="font-size:22px;font-weight:900;color:#0A66C2">{_brier.get("mean_predicted_pct","?")}%</div>'
+                                    f'<div style="font-size:10px;color:rgba(0,0,0,0.45);font-weight:700;text-transform:uppercase">Avg AI Prediction</div>'
+                                    f'</div>',
+                                    unsafe_allow_html=True,
+                                )
+                            with _bc4:
+                                _emp_col = "#057642" if _brier.get("mean_actual_pct", 0) > 20 else "#D97706"
+                                st.markdown(
+                                    f'<div style="text-align:center">'
+                                    f'<div style="font-size:22px;font-weight:900;color:{_emp_col}">{_brier.get("mean_actual_pct","?")}%</div>'
+                                    f'<div style="font-size:10px;color:rgba(0,0,0,0.45);font-weight:700;text-transform:uppercase">Empirical Offer Rate</div>'
+                                    f'</div>',
+                                    unsafe_allow_html=True,
+                                )
+
+                            st.markdown(
+                                f'<div style="background:#F0F4FF;border-radius:8px;padding:8px 12px;margin:10px 0;'
+                                f'font-size:11px;color:rgba(0,0,0,0.65);line-height:1.5">'
+                                f'{_brier.get("bias_note","")}'
+                                f'</div>',
+                                unsafe_allow_html=True,
+                            )
+
+                            # Reliability diagram
+                            _rel = _brier.get("reliability", [])
+                            if _rel:
+                                st.markdown(
+                                    '<div style="font-size:10px;font-weight:800;letter-spacing:0.08em;'
+                                    'text-transform:uppercase;color:rgba(0,0,0,0.38);margin-bottom:6px">'
+                                    'Reliability Diagram — predicted vs. actual offer rate per bucket</div>',
+                                    unsafe_allow_html=True,
+                                )
+                                for _rb in _rel:
+                                    _rg = _rb.get("gap", 0)
+                                    _rg_col = "#DC2626" if abs(_rg) > 15 else ("#D97706" if abs(_rg) > 8 else "#057642")
+                                    st.markdown(
+                                        f'<div style="display:flex;align-items:center;gap:8px;'
+                                        f'padding:4px 8px;margin-bottom:2px;background:#F8FAFF;border-radius:6px">'
+                                        f'<div style="font-size:10px;font-weight:700;color:#0A66C2;width:70px">{_rb["bucket"]}</div>'
+                                        f'<div style="font-size:10px;color:rgba(0,0,0,0.55);width:80px">Predicted: {_rb["mean_predicted"]}%</div>'
+                                        f'<div style="font-size:10px;color:rgba(0,0,0,0.55);width:70px">Actual: {_rb["mean_actual"]}%</div>'
+                                        f'<div style="font-size:10px;font-weight:700;color:{_rg_col}">'
+                                        f'{"▲" if _rg < 0 else "▼"} {abs(_rg):.0f}pt {"under" if _rg < 0 else "over"}confidence</div>'
+                                        f'<div style="font-size:9px;color:rgba(0,0,0,0.3)">n={_rb["n"]}</div>'
+                                        f'</div>',
+                                        unsafe_allow_html=True,
+                                    )
+
+                            st.caption(
+                                f"Brier Score 0.0 = perfect · 0.25 = uninformative (guessing 50%). "
+                                f"Based on {_br_n} resolved predictions. "
+                                f"Correction factor {_cfactor:.2f}× is applied to all future JD Analyzer predictions automatically."
+                            )
+
+                    # ── Cross-Rejection Synthesis ─────────────────────────────────────
+                    _rej_entries = [o for o in _ot_log if not o.get("is_offer")]
+                    if len(_rej_entries) >= 2:
+                        _stage_dist = compute_stage_distribution(_ot_log)
+                        _dominant = _stage_dist.get("dominant_stage")
+                        _dominant_pct = _stage_dist.get("dominant_pct", 0)
+                        _dominant_col = bottleneck_color(_dominant or "")
+
+                        with st.expander(
+                            f"Cross-Rejection Synthesis — {_stage_dist.get('n_rejections',0)} rejections · bottleneck: {_dominant or '?'} ({_dominant_pct}%)",
+                            expanded=len(_rej_entries) >= 3,
+                        ):
+                            st.markdown(
+                                '<div style="font-size:11px;color:rgba(0,0,0,0.5);margin-bottom:10px;line-height:1.6">'
+                                'Individual rejection diagnosis answers: "what went wrong with this one?" '
+                                'Cross-rejection synthesis answers: "what do all my rejections collectively say about my search strategy?" '
+                                'The distinction between <strong>fixable execution issues</strong> and <strong>structural strategy problems</strong> is what changes the approach.'
+                                '</div>',
+                                unsafe_allow_html=True,
+                            )
+
+                            # Stage distribution (pure Python — no API needed)
+                            _sd_counts = _stage_dist.get("stage_counts", {})
+                            if _sd_counts:
+                                _sd_html = '<div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">'
+                                for _stage, _cnt in sorted(_sd_counts.items(), key=lambda x: -x[1]):
+                                    _sc = bottleneck_color(_stage)
+                                    _sd_pct = round(_cnt / max(1, _stage_dist.get("n_rejections", 1)) * 100)
+                                    _sd_html += (
+                                        f'<div style="background:{_sc}15;border:1px solid {_sc}40;border-radius:20px;'
+                                        f'padding:3px 12px;font-size:11px;font-weight:700;color:{_sc}">'
+                                        f'{_stage}: {_cnt} ({_sd_pct}%)</div>'
+                                    )
+                                _sd_html += "</div>"
+                                st.markdown(_sd_html, unsafe_allow_html=True)
+
+                            # GPT synthesis (on button press)
+                            _synth = st.session_state.get("rejection_synthesis")
+                            if st.button("Synthesise rejection pattern", key="synth_run", use_container_width=True, type="primary"):
+                                with st.spinner("Analysing cross-rejection pattern…"):
+                                    # Build input from outcome log + any rejection interpreter results
+                                    _ri_all = st.session_state.get("rejection_interpretations", {})
+                                    _rej_input = []
+                                    for _re in _rej_entries:
+                                        _re_id = _re.get("id","") or _re.get("date","") + _re.get("company","")
+                                        _ri_data = _ri_all.get(_re_id) or {}
+                                        _rej_input.append({
+                                            "company":          _re.get("company", ""),
+                                            "job_title":        _re.get("job_title", ""),
+                                            "rejection_stage":  _re.get("actual_stage", "no_response"),
+                                            "likely_cause":     _ri_data.get("root_cause", ""),
+                                            "root_cause_hypothesis": _ri_data.get("root_cause", ""),
+                                            "fixable":          _ri_data.get("fixable"),
+                                        })
+                                    _synth = synthesize_rejections(
+                                        _qa_key or "",
+                                        rejections=_rej_input,
+                                        outcome_log=_ot_log,
+                                    )
+                                    st.session_state.rejection_synthesis = _synth
+                                    save_profile(st.session_state)
+
+                            if _synth:
+                                _syn_struct = _synth.get("is_structural", False)
+                                _syn_bc = bottleneck_color(_synth.get("bottleneck_stage", ""))
+                                _syn_badge = "STRUCTURAL — strategy must change" if _syn_struct else "EXECUTION — fixable without strategy change"
+                                _syn_badge_col = "#DC2626" if _syn_struct else "#D97706"
+                                st.markdown(
+                                    f'<div style="background:{_syn_badge_col}15;border:1.5px solid {_syn_badge_col}50;'
+                                    f'border-radius:10px;padding:14px 16px;margin-bottom:10px">'
+                                    f'<div style="font-size:10px;font-weight:900;letter-spacing:0.08em;text-transform:uppercase;'
+                                    f'color:{_syn_badge_col};margin-bottom:6px">{_syn_badge}</div>'
+                                    f'<div style="font-size:13px;font-weight:700;color:rgba(0,0,0,0.88);margin-bottom:6px">'
+                                    f'{_synth.get("root_cause","")}</div>'
+                                    f'<div style="font-size:11px;color:rgba(0,0,0,0.6);line-height:1.5">'
+                                    f'Bottleneck: <strong style="color:{_syn_bc}">{_synth.get("bottleneck_stage","")} ({_synth.get("bottleneck_pct",0)}%)</strong>'
+                                    f' · Confidence: <strong>{_synth.get("bottleneck_confidence","?")}</strong>'
+                                    f'</div></div>',
+                                    unsafe_allow_html=True,
+                                )
+
+                                _syn_c1, _syn_c2 = st.columns(2)
+                                with _syn_c1:
+                                    st.markdown(
+                                        f'<div style="background:#F0FAF4;border-left:3px solid #057642;border-radius:0 8px 8px 0;'
+                                        f'padding:10px 12px">'
+                                        f'<div style="font-size:10px;font-weight:800;color:#057642;margin-bottom:4px">HIGHEST-EV FIX</div>'
+                                        f'<div style="font-size:12px;font-weight:600;color:rgba(0,0,0,0.8)">{_synth.get("highest_ev_fix","")}</div>'
+                                        f'<div style="font-size:10px;color:rgba(0,0,0,0.5);margin-top:4px">Effort: {_synth.get("fix_effort","")} · '
+                                        f'~{_synth.get("weeks_to_improvement","?")} weeks to improvement</div>'
+                                        f'</div>',
+                                        unsafe_allow_html=True,
+                                    )
+                                with _syn_c2:
+                                    st.markdown(
+                                        f'<div style="background:#F0F4FF;border-left:3px solid #0A66C2;border-radius:0 8px 8px 0;'
+                                        f'padding:10px 12px">'
+                                        f'<div style="font-size:10px;font-weight:800;color:#0A66C2;margin-bottom:4px">WHAT\'S WORKING</div>'
+                                        f'<div style="font-size:12px;color:rgba(0,0,0,0.7);line-height:1.5">{_synth.get("encouraging_signal","")}</div>'
+                                        f'</div>',
+                                        unsafe_allow_html=True,
+                                    )
+
+                                if _synth.get("pivot_strategy_change") and _synth.get("pivot_strategy_change") != "null":
+                                    st.markdown(
+                                        f'<div style="background:#FFF8F0;border:1px solid #F0C06040;border-radius:8px;'
+                                        f'padding:10px 12px;margin-top:8px">'
+                                        f'<div style="font-size:10px;font-weight:800;color:#D97706;margin-bottom:4px">STRATEGY ADJUSTMENT RECOMMENDED</div>'
+                                        f'<div style="font-size:12px;color:rgba(0,0,0,0.7)">{_synth.get("pivot_strategy_change","")}</div>'
+                                        f'</div>',
+                                        unsafe_allow_html=True,
+                                    )
+
+                    # Log table
+                    if st.checkbox(f"Show outcome log ({len(_ot_log)} entries)", key="ot_show_log"):
+                        for _oe in reversed(_ot_log[-10:]):
+                            _oc = STAGE_COLORS.get(_oe.get("actual_stage",""), "#5F6B7A")
+                            st.markdown(
+                                f'<div style="display:flex;align-items:center;gap:8px;padding:4px 0;'
+                                f'border-bottom:1px solid rgba(0,0,0,0.05);font-size:11px">'
+                                f'<span style="color:rgba(0,0,0,0.4)">{_oe.get("date","")}</span>'
+                                f'<span style="font-weight:600">{_oe.get("job_title","")} @ {_oe.get("company","")}</span>'
+                                f'<span style="padding:1px 7px;border-radius:20px;background:{_oc}18;'
+                                f'color:{_oc};font-weight:700;border:1px solid {_oc}40">'
+                                f'{STAGE_LABELS.get(_oe.get("actual_stage",""),"")}</span>'
+                                f'</div>',
+                                unsafe_allow_html=True,
+                            )
                 else:
-                    with st.spinner("Calibrating market range · Building negotiation scripts…"):
-                        _comp_result = analyze_offer(
-                            _qa_key,
-                            offered_amount=_comp_offer,
-                            role_title=_comp_role,
-                            company=_comp_co,
-                            location=_comp_loc,
-                            company_stage=_comp_stage,
-                            years_experience=int((st.session_state.get("cv_profile") or {}).get("years_experience",5)),
-                            current_salary=_comp_curr or None,
-                            pivot_dna=st.session_state.get("pivot_dna"),
-                            is_counter_offer=_comp_counter,
-                        )
-                        st.session_state.comp_analysis = _comp_result
+                    st.caption("No outcomes logged yet. Log 3+ outcomes to unlock calibration and rejection diagnosis.")
 
-            _ca = st.session_state.get("comp_analysis")
-            if _ca:
-                _ca_low  = _ca.get("market_low",0)
-                _ca_mid  = _ca.get("market_mid",0)
-                _ca_high = _ca.get("market_high",0)
-                _ca_ass  = _ca.get("offer_assessment","fair")
-                _ca_col  = offer_assessment_color(_ca_ass)
-                _ca_lbl  = offer_assessment_label(_ca_ass)
-                _ca_head = _ca.get("negotiation_headroom",0)
-                _ca_walk = _ca.get("walk_away_threshold",0)
-                _ca_curr_symbol = "€"
+        with st.expander("Job Market Pulse & Warm Intro", expanded=False):
+            # ════════════════════════════════════════════════════════════════════════
+            # JOB MARKET PULSE + WARM INTRO PATHFINDER
+            # ════════════════════════════════════════════════════════════════════════
+            _mp_col1, _mp_col2 = st.columns([1, 1], gap="medium")
 
-                # Market range bar
-                st.markdown(
-                    f'<div style="background:{_ca_col}10;border:1.5px solid {_ca_col}40;border-radius:8px;'
-                    f'padding:14px 18px;margin-top:8px">'
-                    f'<div style="font-size:13px;font-weight:800;color:{_ca_col};margin-bottom:8px">{_ca_lbl}</div>'
-                    f'<div style="display:flex;gap:4px;align-items:center;margin-bottom:6px">'
-                    f'<div style="font-size:11px;color:rgba(0,0,0,0.4);min-width:60px">Market low</div>'
-                    f'<div style="flex:1;height:8px;background:#F3F6F9;border-radius:4px;position:relative">'
-                    f'<div style="position:absolute;left:0;top:0;height:8px;'
-                    f'width:{min(100,int(((_ca.get("offered_amount",0)-_ca_low)/max(_ca_high-_ca_low,1))*100))}%;'
-                    f'background:{_ca_col};border-radius:4px"></div></div>'
-                    f'<div style="font-size:11px;color:rgba(0,0,0,0.4);min-width:60px;text-align:right">Market high</div>'
-                    f'</div>'
-                    f'<div style="display:flex;justify-content:space-between;font-size:11px;color:rgba(0,0,0,0.55);margin-bottom:10px">'
-                    f'<span>{_ca_curr_symbol}{_ca_low:,}</span>'
-                    f'<span style="font-weight:700;color:#0A0A0A">Offered: {_ca_curr_symbol}{_ca.get("offered_amount",0):,}</span>'
-                    f'<span>Midpoint: {_ca_curr_symbol}{_ca_mid:,}</span>'
-                    f'<span>{_ca_curr_symbol}{_ca_high:,}</span>'
-                    f'</div>'
-                    f'<div style="display:flex;gap:16px">'
-                    f'<div style="text-align:center">'
-                    f'<div style="font-size:18px;font-weight:900;color:#0A66C2">+{_ca_curr_symbol}{_ca_head:,}</div>'
-                    f'<div style="font-size:9px;color:rgba(0,0,0,0.4);text-transform:uppercase">Likely headroom</div>'
-                    f'</div>'
-                    f'<div style="text-align:center">'
-                    f'<div style="font-size:18px;font-weight:900;color:#DC2626">{_ca_curr_symbol}{_ca_walk:,}</div>'
-                    f'<div style="font-size:9px;color:rgba(0,0,0,0.4);text-transform:uppercase">Walk-away floor</div>'
-                    f'</div>'
-                    f'<div style="flex:1">'
-                    f'<div style="font-size:10px;color:rgba(0,0,0,0.5)">{_ca.get("offer_assessment_reason","")}</div>'
-                    f'</div></div></div>',
-                    unsafe_allow_html=True,
-                )
-
-                # Negotiation scripts
-                st.markdown('<div style="height:10px"></div>', unsafe_allow_html=True)
-                st.markdown(
-                    '<div style="font-size:10px;font-weight:800;letter-spacing:0.06em;text-transform:uppercase;'
-                    'color:rgba(0,0,0,0.35);margin-bottom:8px">Negotiation scripts — copy and send</div>',
-                    unsafe_allow_html=True,
-                )
-                _scripts = _ca.get("scripts",{})
-                for _sc_key, _sc_label, _sc_col in [
-                    ("direct_ask","Direct ask — base salary","#057642"),
-                    ("anchor_high","Anchor high first","#0A66C2"),
-                    ("alternatives","When base is firm — alternatives","#7C3AED"),
-                ]:
-                    _sc_text = _scripts.get(_sc_key,"")
-                    if _sc_text:
-                        st.markdown(
-                            f'<div style="background:{_sc_col}08;border-left:3px solid {_sc_col};'
-                            f'border-radius:0 6px 6px 0;padding:10px 14px;margin-bottom:8px">'
-                            f'<div style="font-size:10px;font-weight:800;color:{_sc_col};letter-spacing:0.06em;'
-                            f'text-transform:uppercase;margin-bottom:4px">{_sc_label}</div>'
-                            f'<div style="font-size:11px;color:#0A0A0A;line-height:1.6;font-style:italic">"{_sc_text}"</div>'
-                            f'</div>',
-                            unsafe_allow_html=True,
-                        )
-
-                # Fear reframe + Three asks
-                if _ca.get("fear_reframe"):
+            with _mp_col1:
+                with st.expander("Job Market Pulse — Is now a good time?", expanded=False):
                     st.markdown(
-                        f'<div style="background:#FFF5E5;border-radius:6px;padding:10px 14px;margin-top:4px">'
-                        f'<div style="font-size:10px;font-weight:800;color:#A05A00;letter-spacing:0.06em;'
-                        f'text-transform:uppercase;margin-bottom:3px">On the fear of losing the offer</div>'
-                        f'<div style="font-size:11px;color:rgba(0,0,0,0.75)">{_ca["fear_reframe"]}</div>'
-                        f'</div>',
-                        unsafe_allow_html=True,
-                    )
-
-                if _ca.get("timing_advice"):
-                    st.caption(f"Timing: {_ca['timing_advice']}")
-
-                if _comp_counter and _ca.get("counter_offer_context"):
-                    st.markdown(
-                        f'<div style="background:#FFF0E5;border:1.5px solid #D97706;border-radius:6px;'
-                        f'padding:10px 14px;margin-top:6px">'
-                        f'<div style="font-size:10px;font-weight:800;color:#D97706;letter-spacing:0.06em;'
-                        f'text-transform:uppercase;margin-bottom:3px">Counter-offer analysis</div>'
-                        f'<div style="font-size:11px;color:rgba(0,0,0,0.75)">{_ca["counter_offer_context"]}</div>'
-                        f'</div>',
-                        unsafe_allow_html=True,
-                    )
-
-        # ════════════════════════════════════════════════════════════════════════
-        # LINKEDIN CONTENT ENGINE + MOAT BUILDER
-        # ════════════════════════════════════════════════════════════════════════
-        with st.expander(
-            "LinkedIn Content Engine — 8-week PM credibility strategy",
-            expanded=False,
-        ):
-            _lc_has_data = bool(st.session_state.get("pivot_dna") and st.session_state.get("cv_profile"))
-            if not _lc_has_data:
-                st.caption("Upload your CV and build a Pivot DNA to unlock the content engine.")
-            else:
-                _lc_plan = st.session_state.get("linkedin_content_plan")
-                _lc_c1, _lc_c2 = st.columns([3,1])
-                with _lc_c1:
-                    st.markdown(
-                        '<div style="font-size:11px;color:rgba(0,0,0,0.55);line-height:1.6">'
-                        '8 fully written posts, ready to copy-paste. Built from your real career stories — '
-                        'specific numbers, company names, outcomes. No invented examples. Each post shows '
-                        'PM-thinking in action without saying "I want to break into product."'
+                        '<div style="font-size:11px;color:rgba(0,0,0,0.5);margin-bottom:8px">'
+                        'Live market timing for your target role — hiring velocity, sector health, '
+                        'top companies hiring now, salary momentum.'
                         '</div>',
                         unsafe_allow_html=True,
                     )
-                with _lc_c2:
-                    if st.button(
-                        "Generate Plan" if not _lc_plan else "Regenerate",
-                        key="btn_lc_gen",
-                        type="primary" if not _lc_plan else "secondary",
-                        use_container_width=True,
-                    ):
+                    _mp_location = st.text_input(
+                        "Location", value="United States", key="mp_location",
+                        placeholder="e.g. Remote, New York, London",
+                    )
+                    _mp_sector = st.text_input(
+                        "Sector (optional)", value="", key="mp_sector",
+                        placeholder="e.g. Fintech, SaaS, Healthcare",
+                    )
+                    if st.button("Get Market Pulse", key="mp_run", type="primary", use_container_width=True):
+                        with st.spinner("Analysing job market for your target role…"):
+                            st.session_state.market_pulse_result = get_market_pulse(
+                                target_role=str(target),
+                                sector=_mp_sector,
+                                location=_mp_location,
+                                current_month=4,
+                                current_year=2025,
+                                model="gpt-4o-mini",
+                                api_key=_qa_key or None,
+                                prefer_online=bool(_qa_key),
+                            )
+                            st.session_state.market_pulse_role = str(target)
+
+                    _mp = st.session_state.market_pulse_result
+                    if _mp:
+                        _mp_ts = _mp.get("timing_score", 50)
+                        _mp_tc = "#117A37" if _mp_ts >= 65 else ("#A05A00" if _mp_ts >= 35 else "#B71C1C")
+                        _mp_vel_icons = {
+                            "accelerating": "↑↑", "steady": "→", "decelerating": "↓", "frozen": "—"
+                        }
+                        _mp_vel_icon = _mp_vel_icons.get(_mp.get("hiring_velocity", ""), "·")
+
+                        st.markdown(
+                            f'<div style="background:#F3F6F9;border-radius:8px;padding:12px 16px;margin-top:6px">'
+                            f'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">'
+                            f'<div style="font-size:13px;font-weight:800">{_mp_vel_icon} '
+                            f'{_mp.get("timing_verdict","")}</div>'
+                            f'<div style="font-size:22px;font-weight:900;color:{_mp_tc}">{_mp_ts}</div>'
+                            f'</div>'
+                            f'<div style="font-size:11px;color:rgba(0,0,0,0.55);margin-bottom:8px">'
+                            f'Hiring velocity: <strong>{_mp.get("hiring_velocity","?")}</strong> · '
+                            f'Sector: <strong>{_mp.get("sector_health","?")}</strong> · '
+                            f'Salary: <strong>{_mp.get("salary_momentum","?")}</strong></div>'
+                            f'<div style="font-size:11px;line-height:1.6;color:rgba(0,0,0,0.65);margin-bottom:8px">'
+                            f'{_mp.get("current_month_context","")}</div>'
+                            f'</div>',
+                            unsafe_allow_html=True,
+                        )
+
+                        if _mp.get("top_companies_hiring"):
+                            st.markdown("**Companies actively hiring:**")
+                            for _co in _mp["top_companies_hiring"][:4]:
+                                st.markdown(f"→ {_co}")
+
+                        if _mp.get("sourcing_tip"):
+                            st.info(f"**Sourcing tip:** {_mp['sourcing_tip']}")
+
+                        if _mp.get("demand_drivers") or _mp.get("risk_factors"):
+                            _mp_dc1, _mp_dc2 = st.columns(2)
+                            with _mp_dc1:
+                                for _dd in _mp.get("demand_drivers", [])[:2]:
+                                    st.markdown(f'<span style="color:#057642;font-size:11px">▲ {_dd}</span>', unsafe_allow_html=True)
+                            with _mp_dc2:
+                                for _rf in _mp.get("risk_factors", [])[:2]:
+                                    st.markdown(f'<span style="color:#B71C1C;font-size:11px">▼ {_rf}</span>', unsafe_allow_html=True)
+
+                        st.caption(f"Verdict: {_mp.get('one_line_verdict','')} · *{_mp.get('source','')}*")
+
+            with _mp_col2:
+                with st.expander("Warm Intro Pathfinder — Network Activation", expanded=False):
+                    st.markdown(
+                        '<div style="font-size:11px;color:rgba(0,0,0,0.5);margin-bottom:8px">'
+                        'Cold outreach: &lt;3% response rate. '
+                        'Warm intro: 35-50%. This generates a 3-touch sequence to activate your network.'
+                        '</div>',
+                        unsafe_allow_html=True,
+                    )
+                    _wi_company = st.text_input("Target company", key="wi_company",
+                                                placeholder="e.g. Stripe, Anthropic, Linear")
+                    _wi_conn = st.text_input("Connection name / description", key="wi_conn",
+                                             placeholder="e.g. Jane Smith (former colleague), 2nd-degree LinkedIn")
+                    _wi_conn_type = st.selectbox(
+                        "Connection type",
+                        ["LinkedIn 2nd-degree", "Former colleague", "University alumni", "Conference contact", "Cold (no mutual)"],
+                        key="wi_conn_type",
+                    )
+                    _wi_name = st.text_input("Your name (for personalisation)", key="wi_name",
+                                             placeholder="e.g. Alex Chen")
+                    _wi_bg = st.text_area("Your background (1-2 sentences)", key="wi_bg", height=60,
+                                          placeholder="e.g. 5 years in finance analytics, transitioning to product management")
+
+                    if st.button("Generate Outreach Sequence", key="wi_run", type="primary", use_container_width=True):
+                        if _wi_company:
+                            with st.spinner("Crafting your 3-touch outreach sequence…"):
+                                st.session_state.warm_intro_result = generate_warm_intro_sequence(
+                                    target_company=_wi_company,
+                                    target_role=str(target),
+                                    your_name=_wi_name,
+                                    your_background=_wi_bg,
+                                    mutual_connection=_wi_conn,
+                                    connection_type=_wi_conn_type,
+                                    model="gpt-4o-mini",
+                                    api_key=_qa_key or None,
+                                    prefer_online=bool(_qa_key),
+                                )
+                        else:
+                            st.warning("Enter target company name first.")
+
+                    _wi = st.session_state.warm_intro_result
+                    if _wi and _wi.get("touch_1_message"):
+                        st.markdown("**Touch 1 — Connection / First Email:**")
+                        if _wi.get("touch_1_subject"):
+                            st.caption(f"Subject: {_wi['touch_1_subject']}")
+                        st.text_area("Message 1", value=_wi["touch_1_message"], height=120,
+                                     key="wi_msg1", label_visibility="collapsed")
+
+                        if _wi.get("touch_2_message"):
+                            st.markdown("**Touch 2 — Follow-up (5-7 days later):**")
+                            st.text_area("Message 2", value=_wi["touch_2_message"], height=90,
+                                         key="wi_msg2", label_visibility="collapsed")
+
+                        if _wi.get("touch_3_message"):
+                            st.markdown("**Touch 3 — The Ask:**")
+                            st.text_area("Message 3", value=_wi["touch_3_message"], height=100,
+                                         key="wi_msg3", label_visibility="collapsed")
+
+                        if _wi.get("strategy_note"):
+                            st.info(_wi["strategy_note"])
+
+                        _wi_dos = _wi.get("dos", [])
+                        _wi_donts = _wi.get("donts", [])
+                        if _wi_dos or _wi_donts:
+                            _wi_dc1, _wi_dc2 = st.columns(2)
+                            with _wi_dc1:
+                                for _d in _wi_dos[:3]:
+                                    st.markdown(f'<span style="color:#057642;font-size:11px">{check_icon(11)} {_d}</span>', unsafe_allow_html=True)
+                            with _wi_dc2:
+                                for _d in _wi_donts[:3]:
+                                    st.markdown(f'<span style="color:#B71C1C;font-size:11px">{x_icon(11)} {_d}</span>', unsafe_allow_html=True)
+
+            with _mp_col2:
+                with st.expander(
+                    "Hiring Window Intelligence — Company Timing Analysis",
+                    expanded=False,
+                ):
+                    st.markdown(
+                        '<div style="font-size:11px;color:rgba(0,0,0,0.5);margin-bottom:10px;line-height:1.6">'
+                        'Timing is the most underrated hiring variable. A strong application to a company with '
+                        'a hiring freeze gets the same result as a weak one. This tells you <em>when</em> to apply — '
+                        'not just where.'
+                        '</div>',
+                        unsafe_allow_html=True,
+                    )
+                    _hw_company = st.text_input(
+                        "Target company", key="hw_company",
+                        placeholder="e.g. Stripe, Notion, Linear",
+                    )
+                    _hw_role = st.text_input(
+                        "Target role", key="hw_role",
+                        placeholder=str(target) if target else "e.g. Product Manager",
+                        value=str(target) if target else "",
+                    )
+                    if st.button("Analyse Hiring Window", key="hw_run", type="primary", use_container_width=True):
+                        if _hw_company:
+                            with st.spinner(f"Analysing {_hw_company} hiring signals…"):
+                                st.session_state.hiring_window_result = analyze_hiring_window(
+                                    _qa_key or "",
+                                    company_name=_hw_company,
+                                    target_role=_hw_role or str(target),
+                                    cv_profile=st.session_state.get("cv_profile") or {},
+                                )
+                                st.session_state.hiring_window_company = _hw_company
+                        else:
+                            st.warning("Enter a company name first.")
+
+                    _hw = st.session_state.get("hiring_window_result")
+                    if _hw and st.session_state.get("hiring_window_company"):
+                        _hw_score = _hw.get("timing_score", 50)
+                        _hw_color = timing_score_color(_hw_score)
+                        _hw_label = timing_score_label(_hw_score)
+
+                        st.markdown(
+                            f'<div style="background:#F3F6F9;border-radius:10px;padding:14px 16px;margin-top:8px">'
+                            f'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">'
+                            f'<div>'
+                            f'<div style="font-size:14px;font-weight:800;color:rgba(0,0,0,0.88)">'
+                            f'{st.session_state.hiring_window_company}</div>'
+                            f'<div style="font-size:11px;color:rgba(0,0,0,0.5);margin-top:1px">{_hw_label}</div>'
+                            f'</div>'
+                            f'<div style="text-align:right">'
+                            f'<div style="font-size:30px;font-weight:900;color:{_hw_color};line-height:1">{_hw_score}</div>'
+                            f'<div style="font-size:10px;color:rgba(0,0,0,0.4)">/ 100 timing score</div>'
+                            f'</div>'
+                            f'</div>'
+                            f'<div style="font-size:12px;color:rgba(0,0,0,0.7);font-style:italic;margin-bottom:10px">'
+                            f'"{_hw.get("window_verdict","")}"'
+                            f'</div>',
+                            unsafe_allow_html=True,
+                        )
+
+                        # Signals
+                        _hw_sigs = _hw.get("signals") or []
+                        if _hw_sigs:
+                            st.markdown(
+                                '<div style="font-size:10px;font-weight:800;letter-spacing:0.06em;'
+                                'text-transform:uppercase;color:rgba(0,0,0,0.38);margin-bottom:6px">Signals detected</div>',
+                                unsafe_allow_html=True,
+                            )
+                            for _sig in _hw_sigs[:4]:
+                                _sig_meta = _sig.get("meta", {})
+                                _sig_dir = _sig.get("direction", "neutral")
+                                _sig_col = "#057642" if _sig_dir == "positive" else ("#B71C1C" if _sig_dir == "negative" else "#5F6B7A")
+                                _sig_icon_name = _sig_meta.get("icon", "info")
+                                st.markdown(
+                                    f'<div style="display:flex;gap:8px;align-items:flex-start;'
+                                    f'padding:5px 0;border-bottom:1px solid rgba(0,0,0,0.05)">'
+                                    f'<div style="flex-shrink:0;margin-top:1px">{icon(_sig_icon_name, 12, _sig_col)}</div>'
+                                    f'<div style="flex:1">'
+                                    f'<div style="font-size:10px;font-weight:700;color:{_sig_col}">'
+                                    f'{_sig_meta.get("label","")}</div>'
+                                    f'<div style="font-size:11px;color:rgba(0,0,0,0.65)">{_sig.get("description","")}</div>'
+                                    f'</div></div>',
+                                    unsafe_allow_html=True,
+                                )
+
+                        st.markdown(
+                            f'<div style="margin-top:10px;font-size:11px;color:rgba(0,0,0,0.7);line-height:1.6">'
+                            f'<strong>How to approach:</strong> {_hw.get("strategic_approach","")}</div>',
+                            unsafe_allow_html=True,
+                        )
+
+                        _hw_pts = _hw.get("talking_points") or []
+                        if _hw_pts:
+                            st.markdown(
+                                '<div style="margin-top:8px;font-size:10px;font-weight:800;letter-spacing:0.06em;'
+                                'text-transform:uppercase;color:rgba(0,0,0,0.38)">Mention in outreach</div>',
+                                unsafe_allow_html=True,
+                            )
+                            for _pt in _hw_pts:
+                                st.markdown(
+                                    f'<div style="font-size:11px;color:#0A66C2;padding:2px 0">'
+                                    f'{check_icon(11)} {_pt}</div>',
+                                    unsafe_allow_html=True,
+                                )
+
+                        if _hw.get("avoid"):
+                            st.markdown(
+                                f'<div style="margin-top:8px;background:#FFF0E5;border-radius:6px;padding:7px 10px;'
+                                f'font-size:11px;color:#A05A00">'
+                                f'{warn_icon(11)} <strong>Avoid:</strong> {_hw["avoid"]}</div>',
+                                unsafe_allow_html=True,
+                            )
+
+                        conf_badge = {"high": "High", "medium": "Medium", "low": "Low"}.get(
+                            _hw.get("data_confidence","medium"), "Medium"
+                        )
+                        st.caption(f"Data confidence: {conf_badge} · Best channel: {_hw.get('best_channel','').replace('_',' ')}")
+                        st.markdown('</div>', unsafe_allow_html=True)
+
+                # ── LinkedIn Connections CSV → Smart Warm Intro Engine ────────────────
+                # Upgrades warm intro from "type a name" to "upload your 2000 connections
+                # and let the system find every match at every target company."
+                _csv_n_conns = len(st.session_state.get("csv_connections") or [])
+                _csv_n_matches = len(st.session_state.get("csv_warm_intros") or [])
+                with st.expander(
+                    "LinkedIn Network Engine"
+                    + (f' — {_csv_n_conns} connections · {_csv_n_matches} matches found' if _csv_n_conns else " — Upload your connections CSV"),
+                    expanded=False,
+                ):
+                    st.markdown(
+                        '<div style="background:#F0FAF4;border-radius:8px;padding:12px 16px;margin-bottom:12px">'
+                        '<div style="font-size:12px;font-weight:800;color:#057642;margin-bottom:4px">'
+                        'Cold applications: 2-3% response rate &nbsp;|&nbsp; '
+                        'Warm intro via network: 35-50% response rate</div>'
+                        '<div style="font-size:11px;color:rgba(0,0,0,0.65);line-height:1.5">'
+                        'Upload your LinkedIn connections export and the system automatically finds '
+                        'everyone at your target companies, ranks them by seniority + PM-adjacency, '
+                        'and generates personalised DMs for the top matches — in parallel.'
+                        '<br><span style="font-size:10px;opacity:0.7">LinkedIn → Settings → Data Privacy → Get a copy of your data → Connections.csv</span>'
+                        '</div></div>',
+                        unsafe_allow_html=True,
+                    )
+
+                    _csv_file = st.file_uploader(
+                        "Upload LinkedIn Connections CSV", type=["csv"],
+                        key="csv_upload", label_visibility="collapsed",
+                        help="Download from LinkedIn: Settings → Data Privacy → Get a copy of your data → Connections",
+                    )
+                    if _csv_file:
+                        _csv_text = _csv_file.read().decode("utf-8", errors="replace")
+                        _parsed = parse_connections_csv(_csv_text)
+                        if _parsed:
+                            st.session_state.csv_connections = _parsed
+                            st.success(f"Parsed {len(_parsed)} connections.")
+                        else:
+                            st.warning("Could not parse CSV — check the file format.")
+
+                    _csv_conns = st.session_state.get("csv_connections") or []
+
+                    if _csv_conns:
+                        # Target companies from pivot_dna + manual override
+                        _csv_dna_companies = (st.session_state.get("pivot_dna") or {}).get("target_companies", [])
+                        _csv_tgt_default = ", ".join(_csv_dna_companies[:5]) if _csv_dna_companies else ""
+                        _csv_companies_input = st.text_input(
+                            "Target companies (comma-separated)",
+                            value=_csv_tgt_default,
+                            key="csv_companies",
+                            placeholder="e.g. Stripe, N26, Personio, Zalando, Contentful",
+                        )
+                        _csv_tgt_list = [c.strip() for c in _csv_companies_input.split(",") if c.strip()] if _csv_companies_input else []
+
+                        if _csv_tgt_list:
+                            _csv_matches = find_warm_intros(_csv_conns, _csv_tgt_list, max_per_company=3)
+                            st.session_state.csv_warm_intros = _csv_matches
+
+                            if _csv_matches:
+                                st.markdown(
+                                    f'<div style="font-size:11px;font-weight:700;color:#057642;margin-bottom:8px">'
+                                    f'Found {len(_csv_matches)} warm intro opportunities across {len(_csv_tgt_list)} target companies.</div>',
+                                    unsafe_allow_html=True,
+                                )
+
+                                # Show ranked matches
+                                for _cm in _csv_matches[:8]:
+                                    _cm_sc = csv_seniority_color(_cm.get("seniority_score", 2))
+                                    st.markdown(
+                                        f'<div style="display:flex;align-items:center;gap:10px;padding:6px 8px;'
+                                        f'background:#F8FAFF;border-radius:6px;margin-bottom:4px">'
+                                        f'<div style="width:8px;height:8px;border-radius:50%;background:{_cm_sc};flex-shrink:0"></div>'
+                                        f'<div style="flex:1">'
+                                        f'<div style="font-size:12px;font-weight:700;color:rgba(0,0,0,0.88)">'
+                                        f'{_cm.get("full_name","?")}</div>'
+                                        f'<div style="font-size:10px;color:rgba(0,0,0,0.5)">'
+                                        f'{_cm.get("position","")} · {_cm.get("company","")}</div>'
+                                        f'</div>'
+                                        f'<div style="font-size:9px;font-weight:700;padding:2px 8px;border-radius:10px;'
+                                        f'background:{_cm_sc}20;color:{_cm_sc}">'
+                                        f'{csv_seniority_label(_cm.get("seniority_score",2))}</div>'
+                                        f'<div style="font-size:10px;font-weight:700;color:#0A66C2">'
+                                        f'→ {_cm.get("target_company","")}</div>'
+                                        f'</div>',
+                                        unsafe_allow_html=True,
+                                    )
+
+                                # Generate DMs
+                                if st.button(
+                                    f"Generate {min(6, len(_csv_matches))} personalised DMs (parallel)",
+                                    key="csv_dm_run", type="primary", use_container_width=True,
+                                ):
+                                    if not (_qa_key or st.session_state.get("openai_key","")):
+                                        st.warning("Add your OpenAI API key to generate personalised DMs.")
+                                    else:
+                                        with st.spinner(f"Generating {min(6, len(_csv_matches))} DMs in parallel…"):
+                                            _dm_key = _qa_key or st.session_state.get("openai_key","")
+                                            _csv_dms = bulk_draft_dms(
+                                                _dm_key,
+                                                _csv_matches,
+                                                target_role=str(target),
+                                                pivot_dna=st.session_state.get("pivot_dna"),
+                                                cv_profile=st.session_state.get("cv_profile"),
+                                                max_n=6,
+                                            )
+                                            st.session_state.csv_dms = _csv_dms
+
+                                # Display DMs
+                                _all_dms = st.session_state.get("csv_dms") or {}
+                                if _all_dms:
+                                    st.markdown(
+                                        '<div style="font-size:10px;font-weight:800;letter-spacing:0.08em;'
+                                        'text-transform:uppercase;color:rgba(0,0,0,0.38);margin-top:12px;margin-bottom:8px">'
+                                        'Generated DMs — copy-paste ready</div>',
+                                        unsafe_allow_html=True,
+                                    )
+                                    for _match in _csv_matches[:6]:
+                                        _dm_key_str = f"{_match.get('full_name','')}_{_match.get('company','')}"
+                                        _dm_data = _all_dms.get(_dm_key_str)
+                                        if _dm_data:
+                                            with st.expander(
+                                                f"{_match.get('full_name','?')} @ {_match.get('company','')} "
+                                                f"· {csv_seniority_label(_match.get('seniority_score',2))}",
+                                                expanded=False,
+                                            ):
+                                                st.markdown(
+                                                    f'<div style="font-size:11px;font-weight:700;color:#0A66C2;'
+                                                    f'margin-bottom:8px;font-style:italic">'
+                                                    f'"{_dm_data.get("subject_line","")}"</div>',
+                                                    unsafe_allow_html=True,
+                                                )
+                                                st.text_area(
+                                                    "DM", value=_dm_data.get("message", ""),
+                                                    height=120, key=f"csv_dm_{_dm_key_str}",
+                                                    label_visibility="collapsed",
+                                                )
+                                                if _dm_data.get("follow_up"):
+                                                    st.caption(f"Follow-up (1 week later): {_dm_data['follow_up']}")
+                            else:
+                                st.info(f"No matches found between your {len(_csv_conns)} connections and the {len(_csv_tgt_list)} target companies. Try adding more target companies or expanding the list.")
+                        else:
+                            st.info("Enter target companies above to find matches in your network.")
+
+                        st.caption(
+                            f"Architecture: pure Python fuzzy matching → seniority + PM-adjacency scoring "
+                            f"→ gpt-4o-mini (temp=0.6) DM generation via ThreadPoolExecutor (parallel). "
+                            f"No API needed for matching — only for DM generation."
+                        )
+
+                # ── Occupation Space Navigator ─────────────────────────────────────────
+                # 894 O*NET occupations embedded in UMAP skill-space.
+                # Shows where you are, where you're going, and what bridge roles exist.
+                # Cluster names are LLM-evaluated with a Generate→Evaluate→Refine loop
+                # — the antidote to the #1 mistake: shipping zero-shot output without
+                # checking if the model actually did what you needed.
+                with st.expander(
+                    "Occupation Space — Where does your pivot sit in the skill universe?",
+                    expanded=False,
+                ):
+                    st.markdown(
+                        '<div style="background:#F5F0FF;border-radius:8px;padding:14px 16px;margin-bottom:12px">'
+                        '<div style="font-size:11px;color:#4C1D95;font-weight:600;margin-bottom:4px">'
+                        '894 real O*NET occupations · UMAP skill-vector layout · LLM-evaluated cluster names</div>'
+                        '<div style="font-size:11px;color:rgba(0,0,0,0.65);line-height:1.5">'
+                        'Each dot is a real occupation. Proximity = similar skill profile. '
+                        'Pick your current and target occupation to see the pivot distance, '
+                        'bridge roles, and your exact position in the skill universe.'
+                        '</div></div>',
+                        unsafe_allow_html=True,
+                    )
+
+                    # ── Step 1: Load / evaluate cluster names ─────────────────────────
+                    _cn = st.session_state.get("cluster_names")
+                    _oai_key = st.session_state.get("openai_key","")
+
+                    _cn_col1, _cn_col2 = st.columns([3,1])
+                    with _cn_col1:
+                        if _cn:
+                            _cn_status_parts = []
+                            for _cid, _cd in sorted(_cn.items()):
+                                _refined_badge = " ✓refined" if _cd.get("refined") else ""
+                                _eval_s = _cd.get("eval_score", 0)
+                                _eval_disp = f" (eval {_eval_s}/10)" if _eval_s > 0 else " (fallback)"
+                                _cn_status_parts.append(f'**{_cd["name"]}**{_refined_badge}{_eval_disp}')
+                            st.markdown(
+                                '<div style="font-size:10px;font-weight:800;letter-spacing:0.06em;'
+                                'text-transform:uppercase;color:rgba(0,0,0,0.38);margin-bottom:4px">'
+                                'Cluster names (LLM-evaluated)</div>',
+                                unsafe_allow_html=True,
+                            )
+                            for _cn_p in _cn_status_parts:
+                                st.markdown(f'<div style="font-size:11px;color:rgba(0,0,0,0.7)">{_cn_p}</div>', unsafe_allow_html=True)
+                        else:
+                            st.markdown(
+                                '<div style="font-size:11px;color:rgba(0,0,0,0.5);font-style:italic">'
+                                'Cluster names not yet evaluated. Click Evaluate to name clusters with GPT + self-evaluation loop.</div>',
+                                unsafe_allow_html=True,
+                            )
+                    with _cn_col2:
+                        if st.button(
+                            "Evaluate Clusters" if not _cn else "Re-evaluate",
+                            key="btn_eval_clusters",
+                            type="primary" if not _cn else "secondary",
+                            use_container_width=True,
+                        ):
+                            if not _oai_key:
+                                st.warning("Add your OpenAI key in the sidebar first.")
+                            else:
+                                with st.spinner("Running Generate → Evaluate → Refine loop…"):
+                                    try:
+                                        import json as _json
+                                        _ct = _json.load(open("artifacts/cluster_themes.json"))
+                                        _cl = _json.load(open("artifacts/clusters.json"))
+                                        _evaluated = evaluate_all_clusters(_oai_key, _ct, _cl)
+                                        st.session_state.cluster_names = _evaluated
+                                        _cn = _evaluated
+                                        _refined_count = sum(1 for v in _evaluated.values() if v.get("refined"))
+                                        st.success(f"Clusters named. {_refined_count} refined after self-evaluation.")
+                                    except Exception as _e:
+                                        st.error(f"Evaluation failed: {_e}")
+
+                    # Show cluster cards if evaluated
+                    if _cn:
+                        _card_cols = st.columns(len(_cn))
+                        for _ci, (_cid, _cd) in enumerate(sorted(_cn.items())):
+                            _cluster_colors = {"0":"#4F8EF7","1":"#F7A84F","2":"#4FD196","3":"#B96FF7"}
+                            _cc = _cluster_colors.get(_cid, "#888")
+                            with _card_cols[_ci]:
+                                _reach = _cd.get("pivot_reachability", 3)
+                                _reach_stars = "★" * _reach + "☆" * (5 - _reach)
+                                st.markdown(
+                                    f'<div style="background:{_cc}18;border:1.5px solid {_cc}40;border-radius:8px;'
+                                    f'padding:10px 11px;height:100%">'
+                                    f'<div style="font-size:10px;font-weight:800;color:{_cc};letter-spacing:0.06em;'
+                                    f'text-transform:uppercase;margin-bottom:3px">Cluster {_cid}</div>'
+                                    f'<div style="font-size:12px;font-weight:700;color:#0A0A0A;margin-bottom:4px">{_cd["name"]}</div>'
+                                    f'<div style="font-size:10px;color:rgba(0,0,0,0.6);line-height:1.4;margin-bottom:6px">{_cd.get("tagline","")[:90]}</div>'
+                                    f'<div style="font-size:10px;color:{_cc};font-weight:600">{_reach_stars} pivot-friendliness</div>'
+                                    f'</div>',
+                                    unsafe_allow_html=True,
+                                )
+
+                    st.markdown('<div style="height:14px"></div>', unsafe_allow_html=True)
+                    st.divider()
+
+                    # ── Step 2: Pivot path computation ────────────────────────────────
+                    st.markdown(
+                        '<div style="font-size:11px;font-weight:800;letter-spacing:0.06em;'
+                        'text-transform:uppercase;color:rgba(0,0,0,0.38);margin-bottom:8px">'
+                        'Compute your pivot path</div>',
+                        unsafe_allow_html=True,
+                    )
+
+                    _all_occs = get_all_occupations()
+                    _pp_col1, _pp_col2 = st.columns(2)
+
+                    # Pre-select from session state if available
+                    _pp_cur_default = 0
+                    _pp_tgt_default = 1
+                    _pp_cur_sess = st.session_state.get("pivot_path_current","")
+                    _pp_tgt_sess = st.session_state.get("pivot_path_target","")
+                    if _pp_cur_sess and _pp_cur_sess in _all_occs:
+                        _pp_cur_default = _all_occs.index(_pp_cur_sess)
+                    elif st.session_state.get("onet_match"):
+                        _cur_onet = st.session_state.onet_match.get("occupation_title","")
+                        if _cur_onet in _all_occs:
+                            _pp_tgt_default = _all_occs.index(_cur_onet)
+                    if _pp_tgt_sess and _pp_tgt_sess in _all_occs:
+                        _pp_tgt_default = _all_occs.index(_pp_tgt_sess)
+
+                    with _pp_col1:
+                        _pp_current = st.selectbox(
+                            "Your current occupation",
+                            options=_all_occs,
+                            index=_pp_cur_default,
+                            key="pp_current_select",
+                        )
+                    with _pp_col2:
+                        _pp_target = st.selectbox(
+                            "Your target occupation",
+                            options=_all_occs,
+                            index=_pp_tgt_default,
+                            key="pp_target_select",
+                        )
+
+                    if st.button("Compute Pivot Path", key="btn_pivot_path", type="primary", use_container_width=True):
+                        with st.spinner("Navigating occupation space…"):
+                            _pp_result = compute_pivot_path(
+                                _pp_current, _pp_target,
+                                cluster_names=st.session_state.get("cluster_names"),
+                            )
+                            st.session_state.pivot_path_result = _pp_result
+                            st.session_state.pivot_path_current = _pp_current
+                            st.session_state.pivot_path_target  = _pp_target
+
+                    # ── Pivot path results ─────────────────────────────────────────────
+                    _pp = st.session_state.get("pivot_path_result")
+                    if _pp and _pp.get("current_found") and _pp.get("target_found"):
+                        _pd  = _pp.get("pivot_distance", 0)
+                        _pgr = _pp.get("pivot_distance_grade","?")
+                        _plb = _pp.get("pivot_distance_label","")
+                        _pgr_color = {"A":"#057642","B":"#2563EB","C":"#D97706","D":"#DC2626","F":"#7C2D12"}.get(_pgr,"#555")
+
+                        # Distance banner
+                        st.markdown(
+                            f'<div style="background:{_pgr_color}12;border:1.5px solid {_pgr_color}40;'
+                            f'border-radius:8px;padding:12px 16px;display:flex;align-items:center;gap:16px;margin-top:8px">'
+                            f'<div style="font-size:36px;font-weight:900;color:{_pgr_color};line-height:1">{_pgr}</div>'
+                            f'<div>'
+                            f'<div style="font-size:14px;font-weight:700;color:#0A0A0A">{_plb}</div>'
+                            f'<div style="font-size:11px;color:rgba(0,0,0,0.55);margin-top:2px">'
+                            f'Cosine distance: {_pd:.2f} · Cluster journey: {_pp.get("cluster_journey","")}'
+                            f'</div></div></div>',
+                            unsafe_allow_html=True,
+                        )
+
+                        # Skills 3-column breakdown
+                        _sk_c1, _sk_c2, _sk_c3 = st.columns(3)
+                        with _sk_c1:
+                            st.markdown(
+                                '<div style="margin-top:10px;font-size:10px;font-weight:800;letter-spacing:0.06em;'
+                                'text-transform:uppercase;color:#057642">You already have</div>',
+                                unsafe_allow_html=True,
+                            )
+                            for _sk in _pp.get("shared_skills",[])[:6]:
+                                st.markdown(f'<div style="font-size:11px;color:rgba(0,0,0,0.7);padding:1px 0">{check_icon(11)} {_sk}</div>', unsafe_allow_html=True)
+                        with _sk_c2:
+                            st.markdown(
+                                '<div style="margin-top:10px;font-size:10px;font-weight:800;letter-spacing:0.06em;'
+                                'text-transform:uppercase;color:#DC2626">Gaps to bridge</div>',
+                                unsafe_allow_html=True,
+                            )
+                            for _sk in _pp.get("missing_skills",[])[:6]:
+                                st.markdown(f'<div style="font-size:11px;color:rgba(0,0,0,0.7);padding:1px 0">{warn_icon(11)} {_sk}</div>', unsafe_allow_html=True)
+                        with _sk_c3:
+                            st.markdown(
+                                '<div style="margin-top:10px;font-size:10px;font-weight:800;letter-spacing:0.06em;'
+                                'text-transform:uppercase;color:#7C3AED">Bridge roles</div>',
+                                unsafe_allow_html=True,
+                            )
+                            for _br in _pp.get("bridge_occupations",[]):
+                                _br_pos = int(_br.get("path_position",0.5)*100)
+                                st.markdown(
+                                    f'<div style="font-size:11px;color:rgba(0,0,0,0.7);padding:2px 0;line-height:1.3">'
+                                    f'<span style="font-weight:600">{_br["occupation"]}</span>'
+                                    f'<span style="font-size:9px;color:#7C3AED;margin-left:4px">{_br_pos}% of the way</span>'
+                                    f'</div>',
+                                    unsafe_allow_html=True,
+                                )
+
+                        # ── UMAP Scatter Plot ──────────────────────────────────────────
+                        _ud = _pp.get("umap_data", {})
+                        if _ud.get("background"):
+                            st.markdown('<div style="height:10px"></div>', unsafe_allow_html=True)
+                            _cluster_colors_map = _ud.get("cluster_colors", {})
+                            _cluster_names_map  = _ud.get("cluster_names", {})
+
+                            _fig = go.Figure()
+
+                            # Background: all 894 occupations, colored by cluster
+                            _bg = _ud["background"]
+                            if _bg:
+                                _bg_by_cluster: Dict[str, list] = {}
+                                for _pt in _bg:
+                                    _bg_by_cluster.setdefault(_pt["cid"], []).append(_pt)
+
+                                for _cid_plot, _pts in _bg_by_cluster.items():
+                                    _col = _cluster_colors_map.get(_cid_plot, "#888888")
+                                    _cname_plot = _cluster_names_map.get(_cid_plot, f"Cluster {_cid_plot}")
+                                    _fig.add_trace(go.Scatter(
+                                        x=[p["x"] for p in _pts],
+                                        y=[p["y"] for p in _pts],
+                                        mode="markers",
+                                        name=_cname_plot,
+                                        marker=dict(size=3, color=_col, opacity=0.45),
+                                        text=[p["occ"] for p in _pts],
+                                        hovertemplate="<b>%{text}</b><br>" + _cname_plot + "<extra></extra>",
+                                    ))
+
+                            # Bridge occupations — larger gold dots
+                            _bridges = _ud.get("bridges", [])
+                            if _bridges:
+                                _fig.add_trace(go.Scatter(
+                                    x=[p["x"] for p in _bridges],
+                                    y=[p["y"] for p in _bridges],
+                                    mode="markers+text",
+                                    name="Bridge roles",
+                                    marker=dict(size=9, color="#F59E0B", symbol="diamond", opacity=0.9,
+                                                line=dict(width=1.5, color="#92400E")),
+                                    text=[p["occ"].split(" ")[-1] for p in _bridges],
+                                    textposition="top center",
+                                    textfont=dict(size=8, color="#92400E"),
+                                    hovertemplate="<b>%{customdata}</b><br>Bridge role<extra></extra>",
+                                    customdata=[p["occ"] for p in _bridges],
+                                ))
+
+                            # Highlighted: current + target — big star + circle
+                            _hl = _ud.get("highlighted", [])
+                            for _hl_pt in _hl:
+                                _is_current = _hl_pt["occ"] == _ud.get("current_occ")
+                                _hl_sym     = "star" if _is_current else "circle"
+                                _hl_col     = "#0A66C2" if _is_current else "#DC2626"
+                                _hl_size    = 16 if _is_current else 14
+                                _hl_label   = "You (current)" if _is_current else "Target"
+                                _fig.add_trace(go.Scatter(
+                                    x=[_hl_pt["x"]],
+                                    y=[_hl_pt["y"]],
+                                    mode="markers+text",
+                                    name=_hl_label,
+                                    marker=dict(size=_hl_size, color=_hl_col, symbol=_hl_sym,
+                                                line=dict(width=2, color="white")),
+                                    text=[_hl_label],
+                                    textposition="top center",
+                                    textfont=dict(size=9, color=_hl_col, family="Arial Black"),
+                                    hovertemplate=f"<b>{_hl_pt['occ']}</b><br>{_hl_label}<extra></extra>",
+                                ))
+
+                            # Arrow from current to target
+                            _hl_current = next((p for p in _hl if p["occ"] == _ud.get("current_occ")), None)
+                            _hl_target  = next((p for p in _hl if p["occ"] == _ud.get("target_occ")),  None)
+                            if _hl_current and _hl_target:
+                                _fig.add_annotation(
+                                    x=_hl_target["x"],  y=_hl_target["y"],
+                                    ax=_hl_current["x"], ay=_hl_current["y"],
+                                    xref="x", yref="y", axref="x", ayref="y",
+                                    showarrow=True,
+                                    arrowhead=2, arrowsize=1.5, arrowwidth=2.5,
+                                    arrowcolor="#7C3AED",
+                                )
+
+                            _fig.update_layout(
+                                height=460,
+                                margin=dict(l=0, r=0, t=28, b=0),
+                                plot_bgcolor="#FAFAFA",
+                                paper_bgcolor="#FAFAFA",
+                                showlegend=True,
+                                legend=dict(
+                                    orientation="h", yanchor="bottom", y=1.01,
+                                    xanchor="left", x=0, font=dict(size=10),
+                                ),
+                                xaxis=dict(showticklabels=False, showgrid=False, zeroline=False, title=""),
+                                yaxis=dict(showticklabels=False, showgrid=False, zeroline=False, title=""),
+                                title=dict(
+                                    text="Occupation Space — UMAP skill-vector layout",
+                                    font=dict(size=12, color="rgba(0,0,0,0.5)"),
+                                    x=0.5, xanchor="center",
+                                ),
+                            )
+                            st.plotly_chart(_fig, use_container_width=True, config={"displayModeBar": False})
+                            st.caption(
+                                f"894 O*NET occupations · 119 skills · UMAP(cosine) · "
+                                f"Purple arrow = your pivot path · ◆ = bridge roles"
+                            )
+
+                    elif _pp and (not _pp.get("current_found") or not _pp.get("target_found")):
+                        _not_found = []
+                        if not _pp.get("current_found"): _not_found.append(f'"{st.session_state.get("pivot_path_current","")}"')
+                        if not _pp.get("target_found"):  _not_found.append(f'"{st.session_state.get("pivot_path_target","")}"')
+                        st.warning(f"Occupation not found in O*NET matrix: {', '.join(_not_found)}. Try selecting from the dropdown.")
+
+                        # Still show the map even if exact match failed
+                        _ud = _pp.get("umap_data", {})
+                        if _ud.get("background"):
+                            _bg2 = _ud["background"]
+                            _fig2 = go.Figure()
+                            _bg2_by_cluster: Dict[str, list] = {}
+                            for _pt2 in _bg2:
+                                _bg2_by_cluster.setdefault(_pt2["cid"], []).append(_pt2)
+                            _cluster_colors_map2 = _ud.get("cluster_colors", {})
+                            _cluster_names_map2  = _ud.get("cluster_names", {})
+                            for _cid2, _pts2 in _bg2_by_cluster.items():
+                                _col2 = _cluster_colors_map2.get(_cid2, "#888")
+                                _cname2 = _cluster_names_map2.get(_cid2, f"Cluster {_cid2}")
+                                _fig2.add_trace(go.Scatter(
+                                    x=[p["x"] for p in _pts2], y=[p["y"] for p in _pts2],
+                                    mode="markers", name=_cname2,
+                                    marker=dict(size=3, color=_col2, opacity=0.45),
+                                    text=[p["occ"] for p in _pts2],
+                                    hovertemplate="<b>%{text}</b><extra></extra>",
+                                ))
+                            _fig2.update_layout(
+                                height=380, margin=dict(l=0,r=0,t=28,b=0),
+                                plot_bgcolor="#FAFAFA", paper_bgcolor="#FAFAFA",
+                                showlegend=True,
+                                legend=dict(orientation="h", yanchor="bottom", y=1.01, xanchor="left", x=0, font=dict(size=10)),
+                                xaxis=dict(showticklabels=False, showgrid=False, zeroline=False),
+                                yaxis=dict(showticklabels=False, showgrid=False, zeroline=False),
+                            )
+                            st.plotly_chart(_fig2, use_container_width=True, config={"displayModeBar": False})
+
+        with st.expander("Decision Matrix", expanded=False):
+            # ════════════════════════════════════════════════════════════════════════
+            # DECISION MATRIX — The 3 hardest decisions in any pivot
+            # ════════════════════════════════════════════════════════════════════════
+            with st.expander(
+                "Decision Matrix — Two offers? Bridge vs. direct? Counter-offer?",
+                expanded=False,
+            ):
+                st.markdown(
+                    '<div style="font-size:11px;color:rgba(0,0,0,0.55);line-height:1.6;margin-bottom:12px">'
+                    'The three hardest decisions in any pivot — with a structured framework and a clear recommendation. '
+                    'Not "it depends." An actual call, with reasoning.'
+                    '</div>',
+                    unsafe_allow_html=True,
+                )
+
+                _dm_scenario = st.radio(
+                    "Which decision are you facing?",
+                    options=["Two offers at the same time", "Bridge role vs. direct PM application", "Counter-offer from current employer"],
+                    key="dm_scenario_radio",
+                    horizontal=True,
+                )
+
+                if _dm_scenario == "Two offers at the same time":
+                    _dm_c1, _dm_c2 = st.columns(2)
+                    with _dm_c1:
+                        st.markdown('<div style="font-size:11px;font-weight:700;color:#0A66C2;margin-bottom:4px">Offer A</div>', unsafe_allow_html=True)
+                        _dm_co_a = st.text_input("Company", key="dm_co_a", placeholder="e.g. Personio")
+                        _dm_title_a = st.text_input("Role title", key="dm_title_a", placeholder="e.g. PM — Growth")
+                        _dm_sal_a = st.number_input("Salary (annual)", key="dm_sal_a", min_value=0, value=75000, step=1000)
+                        _dm_stage_a = st.selectbox("Company stage", ["Seed","Series A","Series B","Series C","Scale-up","Enterprise"], key="dm_stage_a")
+                        _dm_notes_a = st.text_area("Notes", key="dm_notes_a", height=60, placeholder="Anything else relevant...")
+                    with _dm_c2:
+                        st.markdown('<div style="font-size:11px;font-weight:700;color:#7C3AED;margin-bottom:4px">Offer B</div>', unsafe_allow_html=True)
+                        _dm_co_b = st.text_input("Company", key="dm_co_b", placeholder="e.g. Linear")
+                        _dm_title_b = st.text_input("Role title", key="dm_title_b", placeholder="e.g. Product Manager")
+                        _dm_sal_b = st.number_input("Salary (annual)", key="dm_sal_b", min_value=0, value=82000, step=1000)
+                        _dm_stage_b = st.selectbox("Company stage", ["Seed","Series A","Series B","Series C","Scale-up","Enterprise"], key="dm_stage_b")
+                        _dm_notes_b = st.text_area("Notes", key="dm_notes_b", height=60, placeholder="Anything else relevant...")
+
+                    if st.button("Get Recommendation", key="btn_dm_two", type="primary", use_container_width=True):
+                        if not _qa_key:
+                            st.warning("Add your OpenAI key to the sidebar.")
+                        elif not _dm_co_a or not _dm_co_b:
+                            st.warning("Fill in both companies.")
+                        else:
+                            with st.spinner("Analysing both offers…"):
+                                _dm_result = compare_offers(
+                                    _qa_key,
+                                    offer_a={"company":_dm_co_a,"title":_dm_title_a,"salary":_dm_sal_a,"stage":_dm_stage_a,"notes":_dm_notes_a},
+                                    offer_b={"company":_dm_co_b,"title":_dm_title_b,"salary":_dm_sal_b,"stage":_dm_stage_b,"notes":_dm_notes_b},
+                                    pivot_dna=st.session_state.get("pivot_dna"),
+                                    cv_profile=st.session_state.get("cv_profile"),
+                                    ops_score=st.session_state.get("_ops_val"),
+                                )
+                                st.session_state.decision_matrix_result = _dm_result
+                                st.session_state.decision_matrix_scenario = "two_offers"
+
+                elif _dm_scenario == "Bridge role vs. direct PM application":
+                    _dm_bridge_role = st.text_input("Bridge role you're considering", key="dm_bridge_role", placeholder="e.g. Product Analyst at Series B SaaS")
+                    _dm_target_role = st.text_input("Direct target role", key="dm_target_role", placeholder="e.g. Product Manager")
+                    _dm_cur_apps    = st.number_input("Applications sent so far", key="dm_cur_apps", min_value=0, value=len(st.session_state.get("pipeline_jobs") or []))
+                    _dm_ops_now     = st.slider("Current OPS score", 0, 100, st.session_state.get("_ops_val", 40), key="dm_ops_slider")
+
+                    if st.button("Get Recommendation", key="btn_dm_bridge", type="primary", use_container_width=True):
                         if not _qa_key:
                             st.warning("Add your OpenAI key.")
                         else:
-                            with st.spinner("Building 8-week content arc from your career stories…"):
-                                _lc_plan = generate_content_plan(
+                            with st.spinner("Computing expected value of each path…"):
+                                _sg_for_dm = [g.get("skill","") for g in ((st.session_state.get("skill_gap_results") or {}).get("gaps") or [])[:5]]
+                                _pp_for_dm = (st.session_state.get("pivot_path_result") or {}).get("bridge_occupations",[])
+                                _dm_result = bridge_vs_direct(
                                     _qa_key,
-                                    cv_profile=st.session_state.get("cv_profile",{}),
-                                    pivot_dna=st.session_state.get("pivot_dna",{}),
-                                    target_role=str(target) if "target" in dir() else "Product Manager",
-                                    skill_gap_results=st.session_state.get("skill_gap_results"),
+                                    bridge_role=_dm_bridge_role,
+                                    target_role=_dm_target_role,
+                                    current_ops=_dm_ops_now,
+                                    current_applications=_dm_cur_apps,
+                                    cohort_median_apps=int((st.session_state.get("cohort_intelligence") or {}).get("median_applications",32)),
+                                    skill_gaps=_sg_for_dm,
+                                    pivot_dna=st.session_state.get("pivot_dna"),
+                                    bridge_occupations=_pp_for_dm,
                                 )
-                                st.session_state.linkedin_content_plan = _lc_plan
+                                st.session_state.decision_matrix_result = _dm_result
+                                st.session_state.decision_matrix_scenario = "bridge_direct"
 
-                if _lc_plan:
-                    if _lc_plan.get("content_arc"):
+                else:  # Counter-offer
+                    _dm_cc1, _dm_cc2, _dm_cc3 = st.columns(3)
+                    with _dm_cc1:
+                        _dm_cur_sal = st.number_input("Current salary", key="dm_cur_sal", min_value=0, value=65000, step=1000)
+                    with _dm_cc2:
+                        _dm_ext_sal = st.number_input("External offer", key="dm_ext_sal", min_value=0, value=82000, step=1000)
+                    with _dm_cc3:
+                        _dm_cnt_sal = st.number_input("Counter-offer", key="dm_cnt_sal", min_value=0, value=75000, step=1000)
+                    _dm_months = st.slider("Months in search", 0, 24, 3, key="dm_months_search")
+
+                    if st.button("Get Recommendation", key="btn_dm_counter", type="primary", use_container_width=True):
+                        if not _qa_key:
+                            st.warning("Add your OpenAI key.")
+                        else:
+                            with st.spinner("Analysing counter-offer dynamics…"):
+                                _dm_result = analyze_counter_offer(
+                                    _qa_key,
+                                    external_offer_amount=_dm_ext_sal,
+                                    counter_offer_amount=_dm_cnt_sal,
+                                    current_salary=_dm_cur_sal,
+                                    months_in_search=_dm_months,
+                                    current_ops=st.session_state.get("_ops_val", 40),
+                                    pivot_dna=st.session_state.get("pivot_dna"),
+                                )
+                                st.session_state.decision_matrix_result = _dm_result
+                                st.session_state.decision_matrix_scenario = "counter_offer"
+
+                # ── Display result ─────────────────────────────────────────────────
+                _dm_r = st.session_state.get("decision_matrix_result")
+                _dm_s = st.session_state.get("decision_matrix_scenario","")
+                if _dm_r:
+                    _dm_rec   = _dm_r.get("recommendation","")
+                    _dm_rec_c = recommendation_color(_dm_rec)
+                    _dm_conf  = _dm_r.get("confidence","medium")
+                    _dm_reason = _dm_r.get("decision_reason","")
+
+                    st.markdown(
+                        f'<div style="background:{_dm_rec_c}12;border:2px solid {_dm_rec_c};border-radius:10px;'
+                        f'padding:16px 18px;margin-top:10px">'
+                        f'<div style="display:flex;align-items:center;gap:14px">'
+                        f'<div style="font-size:32px;font-weight:900;color:{_dm_rec_c};white-space:nowrap">'
+                        f'{_dm_rec.replace("_"," ").upper()}</div>'
+                        f'<div>'
+                        f'<div style="font-size:12px;font-weight:700;color:rgba(0,0,0,0.4);text-transform:uppercase;'
+                        f'letter-spacing:0.05em">{_dm_conf.upper()} CONFIDENCE</div>'
+                        f'<div style="font-size:13px;color:#0A0A0A;line-height:1.5;margin-top:4px">{_dm_reason}</div>'
+                        f'</div></div></div>',
+                        unsafe_allow_html=True,
+                    )
+
+                    # Show the_one_question
+                    _dm_q = _dm_r.get("the_one_question") or _dm_r.get("the_real_question","")
+                    if _dm_q:
                         st.markdown(
-                            f'<div style="background:#E8F0FE;border-radius:6px;padding:8px 12px;margin:8px 0">'
-                            f'<div style="font-size:10px;font-weight:800;color:#0A66C2;letter-spacing:0.06em;'
-                            f'text-transform:uppercase;margin-bottom:2px">8-week arc</div>'
-                            f'<div style="font-size:11px;color:#0A0A0A">{_lc_plan["content_arc"]}</div>'
+                            f'<div style="background:#F5F0FF;border-radius:6px;padding:10px 14px;margin-top:8px">'
+                            f'<div style="font-size:10px;font-weight:800;color:#7C3AED;letter-spacing:0.06em;'
+                            f'text-transform:uppercase;margin-bottom:3px">The question that cuts through the noise</div>'
+                            f'<div style="font-size:13px;font-style:italic;color:#0A0A0A">"{_dm_q}"</div>'
                             f'</div>',
                             unsafe_allow_html=True,
                         )
 
-                    if _lc_plan.get("profile_optimization_tip"):
-                        st.markdown(
-                            f'<div style="background:#FFF5E5;border-radius:5px;padding:7px 11px;margin-bottom:8px">'
-                            f'<strong style="font-size:10px;color:#A05A00">Do this first:</strong> '
-                            f'<span style="font-size:11px;color:rgba(0,0,0,0.7)">{_lc_plan["profile_optimization_tip"]}</span>'
-                            f'</div>',
-                            unsafe_allow_html=True,
-                        )
-
-                    _lc_posts = _lc_plan.get("posts",[])
-                    for _lc_post in _lc_posts:
-                        _lc_week    = _lc_post.get("week",1)
-                        _lc_theme   = _lc_post.get("theme","")
-                        _lc_hook    = _lc_post.get("hook_type","")
-                        _lc_day     = _lc_post.get("post_day","Thursday")
-                        _lc_time    = _lc_post.get("post_time","8:00 AM")
-                        _lc_text    = _lc_post.get("post_text","")
-                        _lc_tags    = " ".join(_lc_post.get("hashtags",[])[:5])
-                        _lc_eng     = _lc_post.get("expected_engagement","")
-                        _hook_colors = {"data":"#0A66C2","story":"#7C3AED","question":"#D97706","counterintuitive":"#DC2626"}
-                        _lc_hc = _hook_colors.get(_lc_hook,"#555")
-
-                        with st.expander(f"Week {_lc_week} — {_lc_theme}", expanded=False):
+                    # Hidden risks / extra context
+                    for _dm_k, _dm_label, _dm_col in [
+                        ("hidden_risk_a","Hidden risk of option A","#DC2626"),
+                        ("hidden_risk_b","Hidden risk of option B","#D97706"),
+                        ("negotiation_angle","Negotiation angle","#057642"),
+                        ("pivot_cost_of_staying","Cost to your pivot","#DC2626"),
+                        ("if_accept","If you accept","#D97706"),
+                        ("if_decline","If you decline","#057642"),
+                        ("hybrid_approach","Hybrid approach","#0A66C2"),
+                    ]:
+                        if _dm_r.get(_dm_k):
                             st.markdown(
-                                f'<div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap">'
-                                f'<span style="font-size:9px;background:{_lc_hc}20;color:{_lc_hc};padding:2px 8px;border-radius:4px;font-weight:700">{_lc_hook.upper()} hook</span>'
-                                f'<span style="font-size:9px;background:#F3F6F9;color:rgba(0,0,0,0.5);padding:2px 8px;border-radius:4px">{_lc_day} {_lc_time}</span>'
-                                f'<span style="font-size:9px;background:#F3F6F9;color:rgba(0,0,0,0.5);padding:2px 8px;border-radius:4px">Expected: {_lc_eng}</span>'
+                                f'<div style="background:{_dm_col}08;border-left:2px solid {_dm_col};'
+                                f'border-radius:0 5px 5px 0;padding:7px 11px;margin-top:5px">'
+                                f'<div style="font-size:9px;font-weight:800;color:{_dm_col};letter-spacing:0.06em;'
+                                f'text-transform:uppercase">{_dm_label}</div>'
+                                f'<div style="font-size:11px;color:rgba(0,0,0,0.75)">{_dm_r[_dm_k]}</div>'
                                 f'</div>',
                                 unsafe_allow_html=True,
                             )
-                            st.text_area(
-                                "Post text (copy & paste to LinkedIn)",
-                                value=_lc_text + ("\n\n" + _lc_tags if _lc_tags else ""),
-                                height=200,
-                                key=f"lc_post_{_lc_week}",
-                            )
-                            st.caption(f"Why week {_lc_week}: {_lc_post.get('why_this_week','')}")
 
-                    if _lc_plan.get("engagement_strategy"):
-                        st.caption(f"Engagement strategy: {_lc_plan['engagement_strategy']}")
+        with st.expander("Compensation Engine", expanded=False):
+            # ════════════════════════════════════════════════════════════════════════
+            # COMPENSATION ENGINE — Negotiate with data, not gratitude
+            # ════════════════════════════════════════════════════════════════════════
+            with st.expander(
+                "Compensation Intelligence — Got an offer? Here's what it's worth.",
+                expanded=False,
+            ):
+                st.markdown(
+                    '<div style="font-size:11px;color:rgba(0,0,0,0.55);line-height:1.6;margin-bottom:10px">'
+                    'Career changers accept initial offers out of gratitude. The difference between '
+                    'the first offer and the negotiated outcome is typically <strong>€5,000–€15,000</strong>. '
+                    'This gives you the market range, negotiation scripts, and the walk-away threshold.'
+                    '</div>',
+                    unsafe_allow_html=True,
+                )
+                _comp_c1, _comp_c2, _comp_c3 = st.columns(3)
+                with _comp_c1:
+                    _comp_offer = st.number_input("Offered salary (annual)", min_value=0, value=75000, step=1000, key="comp_offered")
+                    _comp_curr  = st.number_input("Current salary (optional)", min_value=0, value=0, step=1000, key="comp_current")
+                with _comp_c2:
+                    _comp_role  = st.text_input("Role title", key="comp_role", value=str(target) if "target" in dir() and target else "Product Manager")
+                    _comp_co    = st.text_input("Company", key="comp_company", placeholder="e.g. Personio")
+                with _comp_c3:
+                    _comp_loc   = st.text_input("Location", key="comp_location", value="Berlin, Germany")
+                    _comp_stage = st.selectbox("Company stage", ["Seed","Series A","Series B","Series C","Scale-up","Enterprise"], key="comp_stage", index=2)
+                _comp_counter = st.checkbox("This is a counter-offer from my current employer", key="comp_is_counter")
+
+                if st.button("Analyse & Get Negotiation Scripts", key="btn_comp_run", type="primary", use_container_width=True):
+                    if not _qa_key:
+                        st.warning("Add your OpenAI key to the sidebar.")
+                    elif not _comp_offer:
+                        st.warning("Enter the offered salary.")
+                    else:
+                        with st.spinner("Calibrating market range · Building negotiation scripts…"):
+                            _comp_result = analyze_offer(
+                                _qa_key,
+                                offered_amount=_comp_offer,
+                                role_title=_comp_role,
+                                company=_comp_co,
+                                location=_comp_loc,
+                                company_stage=_comp_stage,
+                                years_experience=int((st.session_state.get("cv_profile") or {}).get("years_experience",5)),
+                                current_salary=_comp_curr or None,
+                                pivot_dna=st.session_state.get("pivot_dna"),
+                                is_counter_offer=_comp_counter,
+                            )
+                            st.session_state.comp_analysis = _comp_result
+
+                _ca = st.session_state.get("comp_analysis")
+                if _ca:
+                    _ca_low  = _ca.get("market_low",0)
+                    _ca_mid  = _ca.get("market_mid",0)
+                    _ca_high = _ca.get("market_high",0)
+                    _ca_ass  = _ca.get("offer_assessment","fair")
+                    _ca_col  = offer_assessment_color(_ca_ass)
+                    _ca_lbl  = offer_assessment_label(_ca_ass)
+                    _ca_head = _ca.get("negotiation_headroom",0)
+                    _ca_walk = _ca.get("walk_away_threshold",0)
+                    _ca_curr_symbol = "€"
+
+                    # Market range bar
+                    st.markdown(
+                        f'<div style="background:{_ca_col}10;border:1.5px solid {_ca_col}40;border-radius:8px;'
+                        f'padding:14px 18px;margin-top:8px">'
+                        f'<div style="font-size:13px;font-weight:800;color:{_ca_col};margin-bottom:8px">{_ca_lbl}</div>'
+                        f'<div style="display:flex;gap:4px;align-items:center;margin-bottom:6px">'
+                        f'<div style="font-size:11px;color:rgba(0,0,0,0.4);min-width:60px">Market low</div>'
+                        f'<div style="flex:1;height:8px;background:#F3F6F9;border-radius:4px;position:relative">'
+                        f'<div style="position:absolute;left:0;top:0;height:8px;'
+                        f'width:{min(100,int(((_ca.get("offered_amount",0)-_ca_low)/max(_ca_high-_ca_low,1))*100))}%;'
+                        f'background:{_ca_col};border-radius:4px"></div></div>'
+                        f'<div style="font-size:11px;color:rgba(0,0,0,0.4);min-width:60px;text-align:right">Market high</div>'
+                        f'</div>'
+                        f'<div style="display:flex;justify-content:space-between;font-size:11px;color:rgba(0,0,0,0.55);margin-bottom:10px">'
+                        f'<span>{_ca_curr_symbol}{_ca_low:,}</span>'
+                        f'<span style="font-weight:700;color:#0A0A0A">Offered: {_ca_curr_symbol}{_ca.get("offered_amount",0):,}</span>'
+                        f'<span>Midpoint: {_ca_curr_symbol}{_ca_mid:,}</span>'
+                        f'<span>{_ca_curr_symbol}{_ca_high:,}</span>'
+                        f'</div>'
+                        f'<div style="display:flex;gap:16px">'
+                        f'<div style="text-align:center">'
+                        f'<div style="font-size:18px;font-weight:900;color:#0A66C2">+{_ca_curr_symbol}{_ca_head:,}</div>'
+                        f'<div style="font-size:9px;color:rgba(0,0,0,0.4);text-transform:uppercase">Likely headroom</div>'
+                        f'</div>'
+                        f'<div style="text-align:center">'
+                        f'<div style="font-size:18px;font-weight:900;color:#DC2626">{_ca_curr_symbol}{_ca_walk:,}</div>'
+                        f'<div style="font-size:9px;color:rgba(0,0,0,0.4);text-transform:uppercase">Walk-away floor</div>'
+                        f'</div>'
+                        f'<div style="flex:1">'
+                        f'<div style="font-size:10px;color:rgba(0,0,0,0.5)">{_ca.get("offer_assessment_reason","")}</div>'
+                        f'</div></div></div>',
+                        unsafe_allow_html=True,
+                    )
+
+                    # Negotiation scripts
+                    st.markdown('<div style="height:10px"></div>', unsafe_allow_html=True)
+                    st.markdown(
+                        '<div style="font-size:10px;font-weight:800;letter-spacing:0.06em;text-transform:uppercase;'
+                        'color:rgba(0,0,0,0.35);margin-bottom:8px">Negotiation scripts — copy and send</div>',
+                        unsafe_allow_html=True,
+                    )
+                    _scripts = _ca.get("scripts",{})
+                    for _sc_key, _sc_label, _sc_col in [
+                        ("direct_ask","Direct ask — base salary","#057642"),
+                        ("anchor_high","Anchor high first","#0A66C2"),
+                        ("alternatives","When base is firm — alternatives","#7C3AED"),
+                    ]:
+                        _sc_text = _scripts.get(_sc_key,"")
+                        if _sc_text:
+                            st.markdown(
+                                f'<div style="background:{_sc_col}08;border-left:3px solid {_sc_col};'
+                                f'border-radius:0 6px 6px 0;padding:10px 14px;margin-bottom:8px">'
+                                f'<div style="font-size:10px;font-weight:800;color:{_sc_col};letter-spacing:0.06em;'
+                                f'text-transform:uppercase;margin-bottom:4px">{_sc_label}</div>'
+                                f'<div style="font-size:11px;color:#0A0A0A;line-height:1.6;font-style:italic">"{_sc_text}"</div>'
+                                f'</div>',
+                                unsafe_allow_html=True,
+                            )
+
+                    # Fear reframe + Three asks
+                    if _ca.get("fear_reframe"):
+                        st.markdown(
+                            f'<div style="background:#FFF5E5;border-radius:6px;padding:10px 14px;margin-top:4px">'
+                            f'<div style="font-size:10px;font-weight:800;color:#A05A00;letter-spacing:0.06em;'
+                            f'text-transform:uppercase;margin-bottom:3px">On the fear of losing the offer</div>'
+                            f'<div style="font-size:11px;color:rgba(0,0,0,0.75)">{_ca["fear_reframe"]}</div>'
+                            f'</div>',
+                            unsafe_allow_html=True,
+                        )
+
+                    if _ca.get("timing_advice"):
+                        st.caption(f"Timing: {_ca['timing_advice']}")
+
+                    if _comp_counter and _ca.get("counter_offer_context"):
+                        st.markdown(
+                            f'<div style="background:#FFF0E5;border:1.5px solid #D97706;border-radius:6px;'
+                            f'padding:10px 14px;margin-top:6px">'
+                            f'<div style="font-size:10px;font-weight:800;color:#D97706;letter-spacing:0.06em;'
+                            f'text-transform:uppercase;margin-bottom:3px">Counter-offer analysis</div>'
+                            f'<div style="font-size:11px;color:rgba(0,0,0,0.75)">{_ca["counter_offer_context"]}</div>'
+                            f'</div>',
+                            unsafe_allow_html=True,
+                        )
+
+        with st.expander("LinkedIn Content Engine", expanded=False):
+            # ════════════════════════════════════════════════════════════════════════
+            # LINKEDIN CONTENT ENGINE + MOAT BUILDER
+            # ════════════════════════════════════════════════════════════════════════
+            with st.expander(
+                "LinkedIn Content Engine — 8-week PM credibility strategy",
+                expanded=False,
+            ):
+                _lc_has_data = bool(st.session_state.get("pivot_dna") and st.session_state.get("cv_profile"))
+                if not _lc_has_data:
+                    st.caption("Upload your CV and build a Pivot DNA to unlock the content engine.")
+                else:
+                    _lc_plan = st.session_state.get("linkedin_content_plan")
+                    _lc_c1, _lc_c2 = st.columns([3,1])
+                    with _lc_c1:
+                        st.markdown(
+                            '<div style="font-size:11px;color:rgba(0,0,0,0.55);line-height:1.6">'
+                            '8 fully written posts, ready to copy-paste. Built from your real career stories — '
+                            'specific numbers, company names, outcomes. No invented examples. Each post shows '
+                            'PM-thinking in action without saying "I want to break into product."'
+                            '</div>',
+                            unsafe_allow_html=True,
+                        )
+                    with _lc_c2:
+                        if st.button(
+                            "Generate Plan" if not _lc_plan else "Regenerate",
+                            key="btn_lc_gen",
+                            type="primary" if not _lc_plan else "secondary",
+                            use_container_width=True,
+                        ):
+                            if not _qa_key:
+                                st.warning("Add your OpenAI key.")
+                            else:
+                                with st.spinner("Building 8-week content arc from your career stories…"):
+                                    _lc_plan = generate_content_plan(
+                                        _qa_key,
+                                        cv_profile=st.session_state.get("cv_profile",{}),
+                                        pivot_dna=st.session_state.get("pivot_dna",{}),
+                                        target_role=str(target) if "target" in dir() else "Product Manager",
+                                        skill_gap_results=st.session_state.get("skill_gap_results"),
+                                    )
+                                    st.session_state.linkedin_content_plan = _lc_plan
+
+                    if _lc_plan:
+                        if _lc_plan.get("content_arc"):
+                            st.markdown(
+                                f'<div style="background:#E8F0FE;border-radius:6px;padding:8px 12px;margin:8px 0">'
+                                f'<div style="font-size:10px;font-weight:800;color:#0A66C2;letter-spacing:0.06em;'
+                                f'text-transform:uppercase;margin-bottom:2px">8-week arc</div>'
+                                f'<div style="font-size:11px;color:#0A0A0A">{_lc_plan["content_arc"]}</div>'
+                                f'</div>',
+                                unsafe_allow_html=True,
+                            )
+
+                        if _lc_plan.get("profile_optimization_tip"):
+                            st.markdown(
+                                f'<div style="background:#FFF5E5;border-radius:5px;padding:7px 11px;margin-bottom:8px">'
+                                f'<strong style="font-size:10px;color:#A05A00">Do this first:</strong> '
+                                f'<span style="font-size:11px;color:rgba(0,0,0,0.7)">{_lc_plan["profile_optimization_tip"]}</span>'
+                                f'</div>',
+                                unsafe_allow_html=True,
+                            )
+
+                        _lc_posts = _lc_plan.get("posts",[])
+                        for _lc_post in _lc_posts:
+                            _lc_week    = _lc_post.get("week",1)
+                            _lc_theme   = _lc_post.get("theme","")
+                            _lc_hook    = _lc_post.get("hook_type","")
+                            _lc_day     = _lc_post.get("post_day","Thursday")
+                            _lc_time    = _lc_post.get("post_time","8:00 AM")
+                            _lc_text    = _lc_post.get("post_text","")
+                            _lc_tags    = " ".join(_lc_post.get("hashtags",[])[:5])
+                            _lc_eng     = _lc_post.get("expected_engagement","")
+                            _hook_colors = {"data":"#0A66C2","story":"#7C3AED","question":"#D97706","counterintuitive":"#DC2626"}
+                            _lc_hc = _hook_colors.get(_lc_hook,"#555")
+
+                            with st.expander(f"Week {_lc_week} — {_lc_theme}", expanded=False):
+                                st.markdown(
+                                    f'<div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap">'
+                                    f'<span style="font-size:9px;background:{_lc_hc}20;color:{_lc_hc};padding:2px 8px;border-radius:4px;font-weight:700">{_lc_hook.upper()} hook</span>'
+                                    f'<span style="font-size:9px;background:#F3F6F9;color:rgba(0,0,0,0.5);padding:2px 8px;border-radius:4px">{_lc_day} {_lc_time}</span>'
+                                    f'<span style="font-size:9px;background:#F3F6F9;color:rgba(0,0,0,0.5);padding:2px 8px;border-radius:4px">Expected: {_lc_eng}</span>'
+                                    f'</div>',
+                                    unsafe_allow_html=True,
+                                )
+                                st.text_area(
+                                    "Post text (copy & paste to LinkedIn)",
+                                    value=_lc_text + ("\n\n" + _lc_tags if _lc_tags else ""),
+                                    height=200,
+                                    key=f"lc_post_{_lc_week}",
+                                )
+                                st.caption(f"Why week {_lc_week}: {_lc_post.get('why_this_week','')}")
+
+                        if _lc_plan.get("engagement_strategy"):
+                            st.caption(f"Engagement strategy: {_lc_plan['engagement_strategy']}")
 
         # ════════════════════════════════════════════════════════════════════════
         # PERSONAL MOAT BUILDER — Build what others can't copy
@@ -5949,141 +5962,142 @@ if quick_apply:
                             unsafe_allow_html=True,
                         )
 
-        # ════════════════════════════════════════════════════════════════════════
-        # WEEK ZERO PROTOCOL — First 30 days in the new role
-        # ════════════════════════════════════════════════════════════════════════
-        # Only show when an offer has been accepted (or user has offer in pipeline)
-        _wz_has_offer = any(j.get("status") in ("offer_accepted","offer","hired") for j in (st.session_state.get("pipeline_jobs") or []))
-        with st.expander(
-            "Week Zero Protocol — Your first 30 days as a PM",
-            expanded=_wz_has_offer,
-        ):
-            st.markdown(
-                '<div style="font-size:11px;color:rgba(0,0,0,0.55);line-height:1.6;margin-bottom:10px">'
-                'The pivot doesn\'t end when you sign the offer. It ends when you survive the probation. '
-                '40% of career changers feel out of their depth in the first 90 days. '
-                'This is your personalised 30-day plan, calibrated to your specific transition.'
-                '</div>',
-                unsafe_allow_html=True,
-            )
-
-            _wz_c1, _wz_c2 = st.columns(2)
-            with _wz_c1:
-                _wz_role    = st.text_input("Your new role", key="wz_role", value=str(target) if "target" in dir() else "Product Manager")
-                _wz_company = st.text_input("Company", key="wz_company", placeholder="e.g. Personio")
-            with _wz_c2:
-                _wz_stage   = st.selectbox("Company stage", ["Seed","Series A","Series B","Series C","Scale-up","Enterprise"], key="wz_stage", index=2)
-                _wz_prev    = st.text_input("Your previous role", key="wz_prev_role",
-                    value=(st.session_state.get("cv_profile") or {}).get("extracted_role",""))
-
-            _wz_plan = st.session_state.get("week_zero_plan")
-            if st.button(
-                "Generate My Week Zero Plan" if not _wz_plan else "Regenerate",
-                key="btn_wz",
-                type="primary" if not _wz_plan else "secondary",
-                use_container_width=True,
+        with st.expander("Week Zero Protocol", expanded=False):
+            # ════════════════════════════════════════════════════════════════════════
+            # WEEK ZERO PROTOCOL — First 30 days in the new role
+            # ════════════════════════════════════════════════════════════════════════
+            # Only show when an offer has been accepted (or user has offer in pipeline)
+            _wz_has_offer = any(j.get("status") in ("offer_accepted","offer","hired") for j in (st.session_state.get("pipeline_jobs") or []))
+            with st.expander(
+                "Week Zero Protocol — Your first 30 days as a PM",
+                expanded=_wz_has_offer,
             ):
-                if not _qa_key:
-                    st.warning("Add your OpenAI key.")
-                elif not _wz_role:
-                    st.warning("Enter your new role.")
-                else:
-                    with st.spinner("Building your 30-day onboarding plan…"):
-                        _sg_for_wz = [(g.get("skill","")) for g in ((st.session_state.get("skill_gap_results") or {}).get("gaps") or [])[:5]]
-                        _wz_plan = generate_week_zero_plan(
-                            _qa_key,
-                            target_role=_wz_role,
-                            company=_wz_company,
-                            company_stage=_wz_stage,
-                            previous_role=_wz_prev,
-                            skill_gaps=_sg_for_wz,
-                            pivot_dna=st.session_state.get("pivot_dna"),
-                            cv_profile=st.session_state.get("cv_profile"),
+                st.markdown(
+                    '<div style="font-size:11px;color:rgba(0,0,0,0.55);line-height:1.6;margin-bottom:10px">'
+                    'The pivot doesn\'t end when you sign the offer. It ends when you survive the probation. '
+                    '40% of career changers feel out of their depth in the first 90 days. '
+                    'This is your personalised 30-day plan, calibrated to your specific transition.'
+                    '</div>',
+                    unsafe_allow_html=True,
+                )
+
+                _wz_c1, _wz_c2 = st.columns(2)
+                with _wz_c1:
+                    _wz_role    = st.text_input("Your new role", key="wz_role", value=str(target) if "target" in dir() else "Product Manager")
+                    _wz_company = st.text_input("Company", key="wz_company", placeholder="e.g. Personio")
+                with _wz_c2:
+                    _wz_stage   = st.selectbox("Company stage", ["Seed","Series A","Series B","Series C","Scale-up","Enterprise"], key="wz_stage", index=2)
+                    _wz_prev    = st.text_input("Your previous role", key="wz_prev_role",
+                        value=(st.session_state.get("cv_profile") or {}).get("extracted_role",""))
+
+                _wz_plan = st.session_state.get("week_zero_plan")
+                if st.button(
+                    "Generate My Week Zero Plan" if not _wz_plan else "Regenerate",
+                    key="btn_wz",
+                    type="primary" if not _wz_plan else "secondary",
+                    use_container_width=True,
+                ):
+                    if not _qa_key:
+                        st.warning("Add your OpenAI key.")
+                    elif not _wz_role:
+                        st.warning("Enter your new role.")
+                    else:
+                        with st.spinner("Building your 30-day onboarding plan…"):
+                            _sg_for_wz = [(g.get("skill","")) for g in ((st.session_state.get("skill_gap_results") or {}).get("gaps") or [])[:5]]
+                            _wz_plan = generate_week_zero_plan(
+                                _qa_key,
+                                target_role=_wz_role,
+                                company=_wz_company,
+                                company_stage=_wz_stage,
+                                previous_role=_wz_prev,
+                                skill_gaps=_sg_for_wz,
+                                pivot_dna=st.session_state.get("pivot_dna"),
+                                cv_profile=st.session_state.get("cv_profile"),
+                            )
+                            st.session_state.week_zero_plan = _wz_plan
+
+                if _wz_plan:
+                    # Mindset banner
+                    if _wz_plan.get("mindset_for_day_one"):
+                        st.markdown(
+                            f'<div style="background:#F0FAF4;border:1.5px solid #057642;border-radius:8px;'
+                            f'padding:12px 16px;margin-bottom:12px">'
+                            f'<div style="font-size:10px;font-weight:800;color:#057642;letter-spacing:0.06em;'
+                            f'text-transform:uppercase;margin-bottom:4px">The one mindset shift for Day 1</div>'
+                            f'<div style="font-size:13px;font-weight:700;color:#0A0A0A">{_wz_plan["mindset_for_day_one"]}</div>'
+                            f'</div>',
+                            unsafe_allow_html=True,
                         )
-                        st.session_state.week_zero_plan = _wz_plan
 
-            if _wz_plan:
-                # Mindset banner
-                if _wz_plan.get("mindset_for_day_one"):
-                    st.markdown(
-                        f'<div style="background:#F0FAF4;border:1.5px solid #057642;border-radius:8px;'
-                        f'padding:12px 16px;margin-bottom:12px">'
-                        f'<div style="font-size:10px;font-weight:800;color:#057642;letter-spacing:0.06em;'
-                        f'text-transform:uppercase;margin-bottom:4px">The one mindset shift for Day 1</div>'
-                        f'<div style="font-size:13px;font-weight:700;color:#0A0A0A">{_wz_plan["mindset_for_day_one"]}</div>'
-                        f'</div>',
-                        unsafe_allow_html=True,
-                    )
+                    # Leverage from old role
+                    if _wz_plan.get("leverage_from_old_role"):
+                        st.markdown(
+                            f'<div style="background:#EEF3FB;border-radius:6px;padding:8px 12px;margin-bottom:10px">'
+                            f'<div style="font-size:10px;font-weight:800;color:#0A66C2;letter-spacing:0.06em;'
+                            f'text-transform:uppercase;margin-bottom:2px">Your superpower most new PMs don\'t have</div>'
+                            f'<div style="font-size:11px;color:#0A0A0A">{_wz_plan["leverage_from_old_role"]}</div>'
+                            f'</div>',
+                            unsafe_allow_html=True,
+                        )
 
-                # Leverage from old role
-                if _wz_plan.get("leverage_from_old_role"):
-                    st.markdown(
-                        f'<div style="background:#EEF3FB;border-radius:6px;padding:8px 12px;margin-bottom:10px">'
-                        f'<div style="font-size:10px;font-weight:800;color:#0A66C2;letter-spacing:0.06em;'
-                        f'text-transform:uppercase;margin-bottom:2px">Your superpower most new PMs don\'t have</div>'
-                        f'<div style="font-size:11px;color:#0A0A0A">{_wz_plan["leverage_from_old_role"]}</div>'
-                        f'</div>',
-                        unsafe_allow_html=True,
-                    )
+                    # Phase timeline
+                    _wz_phases = [
+                        ("day_1_5",  "Day 1–5: Listen & Map",      "#0A66C2"),
+                        ("day_6_15", "Day 6–15: Find the quick win","#7C3AED"),
+                        ("day_16_30","Day 16–30: First impact",      "#057642"),
+                    ]
+                    for _wz_key, _wz_label, _wz_col in _wz_phases:
+                        _wz_phase_tasks = _wz_plan.get(_wz_key, [])
+                        if not _wz_phase_tasks:
+                            continue
+                        st.markdown(
+                            f'<div style="font-size:11px;font-weight:800;color:{_wz_col};margin:10px 0 4px 0">{_wz_label}</div>',
+                            unsafe_allow_html=True,
+                        )
+                        for _wz_task_group in _wz_phase_tasks:
+                            _wz_day   = _wz_task_group.get("day","") if isinstance(_wz_task_group, dict) else ""
+                            _wz_tasks = _wz_task_group.get("tasks",[]) if isinstance(_wz_task_group, dict) else [str(_wz_task_group)]
+                            _wz_why   = _wz_task_group.get("why","") if isinstance(_wz_task_group, dict) else ""
+                            if _wz_day:
+                                st.markdown(f'<div style="font-size:10px;color:rgba(0,0,0,0.4);margin:4px 0 2px 0">{_wz_day}</div>', unsafe_allow_html=True)
+                            for _wz_t in _wz_tasks:
+                                st.markdown(f'<div style="font-size:11px;color:#0A0A0A;padding:2px 0">{check_icon(10)} {_wz_t}</div>', unsafe_allow_html=True)
+                            if _wz_why:
+                                st.markdown(f'<div style="font-size:10px;color:rgba(0,0,0,0.45);padding:0 0 4px 16px">{_wz_why}</div>', unsafe_allow_html=True)
 
-                # Phase timeline
-                _wz_phases = [
-                    ("day_1_5",  "Day 1–5: Listen & Map",      "#0A66C2"),
-                    ("day_6_15", "Day 6–15: Find the quick win","#7C3AED"),
-                    ("day_16_30","Day 16–30: First impact",      "#057642"),
-                ]
-                for _wz_key, _wz_label, _wz_col in _wz_phases:
-                    _wz_phase_tasks = _wz_plan.get(_wz_key, [])
-                    if not _wz_phase_tasks:
-                        continue
-                    st.markdown(
-                        f'<div style="font-size:11px;font-weight:800;color:{_wz_col};margin:10px 0 4px 0">{_wz_label}</div>',
-                        unsafe_allow_html=True,
-                    )
-                    for _wz_task_group in _wz_phase_tasks:
-                        _wz_day   = _wz_task_group.get("day","") if isinstance(_wz_task_group, dict) else ""
-                        _wz_tasks = _wz_task_group.get("tasks",[]) if isinstance(_wz_task_group, dict) else [str(_wz_task_group)]
-                        _wz_why   = _wz_task_group.get("why","") if isinstance(_wz_task_group, dict) else ""
-                        if _wz_day:
-                            st.markdown(f'<div style="font-size:10px;color:rgba(0,0,0,0.4);margin:4px 0 2px 0">{_wz_day}</div>', unsafe_allow_html=True)
-                        for _wz_t in _wz_tasks:
-                            st.markdown(f'<div style="font-size:11px;color:#0A0A0A;padding:2px 0">{check_icon(10)} {_wz_t}</div>', unsafe_allow_html=True)
-                        if _wz_why:
-                            st.markdown(f'<div style="font-size:10px;color:rgba(0,0,0,0.45);padding:0 0 4px 16px">{_wz_why}</div>', unsafe_allow_html=True)
+                    if _wz_plan.get("day_31_90"):
+                        st.markdown(
+                            f'<div style="background:#F3F6F9;border-radius:6px;padding:8px 12px;margin-top:6px">'
+                            f'<div style="font-size:10px;font-weight:800;color:rgba(0,0,0,0.35);letter-spacing:0.06em;'
+                            f'text-transform:uppercase;margin-bottom:3px">Day 31–90</div>'
+                            f'<div style="font-size:11px;color:rgba(0,0,0,0.7)">{_wz_plan["day_31_90"]}</div>'
+                            f'</div>',
+                            unsafe_allow_html=True,
+                        )
 
-                if _wz_plan.get("day_31_90"):
-                    st.markdown(
-                        f'<div style="background:#F3F6F9;border-radius:6px;padding:8px 12px;margin-top:6px">'
-                        f'<div style="font-size:10px;font-weight:800;color:rgba(0,0,0,0.35);letter-spacing:0.06em;'
-                        f'text-transform:uppercase;margin-bottom:3px">Day 31–90</div>'
-                        f'<div style="font-size:11px;color:rgba(0,0,0,0.7)">{_wz_plan["day_31_90"]}</div>'
-                        f'</div>',
-                        unsafe_allow_html=True,
-                    )
+                    # Failure modes + success signals
+                    _wz_fails = _wz_plan.get("failure_modes",[])
+                    _wz_sigs  = _wz_plan.get("success_signals",[])
+                    if _wz_fails or _wz_sigs:
+                        _wz_fc, _wz_sc = st.columns(2)
+                        with _wz_fc:
+                            if _wz_fails:
+                                st.markdown('<div style="font-size:10px;font-weight:800;color:#DC2626;letter-spacing:0.06em;text-transform:uppercase;margin-top:8px;margin-bottom:4px">Common failure modes</div>', unsafe_allow_html=True)
+                                for _fm in _wz_fails[:3]:
+                                    st.markdown(f'<div style="font-size:11px;color:rgba(0,0,0,0.7);padding:1px 0">{warn_icon(10)} {_fm}</div>', unsafe_allow_html=True)
+                        with _wz_sc:
+                            if _wz_sigs:
+                                st.markdown('<div style="font-size:10px;font-weight:800;color:#057642;letter-spacing:0.06em;text-transform:uppercase;margin-top:8px;margin-bottom:4px">You\'re on track if…</div>', unsafe_allow_html=True)
+                                for _sg2 in _wz_sigs[:3]:
+                                    st.markdown(f'<div style="font-size:11px;color:rgba(0,0,0,0.7);padding:1px 0">{check_icon(10)} {_sg2}</div>', unsafe_allow_html=True)
 
-                # Failure modes + success signals
-                _wz_fails = _wz_plan.get("failure_modes",[])
-                _wz_sigs  = _wz_plan.get("success_signals",[])
-                if _wz_fails or _wz_sigs:
-                    _wz_fc, _wz_sc = st.columns(2)
-                    with _wz_fc:
-                        if _wz_fails:
-                            st.markdown('<div style="font-size:10px;font-weight:800;color:#DC2626;letter-spacing:0.06em;text-transform:uppercase;margin-top:8px;margin-bottom:4px">Common failure modes</div>', unsafe_allow_html=True)
-                            for _fm in _wz_fails[:3]:
-                                st.markdown(f'<div style="font-size:11px;color:rgba(0,0,0,0.7);padding:1px 0">{warn_icon(10)} {_fm}</div>', unsafe_allow_html=True)
-                    with _wz_sc:
-                        if _wz_sigs:
-                            st.markdown('<div style="font-size:10px;font-weight:800;color:#057642;letter-spacing:0.06em;text-transform:uppercase;margin-top:8px;margin-bottom:4px">You\'re on track if…</div>', unsafe_allow_html=True)
-                            for _sg2 in _wz_sigs[:3]:
-                                st.markdown(f'<div style="font-size:11px;color:rgba(0,0,0,0.7);padding:1px 0">{check_icon(10)} {_sg2}</div>', unsafe_allow_html=True)
-
-                if _wz_plan.get("imposter_syndrome_note"):
-                    st.markdown(
-                        f'<div style="background:#F5F5F5;border-radius:6px;padding:8px 12px;margin-top:8px;'
-                        f'font-size:11px;color:rgba(0,0,0,0.65);font-style:italic">'
-                        f'"{_wz_plan["imposter_syndrome_note"]}"</div>',
-                        unsafe_allow_html=True,
-                    )
+                    if _wz_plan.get("imposter_syndrome_note"):
+                        st.markdown(
+                            f'<div style="background:#F5F5F5;border-radius:6px;padding:8px 12px;margin-top:8px;'
+                            f'font-size:11px;color:rgba(0,0,0,0.65);font-style:italic">'
+                            f'"{_wz_plan["imposter_syndrome_note"]}"</div>',
+                            unsafe_allow_html=True,
+                        )
 
 
     with _tab_apply:
