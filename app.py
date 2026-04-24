@@ -9499,504 +9499,526 @@ if quick_apply:
 
         st.stop()
 
-    # ============================================================
-    # Empty state — Interview Pipeline Hero
-    # ============================================================
-    if not st.session_state.has_run:
+# ============================================================
+# Empty state — Interview Pipeline Hero
+# ============================================================
+if not st.session_state.has_run:
 
-        # ── Hero: short, clear, no pipeline diagram ────────────────────────────
-        st.markdown(
-            '<div style="background:linear-gradient(135deg,#0A66C2 0%,#004182 100%);'
-            'border-radius:14px;padding:32px 40px;margin-bottom:20px;color:#fff">'
-            '<div style="font-size:10px;font-weight:800;letter-spacing:0.14em;text-transform:uppercase;'
-            'opacity:0.55;margin-bottom:12px">Pivot OS · Career Pivot Simulator</div>'
-            '<div style="font-size:30px;font-weight:900;line-height:1.15;margin-bottom:10px;letter-spacing:-0.5px">'
-            'Know your offer probability<br>'
-            '<span style="color:#7DD3FC">before you apply.</span>'
-            '</div>'
-            '<div style="font-size:13px;opacity:0.80;line-height:1.65;max-width:560px">'
-            'Pick a target role, upload your CV, and instantly see your P(offer) score. '
-            'AI generates a tailored application, an adversarial debate tests it, '
-            'and the system calibrates itself every time you log an outcome.'
-            '</div>'
-            '</div>',
-            unsafe_allow_html=True,
+    # ── Hero: short, clear, no pipeline diagram ────────────────────────────
+    st.markdown(
+        '<div style="background:linear-gradient(135deg,#0A66C2 0%,#004182 100%);'
+        'border-radius:14px;padding:32px 40px;margin-bottom:20px;color:#fff">'
+        '<div style="font-size:10px;font-weight:800;letter-spacing:0.14em;text-transform:uppercase;'
+        'opacity:0.55;margin-bottom:12px">Pivot OS · Career Pivot Simulator</div>'
+        '<div style="font-size:30px;font-weight:900;line-height:1.15;margin-bottom:10px;letter-spacing:-0.5px">'
+        'Know your offer probability<br>'
+        '<span style="color:#7DD3FC">before you apply.</span>'
+        '</div>'
+        '<div style="font-size:13px;opacity:0.80;line-height:1.65;max-width:560px">'
+        'Pick a target role, upload your CV, and instantly see your P(offer) score. '
+        'AI generates a tailored application, an adversarial debate tests it, '
+        'and the system calibrates itself every time you log an outcome.'
+        '</div>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
+
+    # ── Getting started: 3 clear steps + one primary CTA ──────────────────
+    _lp_has_cv   = bool(st.session_state.get("cv_profile") or st.session_state.get("demo_mode"))
+    _lp_has_pivot = str(current) != (occupations[0] if occupations else "")
+
+    st.markdown(
+        '<div style="background:#fff;border:1px solid rgba(0,0,0,0.10);border-radius:14px;'
+        'padding:24px 28px;margin-bottom:16px">'
+        '<div style="font-size:16px;font-weight:800;color:#1D2226;margin-bottom:20px">'
+        'Get started in 3 steps</div>'
+
+        # Step 1
+        f'<div style="display:flex;align-items:flex-start;gap:16px;padding:14px 0;'
+        f'border-bottom:1px solid rgba(0,0,0,0.07)">'
+        f'<div style="width:32px;height:32px;border-radius:50%;flex-shrink:0;'
+        f'background:{"#057642" if _lp_has_pivot else "#0A66C2"};'
+        f'display:flex;align-items:center;justify-content:center;'
+        f'font-size:13px;font-weight:900;color:#fff">{"✓" if _lp_has_pivot else "1"}</div>'
+        f'<div style="flex:1">'
+        f'<div style="font-size:14px;font-weight:700;color:#1D2226;margin-bottom:3px">Set your career pivot</div>'
+        f'<div style="font-size:12px;color:rgba(0,0,0,0.50)">Choose your current and target occupation in the sidebar on the left.</div>'
+        f'</div>'
+        f'<div style="font-size:11px;font-weight:700;color:{"#057642" if _lp_has_pivot else "#0A66C2"};'
+        f'white-space:nowrap;padding-top:6px">{"✓ Done" if _lp_has_pivot else "← Sidebar"}</div>'
+        f'</div>'
+
+        # Step 2
+        f'<div style="display:flex;align-items:flex-start;gap:16px;padding:14px 0;'
+        f'border-bottom:1px solid rgba(0,0,0,0.07)">'
+        f'<div style="width:32px;height:32px;border-radius:50%;flex-shrink:0;'
+        f'background:{"#057642" if _lp_has_cv else "rgba(0,0,0,0.10)"};'
+        f'display:flex;align-items:center;justify-content:center;'
+        f'font-size:13px;font-weight:900;color:{"#fff" if _lp_has_cv else "rgba(0,0,0,0.35)"}">{"✓" if _lp_has_cv else "2"}</div>'
+        f'<div style="flex:1">'
+        f'<div style="font-size:14px;font-weight:700;color:#1D2226;margin-bottom:3px">Add your profile</div>'
+        f'<div style="font-size:12px;color:rgba(0,0,0,0.50);margin-bottom:8px">'
+        f'Upload your CV to get a personalised skill match score. No CV? Use the demo profile.</div>'
+        + (
+            '<div style="font-size:11px;font-weight:700;color:#057642">✓ Profile loaded</div>'
+            if _lp_has_cv else ""
         )
+        + f'</div>'
+        f'<div style="font-size:11px;font-weight:700;color:{"#057642" if _lp_has_cv else "rgba(0,0,0,0.35)"};'
+        f'white-space:nowrap;padding-top:6px">{"✓ Done" if _lp_has_cv else "← Sidebar"}</div>'
+        f'</div>'
 
-        # ── Getting started: 3 clear steps + one primary CTA ──────────────────
-        _lp_has_cv   = bool(st.session_state.get("cv_profile") or st.session_state.get("demo_mode"))
-        _lp_has_pivot = str(current) != (occupations[0] if occupations else "")
+        # Step 3
+        f'<div style="display:flex;align-items:flex-start;gap:16px;padding:14px 0">'
+        f'<div style="width:32px;height:32px;border-radius:50%;flex-shrink:0;'
+        f'background:rgba(0,0,0,0.07);'
+        f'display:flex;align-items:center;justify-content:center;'
+        f'font-size:13px;font-weight:900;color:rgba(0,0,0,0.35)">3</div>'
+        f'<div style="flex:1">'
+        f'<div style="font-size:14px;font-weight:700;color:#1D2226;margin-bottom:3px">Get your P(offer) score</div>'
+        f'<div style="font-size:12px;color:rgba(0,0,0,0.50)">Click the button below. The AI generates a tailored application and tells you your hire probability.</div>'
+        f'</div>'
+        f'</div>'
 
-        st.markdown(
-            '<div style="background:#fff;border:1px solid rgba(0,0,0,0.10);border-radius:14px;'
-            'padding:24px 28px;margin-bottom:16px">'
-            '<div style="font-size:16px;font-weight:800;color:#1D2226;margin-bottom:20px">'
-            'Get started in 3 steps</div>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
 
-            # Step 1
-            f'<div style="display:flex;align-items:flex-start;gap:16px;padding:14px 0;'
-            f'border-bottom:1px solid rgba(0,0,0,0.07)">'
-            f'<div style="width:32px;height:32px;border-radius:50%;flex-shrink:0;'
-            f'background:{"#057642" if _lp_has_pivot else "#0A66C2"};'
-            f'display:flex;align-items:center;justify-content:center;'
-            f'font-size:13px;font-weight:900;color:#fff">{"✓" if _lp_has_pivot else "1"}</div>'
-            f'<div style="flex:1">'
-            f'<div style="font-size:14px;font-weight:700;color:#1D2226;margin-bottom:3px">Set your career pivot</div>'
-            f'<div style="font-size:12px;color:rgba(0,0,0,0.50)">Choose your current and target occupation in the sidebar on the left.</div>'
-            f'</div>'
-            f'<div style="font-size:11px;font-weight:700;color:{"#057642" if _lp_has_pivot else "#0A66C2"};'
-            f'white-space:nowrap;padding-top:6px">{"✓ Done" if _lp_has_pivot else "← Sidebar"}</div>'
-            f'</div>'
-
-            # Step 2
-            f'<div style="display:flex;align-items:flex-start;gap:16px;padding:14px 0;'
-            f'border-bottom:1px solid rgba(0,0,0,0.07)">'
-            f'<div style="width:32px;height:32px;border-radius:50%;flex-shrink:0;'
-            f'background:{"#057642" if _lp_has_cv else "rgba(0,0,0,0.10)"};'
-            f'display:flex;align-items:center;justify-content:center;'
-            f'font-size:13px;font-weight:900;color:{"#fff" if _lp_has_cv else "rgba(0,0,0,0.35)"}">{"✓" if _lp_has_cv else "2"}</div>'
-            f'<div style="flex:1">'
-            f'<div style="font-size:14px;font-weight:700;color:#1D2226;margin-bottom:3px">Add your profile</div>'
-            f'<div style="font-size:12px;color:rgba(0,0,0,0.50);margin-bottom:8px">'
-            f'Upload your CV to get a personalised skill match score. No CV? Use the demo profile.</div>'
-            + (
-                '<div style="font-size:11px;font-weight:700;color:#057642">✓ Profile loaded</div>'
-                if _lp_has_cv else ""
-            )
-            + f'</div>'
-            f'<div style="font-size:11px;font-weight:700;color:{"#057642" if _lp_has_cv else "rgba(0,0,0,0.35)"};'
-            f'white-space:nowrap;padding-top:6px">{"✓ Done" if _lp_has_cv else "← Sidebar"}</div>'
-            f'</div>'
-
-            # Step 3
-            f'<div style="display:flex;align-items:flex-start;gap:16px;padding:14px 0">'
-            f'<div style="width:32px;height:32px;border-radius:50%;flex-shrink:0;'
-            f'background:rgba(0,0,0,0.07);'
-            f'display:flex;align-items:center;justify-content:center;'
-            f'font-size:13px;font-weight:900;color:rgba(0,0,0,0.35)">3</div>'
-            f'<div style="flex:1">'
-            f'<div style="font-size:14px;font-weight:700;color:#1D2226;margin-bottom:3px">Get your P(offer) score</div>'
-            f'<div style="font-size:12px;color:rgba(0,0,0,0.50)">Click the button below. The AI generates a tailored application and tells you your hire probability.</div>'
-            f'</div>'
-            f'</div>'
-
-            '</div>',
-            unsafe_allow_html=True,
-        )
-
-        # Primary CTA — one button, no ambiguity
-        _lp_cta_col1, _lp_cta_col2 = st.columns([2, 1], gap="medium")
-        with _lp_cta_col1:
-            if st.button(
-                "→ Get my P(offer) score",
-                use_container_width=True,
-                type="primary",
-                key="_hero_main_cta",
-            ):
-                st.session_state["_pending_mode"] = "Quick Apply"
-                st.session_state["has_run"] = True
+    # Primary CTA — one button, no ambiguity
+    _lp_cta_col1, _lp_cta_col2 = st.columns([2, 1], gap="medium")
+    with _lp_cta_col1:
+        if st.button(
+            "→ Get my P(offer) score",
+            use_container_width=True,
+            type="primary",
+            key="_hero_main_cta",
+        ):
+            st.session_state["_pending_mode"] = "Quick Apply"
+            st.session_state["has_run"] = True
+            st.rerun()
+    with _lp_cta_col2:
+        if not _lp_has_cv:
+            if st.button("Load demo profile first", use_container_width=True, key="_hero_demo_cta"):
+                load_demo_profile(st.session_state)
                 st.rerun()
-        with _lp_cta_col2:
-            if not _lp_has_cv:
-                if st.button("Load demo profile first", use_container_width=True, key="_hero_demo_cta"):
-                    load_demo_profile(st.session_state)
-                    st.rerun()
 
-        # Feature row — what's inside, compact
-        st.markdown(
-            '<div style="display:flex;gap:8px;flex-wrap:wrap;margin:14px 0 6px 0">'
-            + "".join([
-                f'<div style="background:#F3F6F9;border-radius:20px;padding:5px 12px;'
-                f'font-size:11px;font-weight:600;color:rgba(0,0,0,0.60)">{f}</div>'
-                for f in ["P(offer) Score", "Skill Gap Map", "AI Cover Letter",
-                          "Adversarial Debate", "Interview Coach", "Outcome Calibration"]
-            ])
-            + '</div>',
-            unsafe_allow_html=True,
-        )
+    # Feature row — what's inside, compact
+    st.markdown(
+        '<div style="display:flex;gap:8px;flex-wrap:wrap;margin:14px 0 6px 0">'
+        + "".join([
+            f'<div style="background:#F3F6F9;border-radius:20px;padding:5px 12px;'
+            f'font-size:11px;font-weight:600;color:rgba(0,0,0,0.60)">{f}</div>'
+            for f in ["P(offer) Score", "Skill Gap Map", "AI Cover Letter",
+                      "Adversarial Debate", "Interview Coach", "Outcome Calibration"]
+        ])
+        + '</div>',
+        unsafe_allow_html=True,
+    )
 
-        # Other modes — secondary, not the first thing you see
-        with st.expander("Other ways to start — Career Sprint or Expert Mode", expanded=False):
-            _om_c1, _om_c2 = st.columns(2, gap="medium")
-            with _om_c1:
-                st.markdown(
-                    '<div style="background:#F8FAFF;border:1px solid #C7D8F0;border-radius:10px;'
-                    'padding:14px 16px;margin-bottom:8px">'
-                    '<div style="font-size:12px;font-weight:800;color:#0A66C2;margin-bottom:4px">Career Sprint</div>'
-                    '<div style="font-size:11px;color:rgba(0,0,0,0.55);line-height:1.5">'
-                    'Step-by-step guided journey: gap analysis → debate → plan → apply → interview. ~45 min.</div>'
-                    '</div>',
-                    unsafe_allow_html=True,
-                )
-                if st.button("Start Career Sprint", use_container_width=True, key="_hero_gs_btn2"):
-                    st.session_state["_pending_mode"] = "Career Sprint"
-                    st.session_state["has_run"] = True
-                    st.rerun()
-            with _om_c2:
-                st.markdown(
-                    '<div style="background:#F0FAF4;border:1px solid #CBEAD5;border-radius:10px;'
-                    'padding:14px 16px;margin-bottom:8px">'
-                    '<div style="font-size:12px;font-weight:800;color:#057642;margin-bottom:4px">Expert Mode</div>'
-                    '<div style="font-size:11px;color:rgba(0,0,0,0.55);line-height:1.5">'
-                    'Full tab-based tool with all modules. Auto-run the complete pipeline end-to-end.</div>'
-                    '</div>',
-                    unsafe_allow_html=True,
-                )
-                if st.button("Open Expert Mode", use_container_width=True, key="_hero_full_btn2"):
-                    if not st.session_state.get("cv_text"):
-                        load_demo_profile(st.session_state)
-                    st.session_state["_pending_mode"] = "Expert Mode"
-                    st.session_state["has_run"] = True
-                    st.session_state["full_pipeline_triggered"] = True
-                    st.rerun()
-
-        # ── If returning user has data: show a compact status card ────────────
-        _lp_pl_jobs = st.session_state.pipeline_jobs or []
-        _lp_has_data = bool(
-            _lp_pl_jobs or st.session_state.cv_profile or
-            st.session_state.qa_package or st.session_state.qa_portfolio_packages
-        )
-
-        if _lp_has_data and st.session_state.advisor_result:
-            _lp_adv = st.session_state.advisor_result
-            _lp_phase = _lp_adv.get("phase", "Exploration")
-            _lp_pl_stats = compute_pipeline_stats(_lp_pl_jobs)
-            _lp_phase_col = {
-                "Exploration": "#7A2A8A", "Active Application": "#0A66C2",
-                "Interview Loop": "#057642", "Negotiation": "#A05A00"
-            }.get(_lp_phase, "#0A66C2")
-
+    # Other modes — secondary, not the first thing you see
+    with st.expander("Other ways to start — Career Sprint or Expert Mode", expanded=False):
+        _om_c1, _om_c2 = st.columns(2, gap="medium")
+        with _om_c1:
             st.markdown(
-                f'<div style="background:#fff;border:1px solid rgba(0,0,0,0.10);border-radius:12px;'
-                f'padding:16px 20px;margin-top:12px;display:flex;align-items:center;gap:16px">'
-                f'<div style="flex:1">'
-                f'<div style="font-size:13px;font-weight:800;color:#1D2226;margin-bottom:2px">Welcome back — your progress is saved</div>'
-                f'<div style="font-size:12px;color:rgba(0,0,0,0.50)">'
-                f'{len(_lp_pl_jobs)} applications · {_lp_pl_stats.get("response_rate",0)}% response rate · phase: {_lp_phase}</div>'
-                f'</div>'
-                f'<div style="background:{_lp_phase_col};color:#fff;border-radius:20px;'
-                f'padding:3px 12px;font-size:11px;font-weight:700;white-space:nowrap">{_lp_phase}</div>'
-                f'</div>',
+                '<div style="background:#F8FAFF;border:1px solid #C7D8F0;border-radius:10px;'
+                'padding:14px 16px;margin-bottom:8px">'
+                '<div style="font-size:12px;font-weight:800;color:#0A66C2;margin-bottom:4px">Career Sprint</div>'
+                '<div style="font-size:11px;color:rgba(0,0,0,0.55);line-height:1.5">'
+                'Step-by-step guided journey: gap analysis → debate → plan → apply → interview. ~45 min.</div>'
+                '</div>',
                 unsafe_allow_html=True,
             )
+            if st.button("Start Career Sprint", use_container_width=True, key="_hero_gs_btn2"):
+                st.session_state["_pending_mode"] = "Career Sprint"
+                st.session_state["has_run"] = True
+                st.rerun()
+        with _om_c2:
+            st.markdown(
+                '<div style="background:#F0FAF4;border:1px solid #CBEAD5;border-radius:10px;'
+                'padding:14px 16px;margin-bottom:8px">'
+                '<div style="font-size:12px;font-weight:800;color:#057642;margin-bottom:4px">Expert Mode</div>'
+                '<div style="font-size:11px;color:rgba(0,0,0,0.55);line-height:1.5">'
+                'Full tab-based tool with all modules. Auto-run the complete pipeline end-to-end.</div>'
+                '</div>',
+                unsafe_allow_html=True,
+            )
+            if st.button("Open Expert Mode", use_container_width=True, key="_hero_full_btn2"):
+                if not st.session_state.get("cv_text"):
+                    load_demo_profile(st.session_state)
+                st.session_state["_pending_mode"] = "Expert Mode"
+                st.session_state["has_run"] = True
+                st.session_state["full_pipeline_triggered"] = True
+                st.rerun()
 
+    # ── If returning user has data: show a compact status card ────────────
+    _lp_pl_jobs = st.session_state.pipeline_jobs or []
+    _lp_has_data = bool(
+        _lp_pl_jobs or st.session_state.cv_profile or
+        st.session_state.qa_package or st.session_state.qa_portfolio_packages
+    )
 
-        # ── Quality Shield — live evaluation log (shown if any quality events logged) ──
-        _ql = st.session_state.get("quality_log") or []
-        if _ql:
-            _qs_stats = get_shield_stats(_ql)
-            _qs_pass_col = "#057642" if _qs_stats["pass_rate"] >= 80 else ("#A05A00" if _qs_stats["pass_rate"] >= 60 else "#B71C1C")
-            with st.expander(
-                f"Quality Shield — {_qs_stats['total']} evaluations · {_qs_stats['pass_rate']}% pass rate"
-                + (f" · {_qs_stats['regenerated']} auto-regeneration{'s' if _qs_stats['regenerated']!=1 else ''}" if _qs_stats['regenerated'] else ""),
-                expanded=True,
-            ):
-                _qs_c1, _qs_c2, _qs_c3, _qs_c4 = st.columns(4)
-                with _qs_c1:
-                    st.metric("Quality Gates", _qs_stats["total"])
-                with _qs_c2:
-                    st.metric("Pass Rate", f"{_qs_stats['pass_rate']}%")
-                with _qs_c3:
-                    st.metric("Auto-Regenerations", _qs_stats["regenerated"])
-                with _qs_c4:
-                    st.metric("Avg Score (final)", f"{_qs_stats['avg_score_final']}/100")
+    if _lp_has_data and st.session_state.advisor_result:
+        _lp_adv = st.session_state.advisor_result
+        _lp_phase = _lp_adv.get("phase", "Exploration")
+        _lp_pl_stats = compute_pipeline_stats(_lp_pl_jobs)
+        _lp_phase_col = {
+            "Exploration": "#7A2A8A", "Active Application": "#0A66C2",
+            "Interview Loop": "#057642", "Negotiation": "#A05A00"
+        }.get(_lp_phase, "#0A66C2")
 
-                st.markdown(
-                    '<div style="font-size:10px;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;'
-                    'color:rgba(0,0,0,0.35);margin:10px 0 6px 0">Evaluation log — every generation was scored before being shown</div>',
-                    unsafe_allow_html=True,
-                )
-                _qs_log_html = '<div style="display:flex;flex-direction:column;gap:4px">'
-                for _qe in reversed(_ql[-12:]):
-                    _qe_pass = _qe.get("passed", True)
-                    _qe_regen = _qe.get("regenerated", False)
-                    _qe_bg = "#F0FAF4" if _qe_pass else "#FEF0F0"
-                    _qe_border = "#057642" if _qe_pass else "#B71C1C"
-                    _qe_badge_bg = "#057642" if _qe_pass else "#B71C1C"
-                    _qe_s1 = _qe.get("score_v1", 0)
-                    _qe_s2 = _qe.get("score_v2")
-                    _score_txt = (
-                        f'<span style="color:#B71C1C">{_qe_s1}/100</span>'
-                        f' → regenerated → '
-                        f'<span style="color:#057642">{_qe_s2}/100</span>'
-                        if _qe_regen and _qe_s2
-                        else f'<strong>{_qe_s1}/100</strong>'
-                    )
-                    _ctx = f'{_qe.get("job_title","")}' + (f' @ {_qe.get("company","")}' if _qe.get("company") else "")
-                    _qs_log_html += (
-                        f'<div style="display:flex;align-items:center;gap:8px;background:{_qe_bg};'
-                        f'border:1px solid {_qe_border}33;border-radius:6px;padding:6px 10px">'
-                        f'<div style="flex-shrink:0">'
-                        + (check_icon(12) if _qe_pass else x_icon(12))
-                        + f'</div>'
-                        f'<div style="flex:1;min-width:0">'
-                        f'<span style="font-size:11px;font-weight:700;color:rgba(0,0,0,0.8)">{_qe.get("artifact","")}</span>'
-                        f'<span style="font-size:10px;color:rgba(0,0,0,0.45);margin-left:6px">{_qe.get("tool","")}'
-                        + (f' · {_ctx}' if _ctx else '') + f'</span>'
-                        f'</div>'
-                        f'<div style="font-size:11px;color:rgba(0,0,0,0.7)">{_score_txt}</div>'
-                        f'<div style="font-size:9px;color:rgba(0,0,0,0.35)">{_qe.get("ts","")}</div>'
-                        f'<div style="background:{_qe_badge_bg};color:#fff;border-radius:10px;'
-                        f'padding:1px 7px;font-size:9px;font-weight:800;flex-shrink:0">'
-                        + ("PASS" if _qe_pass else "REGEN")
-                        + f'</div></div>'
-                    )
-                _qs_log_html += '</div>'
-                st.markdown(_qs_log_html, unsafe_allow_html=True)
-                st.caption(f"Generation model: gpt-4o · Evaluation model: gpt-4o-mini · Threshold: 65/100 for applications, 60/100 for plans")
-
-        # ── Ghost-Writer Memory panel ──────────────────────────────────────────
-        _wm_stats = get_memory_stats(st.session_state)
-        if _wm_stats.get("total", 0) > 0:
-            with st.expander(
-                f'Ghost-Writer Memory — {_wm_stats["total"]} phrases · avg score {_wm_stats["avg_score"]}/100',
-                expanded=False,
-            ):
-                _wm_c1, _wm_c2, _wm_c3 = st.columns(3)
-                with _wm_c1:
-                    st.metric("Phrases stored", _wm_stats["total"])
-                with _wm_c2:
-                    st.metric("Avg quality score", f"{_wm_stats['avg_score']}/100")
-                with _wm_c3:
-                    st.metric("Times reused", _wm_stats["total_uses"])
-
-                _wm_by_art = _wm_stats.get("artifacts") or {}
-                if _wm_by_art:
-                    _wm_art_html = '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px">'
-                    for _art, _cnt in _wm_by_art.items():
-                        _wm_art_html += (
-                            f'<span style="background:#EEF3FB;color:#0A66C2;font-size:11px;font-weight:600;'
-                            f'border-radius:12px;padding:2px 10px">{_art}: {_cnt}</span>'
-                        )
-                    _wm_art_html += '</div>'
-                    st.markdown(_wm_art_html, unsafe_allow_html=True)
-
-                st.caption(
-                    "Every approved application (score ≥ 65) seeds this memory. "
-                    "The next cover letter is written using your best past language — not from scratch."
-                )
-
-        st.caption("Upload your CV in the sidebar to personalise the pipeline · Pick current & target occupation · Then choose a mode above.")
-        st.stop()
-
-
-    # ============================================================
-    # Core computations
-    # ============================================================
-    dist = get_score_distribution(bool(use_idf), str(current))
-    scores_all_sorted = dist["scores_sorted"]
-    raw_all = dist["raw_scores_all"]
-
-    target_idx = OCC_TO_IDX.get(str(target), -1)
-    raw_target = float(raw_all[target_idx]) if target_idx >= 0 and raw_all.size else 0.0
-    pct_target = _percentile_from_sorted(scores_all_sorted, float(raw_target))
-
-    show_percentile = score_mode == "Percentile"
-    match_score_display = float(pct_target if show_percentile else raw_target)
-
-    _base_gap_df = compute_gap_df(mat, str(current), str(target))
-    # Use personal gap if CV is loaded and target matches; otherwise fall back to role-based
-    _cv_profile = st.session_state.cv_profile
-    _cv_gap_df = st.session_state.cv_gap_df
-    if _cv_profile and _cv_gap_df is not None and not _cv_gap_df.empty:
-        gap_df = _cv_gap_df
-        _personal_mode = True
-    else:
-        gap_df = _base_gap_df
-        _personal_mode = False
-
-    conf = compute_confidence_score(mat, art.pca_meta, str(current), str(target))
-    neighbors_df = recommend_neighbors(bool(use_idf), str(current), top_k=10)
-
-
-    # ── Stage done helper (used by Journey Stepper below) ──────────────────────
-    def _stage_done(checks: list) -> bool:
-        return all(checks)
-
-
-    # ── Demo Mode banner (visible in active session) ──────────────────────────
-    if st.session_state.get("demo_mode"):
         st.markdown(
-            f'<div style="background:linear-gradient(90deg,#FFF8E7,#FFF3CC);'
-            f'border:1px solid #F3D7A5;border-radius:8px;padding:10px 16px;margin-bottom:12px;'
-            f'display:flex;align-items:center;justify-content:space-between">'
-            f'<div style="font-size:12px;color:#A05A00">'
-            f'{warn_icon(12)} <strong>Demo Mode</strong> — '
-            f'Viewing as <strong>Alex Müller</strong> (Senior Marketing Manager → Product Manager) · '
-            f'All features fully active · Use sidebar to exit demo or load your own CV'
+            f'<div style="background:#fff;border:1px solid rgba(0,0,0,0.10);border-radius:12px;'
+            f'padding:16px 20px;margin-top:12px;display:flex;align-items:center;gap:16px">'
+            f'<div style="flex:1">'
+            f'<div style="font-size:13px;font-weight:800;color:#1D2226;margin-bottom:2px">Welcome back — your progress is saved</div>'
+            f'<div style="font-size:12px;color:rgba(0,0,0,0.50)">'
+            f'{len(_lp_pl_jobs)} applications · {_lp_pl_stats.get("response_rate",0)}% response rate · phase: {_lp_phase}</div>'
             f'</div>'
-            f'<div style="font-size:10px;font-weight:700;color:#A05A00;white-space:nowrap;margin-left:12px">'
-            f'SAMPLE DATA</div>'
+            f'<div style="background:{_lp_phase_col};color:#fff;border-radius:20px;'
+            f'padding:3px 12px;font-size:11px;font-weight:700;white-space:nowrap">{_lp_phase}</div>'
             f'</div>',
             unsafe_allow_html=True,
         )
 
-    # ============================================================
-    # OPS North Star Banner — single, compact, all key numbers in one row
-    # ============================================================
-    _ops_grade_bg = {
-        "A": "#F0FAF4", "B": "#EEF3FB", "C": "#FFF8E7",
-        "D": "#FFF0E5", "F": "#FFF0F0",
-    }.get(_ops_result["grade"], "#F8FAFF")
-    _ops_delta_txt = ""
-    if _ops_result["delta"] != 0:
-        _d = _ops_result["delta"]
-        _d_col = "#057642" if _d > 0 else "#B71C1C"
-        _ops_delta_txt = f'<span style="font-size:11px;font-weight:700;color:{_d_col}">{("+" if _d>0 else "")}{_d}pts vs last session</span>'
 
+    # ── Quality Shield — live evaluation log (shown if any quality events logged) ──
+    _ql = st.session_state.get("quality_log") or []
+    if _ql:
+        _qs_stats = get_shield_stats(_ql)
+        _qs_pass_col = "#057642" if _qs_stats["pass_rate"] >= 80 else ("#A05A00" if _qs_stats["pass_rate"] >= 60 else "#B71C1C")
+        with st.expander(
+            f"Quality Shield — {_qs_stats['total']} evaluations · {_qs_stats['pass_rate']}% pass rate"
+            + (f" · {_qs_stats['regenerated']} auto-regeneration{'s' if _qs_stats['regenerated']!=1 else ''}" if _qs_stats['regenerated'] else ""),
+            expanded=True,
+        ):
+            _qs_c1, _qs_c2, _qs_c3, _qs_c4 = st.columns(4)
+            with _qs_c1:
+                st.metric("Quality Gates", _qs_stats["total"])
+            with _qs_c2:
+                st.metric("Pass Rate", f"{_qs_stats['pass_rate']}%")
+            with _qs_c3:
+                st.metric("Auto-Regenerations", _qs_stats["regenerated"])
+            with _qs_c4:
+                st.metric("Avg Score (final)", f"{_qs_stats['avg_score_final']}/100")
+
+            st.markdown(
+                '<div style="font-size:10px;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;'
+                'color:rgba(0,0,0,0.35);margin:10px 0 6px 0">Evaluation log — every generation was scored before being shown</div>',
+                unsafe_allow_html=True,
+            )
+            _qs_log_html = '<div style="display:flex;flex-direction:column;gap:4px">'
+            for _qe in reversed(_ql[-12:]):
+                _qe_pass = _qe.get("passed", True)
+                _qe_regen = _qe.get("regenerated", False)
+                _qe_bg = "#F0FAF4" if _qe_pass else "#FEF0F0"
+                _qe_border = "#057642" if _qe_pass else "#B71C1C"
+                _qe_badge_bg = "#057642" if _qe_pass else "#B71C1C"
+                _qe_s1 = _qe.get("score_v1", 0)
+                _qe_s2 = _qe.get("score_v2")
+                _score_txt = (
+                    f'<span style="color:#B71C1C">{_qe_s1}/100</span>'
+                    f' → regenerated → '
+                    f'<span style="color:#057642">{_qe_s2}/100</span>'
+                    if _qe_regen and _qe_s2
+                    else f'<strong>{_qe_s1}/100</strong>'
+                )
+                _ctx = f'{_qe.get("job_title","")}' + (f' @ {_qe.get("company","")}' if _qe.get("company") else "")
+                _qs_log_html += (
+                    f'<div style="display:flex;align-items:center;gap:8px;background:{_qe_bg};'
+                    f'border:1px solid {_qe_border}33;border-radius:6px;padding:6px 10px">'
+                    f'<div style="flex-shrink:0">'
+                    + (check_icon(12) if _qe_pass else x_icon(12))
+                    + f'</div>'
+                    f'<div style="flex:1;min-width:0">'
+                    f'<span style="font-size:11px;font-weight:700;color:rgba(0,0,0,0.8)">{_qe.get("artifact","")}</span>'
+                    f'<span style="font-size:10px;color:rgba(0,0,0,0.45);margin-left:6px">{_qe.get("tool","")}'
+                    + (f' · {_ctx}' if _ctx else '') + f'</span>'
+                    f'</div>'
+                    f'<div style="font-size:11px;color:rgba(0,0,0,0.7)">{_score_txt}</div>'
+                    f'<div style="font-size:9px;color:rgba(0,0,0,0.35)">{_qe.get("ts","")}</div>'
+                    f'<div style="background:{_qe_badge_bg};color:#fff;border-radius:10px;'
+                    f'padding:1px 7px;font-size:9px;font-weight:800;flex-shrink:0">'
+                    + ("PASS" if _qe_pass else "REGEN")
+                    + f'</div></div>'
+                )
+            _qs_log_html += '</div>'
+            st.markdown(_qs_log_html, unsafe_allow_html=True)
+            st.caption(f"Generation model: gpt-4o · Evaluation model: gpt-4o-mini · Threshold: 65/100 for applications, 60/100 for plans")
+
+    # ── Ghost-Writer Memory panel ──────────────────────────────────────────
+    _wm_stats = get_memory_stats(st.session_state)
+    if _wm_stats.get("total", 0) > 0:
+        with st.expander(
+            f'Ghost-Writer Memory — {_wm_stats["total"]} phrases · avg score {_wm_stats["avg_score"]}/100',
+            expanded=False,
+        ):
+            _wm_c1, _wm_c2, _wm_c3 = st.columns(3)
+            with _wm_c1:
+                st.metric("Phrases stored", _wm_stats["total"])
+            with _wm_c2:
+                st.metric("Avg quality score", f"{_wm_stats['avg_score']}/100")
+            with _wm_c3:
+                st.metric("Times reused", _wm_stats["total_uses"])
+
+            _wm_by_art = _wm_stats.get("artifacts") or {}
+            if _wm_by_art:
+                _wm_art_html = '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px">'
+                for _art, _cnt in _wm_by_art.items():
+                    _wm_art_html += (
+                        f'<span style="background:#EEF3FB;color:#0A66C2;font-size:11px;font-weight:600;'
+                        f'border-radius:12px;padding:2px 10px">{_art}: {_cnt}</span>'
+                    )
+                _wm_art_html += '</div>'
+                st.markdown(_wm_art_html, unsafe_allow_html=True)
+
+            st.caption(
+                "Every approved application (score ≥ 65) seeds this memory. "
+                "The next cover letter is written using your best past language — not from scratch."
+            )
+
+    st.caption("Upload your CV in the sidebar to personalise the pipeline · Pick current & target occupation · Then choose a mode above.")
+    st.stop()
+
+
+# ============================================================
+# Core computations
+# ============================================================
+dist = get_score_distribution(bool(use_idf), str(current))
+scores_all_sorted = dist["scores_sorted"]
+raw_all = dist["raw_scores_all"]
+
+target_idx = OCC_TO_IDX.get(str(target), -1)
+raw_target = float(raw_all[target_idx]) if target_idx >= 0 and raw_all.size else 0.0
+pct_target = _percentile_from_sorted(scores_all_sorted, float(raw_target))
+
+show_percentile = score_mode == "Percentile"
+match_score_display = float(pct_target if show_percentile else raw_target)
+
+_base_gap_df = compute_gap_df(mat, str(current), str(target))
+# Use personal gap if CV is loaded and target matches; otherwise fall back to role-based
+_cv_profile = st.session_state.cv_profile
+_cv_gap_df = st.session_state.cv_gap_df
+if _cv_profile and _cv_gap_df is not None and not _cv_gap_df.empty:
+    gap_df = _cv_gap_df
+    _personal_mode = True
+else:
+    gap_df = _base_gap_df
+    _personal_mode = False
+
+conf = compute_confidence_score(mat, art.pca_meta, str(current), str(target))
+neighbors_df = recommend_neighbors(bool(use_idf), str(current), top_k=10)
+
+
+# ── Stage done helper (used by Journey Stepper below) ──────────────────────
+def _stage_done(checks: list) -> bool:
+    return all(checks)
+
+
+# ── Demo Mode banner (visible in active session) ──────────────────────────
+if st.session_state.get("demo_mode"):
     st.markdown(
-        f'<div style="background:#fff;border:1.5px solid {_ops_color};border-radius:12px;'
-        f'padding:16px 20px;margin-bottom:12px;display:flex;align-items:center;gap:20px;flex-wrap:wrap">'
-
-        # P(offer) — the north star number
-        f'<div style="display:flex;align-items:baseline;gap:4px;flex-shrink:0">'
-        f'<div style="font-size:48px;font-weight:900;color:{_ops_color};line-height:1">{_ops_val}</div>'
-        f'<div style="font-size:20px;font-weight:700;color:{_ops_color}">%</div>'
+        f'<div style="background:linear-gradient(90deg,#FFF8E7,#FFF3CC);'
+        f'border:1px solid #F3D7A5;border-radius:8px;padding:10px 16px;margin-bottom:12px;'
+        f'display:flex;align-items:center;justify-content:space-between">'
+        f'<div style="font-size:12px;color:#A05A00">'
+        f'{warn_icon(12)} <strong>Demo Mode</strong> — '
+        f'Viewing as <strong>Alex Müller</strong> (Senior Marketing Manager → Product Manager) · '
+        f'All features fully active · Use sidebar to exit demo or load your own CV'
         f'</div>'
-        f'<div style="flex-shrink:0">'
-        f'<div style="font-size:13px;font-weight:800;color:{_ops_color}">{ops_label(_ops_val)} · Grade {_ops_result["grade"]}</div>'
-        f'<div style="font-size:10px;color:rgba(0,0,0,0.4);margin-top:1px">P(offer) — your north star</div>'
-        f'{_ops_delta_txt}'
-        f'</div>'
-
-        # Divider
-        f'<div style="width:1px;height:40px;background:rgba(0,0,0,0.08);flex-shrink:0"></div>'
-
-        # Next lever
-        f'<div style="flex:1;min-width:160px">'
-        f'<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;'
-        f'color:rgba(0,0,0,0.38);margin-bottom:3px">Next lever to move this number</div>'
-        f'<div style="font-size:13px;font-weight:700;color:#0A66C2">{icon("zap",13,"#0A66C2")} {_ops_result["next_lever"]}</div>'
-        f'</div>'
-
-        # Top driver (if any)
-        + (
-            f'<div style="background:{_ops_grade_bg};border-radius:8px;padding:8px 12px;flex-shrink:0">'
-            f'<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;'
-            f'color:rgba(0,0,0,0.38);margin-bottom:3px">Top factor</div>'
-            f'<div style="font-size:12px;font-weight:700;color:rgba(0,0,0,0.75)">'
-            f'{(_ops_result["drivers"] or [{"factor":"—"}])[0].get("factor","—")}</div>'
-            f'</div>'
-            if _ops_result.get("drivers") else ""
-        )
-
-        + f'</div>',
+        f'<div style="font-size:10px;font-weight:700;color:#A05A00;white-space:nowrap;margin-left:12px">'
+        f'SAMPLE DATA</div>'
+        f'</div>',
         unsafe_allow_html=True,
     )
 
+# ============================================================
+# OPS North Star Banner — single, compact, all key numbers in one row
+# ============================================================
+_ops_grade_bg = {
+    "A": "#F0FAF4", "B": "#EEF3FB", "C": "#FFF8E7",
+    "D": "#FFF0E5", "F": "#FFF0F0",
+}.get(_ops_result["grade"], "#F8FAFF")
+_ops_delta_txt = ""
+if _ops_result["delta"] != 0:
+    _d = _ops_result["delta"]
+    _d_col = "#057642" if _d > 0 else "#B71C1C"
+    _ops_delta_txt = f'<span style="font-size:11px;font-weight:700;color:{_d_col}">{("+" if _d>0 else "")}{_d}pts vs last session</span>'
 
-    # ============================================================
-    # Full Pipeline Auto-Runner
-    # Triggered by "Run Full Pipeline" on the landing page
-    # Chains: job search → application generation → adversarial ranking → interview prep
-    # Shows live step-by-step quality gate progress
-    # ============================================================
-    if st.session_state.get("full_pipeline_triggered"):
-        _oai_key_fp = _has_openai_secret()
-        _cv_ready = bool(st.session_state.cv_text)
+st.markdown(
+    f'<div style="background:#fff;border:1.5px solid {_ops_color};border-radius:12px;'
+    f'padding:16px 20px;margin-bottom:12px;display:flex;align-items:center;gap:20px;flex-wrap:wrap">'
+
+    # P(offer) — the north star number
+    f'<div style="display:flex;align-items:baseline;gap:4px;flex-shrink:0">'
+    f'<div style="font-size:48px;font-weight:900;color:{_ops_color};line-height:1">{_ops_val}</div>'
+    f'<div style="font-size:20px;font-weight:700;color:{_ops_color}">%</div>'
+    f'</div>'
+    f'<div style="flex-shrink:0">'
+    f'<div style="font-size:13px;font-weight:800;color:{_ops_color}">{ops_label(_ops_val)} · Grade {_ops_result["grade"]}</div>'
+    f'<div style="font-size:10px;color:rgba(0,0,0,0.4);margin-top:1px">P(offer) — your north star</div>'
+    f'{_ops_delta_txt}'
+    f'</div>'
+
+    # Divider
+    f'<div style="width:1px;height:40px;background:rgba(0,0,0,0.08);flex-shrink:0"></div>'
+
+    # Next lever
+    f'<div style="flex:1;min-width:160px">'
+    f'<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;'
+    f'color:rgba(0,0,0,0.38);margin-bottom:3px">Next lever to move this number</div>'
+    f'<div style="font-size:13px;font-weight:700;color:#0A66C2">{icon("zap",13,"#0A66C2")} {_ops_result["next_lever"]}</div>'
+    f'</div>'
+
+    # Top driver (if any)
+    + (
+        f'<div style="background:{_ops_grade_bg};border-radius:8px;padding:8px 12px;flex-shrink:0">'
+        f'<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;'
+        f'color:rgba(0,0,0,0.38);margin-bottom:3px">Top factor</div>'
+        f'<div style="font-size:12px;font-weight:700;color:rgba(0,0,0,0.75)">'
+        f'{(_ops_result["drivers"] or [{"factor":"—"}])[0].get("factor","—")}</div>'
+        f'</div>'
+        if _ops_result.get("drivers") else ""
+    )
+
+    + f'</div>',
+    unsafe_allow_html=True,
+)
+
+
+# ============================================================
+# Full Pipeline Auto-Runner
+# Triggered by "Run Full Pipeline" on the landing page
+# Chains: job search → application generation → adversarial ranking → interview prep
+# Shows live step-by-step quality gate progress
+# ============================================================
+if st.session_state.get("full_pipeline_triggered"):
+    _oai_key_fp = _has_openai_secret()
+    _cv_ready = bool(st.session_state.cv_text)
+    st.markdown(
+        f'<div style="background:linear-gradient(135deg,#F0FAF4 0%,#EEF3FB 100%);'
+        f'border:1.5px solid #057642;border-radius:12px;padding:20px 24px;margin-bottom:16px">'
+        f'<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">'
+        f'{icon_box("trending-up", bg="#057642", color="#fff", size=18, box_size=34, radius=8)}'
+        f'<div><div style="font-size:15px;font-weight:900;color:#1D2226">Full Pipeline Demo</div>'
+        f'<div style="font-size:11px;color:rgba(0,0,0,0.5)">Automated end-to-end — every output passes a quality gate before being shown</div>'
+        f'</div></div>',
+        unsafe_allow_html=True,
+    )
+    if not _cv_ready:
         st.markdown(
-            f'<div style="background:linear-gradient(135deg,#F0FAF4 0%,#EEF3FB 100%);'
-            f'border:1.5px solid #057642;border-radius:12px;padding:20px 24px;margin-bottom:16px">'
-            f'<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">'
-            f'{icon_box("trending-up", bg="#057642", color="#fff", size=18, box_size=34, radius=8)}'
-            f'<div><div style="font-size:15px;font-weight:900;color:#1D2226">Full Pipeline Demo</div>'
-            f'<div style="font-size:11px;color:rgba(0,0,0,0.5)">Automated end-to-end — every output passes a quality gate before being shown</div>'
-            f'</div></div>',
+            '<div style="background:#FFF8E7;border:1px solid #F3D7A5;border-radius:10px;'
+            'padding:16px 18px;margin-bottom:12px">'
+            '<div style="font-size:13px;font-weight:800;color:#A05A00;margin-bottom:6px">'
+            'No CV uploaded — use the demo profile to test the full pipeline instantly</div>'
+            '<div style="font-size:12px;color:rgba(0,0,0,0.65);line-height:1.6;margin-bottom:12px">'
+            '<strong>Alex Müller</strong> — Senior Marketing Manager → Product Manager (SaaS) · '
+            '7 years experience · 8 applications in pipeline · Mock interview score 68/100<br>'
+            '<span style="font-size:11px;color:rgba(0,0,0,0.45)">'
+            'All features produce real, specific output with this profile. No upload required.'
+            '</span></div>',
             unsafe_allow_html=True,
         )
-        if not _cv_ready:
-            st.markdown(
-                '<div style="background:#FFF8E7;border:1px solid #F3D7A5;border-radius:10px;'
-                'padding:16px 18px;margin-bottom:12px">'
-                '<div style="font-size:13px;font-weight:800;color:#A05A00;margin-bottom:6px">'
-                'No CV uploaded — use the demo profile to test the full pipeline instantly</div>'
-                '<div style="font-size:12px;color:rgba(0,0,0,0.65);line-height:1.6;margin-bottom:12px">'
-                '<strong>Alex Müller</strong> — Senior Marketing Manager → Product Manager (SaaS) · '
-                '7 years experience · 8 applications in pipeline · Mock interview score 68/100<br>'
-                '<span style="font-size:11px;color:rgba(0,0,0,0.45)">'
-                'All features produce real, specific output with this profile. No upload required.'
-                '</span></div>',
-                unsafe_allow_html=True,
+        if st.button(
+            "Load Demo Profile + Run Full Pipeline",
+            key="fp_demo_load",
+            type="primary",
+            use_container_width=True,
+        ):
+            load_demo_profile(st.session_state)
+            st.session_state.full_pipeline_triggered = True
+            st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
+        st.caption("Or upload your own CV in the sidebar.")
+    elif not _oai_key_fp:
+        st.warning("Add your OpenAI API key in the sidebar — the pipeline requires LLM generation.")
+    else:
+        import concurrent.futures as _fp_cf
+        _fp_serp = st.session_state.get("serp_api_key", "")
+        _fp_key = _oai_key_fp if isinstance(_oai_key_fp, str) else st.secrets.get("OPENAI_API_KEY", "")
+        # Step-by-step status display
+        _fp_steps = [
+            ("search",    "Find matching jobs",           "SerpAPI real jobs or AI-generated listings"),
+            ("zap",       "Generate 3 applications",      "gpt-4o → gpt-4o-mini quality gate → auto-regen if needed"),
+            ("scale",     "Adversarial ranking",          "Advocate + Skeptic in parallel → Judge → hire_probability %"),
+            ("mic",       "Interview prep",               "Role-specific questions + STAR coaching"),
+        ]
+        _fp_status_html = '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px">'
+        _fp_results_ready = bool(st.session_state.smart_apply_package or st.session_state.pivot_narrative)
+        for _fpi, (_fpico, _fpname, _fpdesc) in enumerate(_fp_steps):
+            _fp_done = (_fpi == 0 and bool(st.session_state.get("auto_jobs_done"))) or \
+                       (_fpi == 1 and _fp_results_ready) or \
+                       (_fpi == 2 and bool(st.session_state.debate_result)) or \
+                       (_fpi == 3 and bool(st.session_state.interview_prep_done))
+            _fp_bg = "#F0FAF4" if _fp_done else "#F8FAFF"
+            _fp_border = "#057642" if _fp_done else "#C7D8F0"
+            _fp_status_html += (
+                f'<div style="background:{_fp_bg};border:1px solid {_fp_border};border-radius:8px;'
+                f'padding:10px 12px;text-align:center">'
+                f'<div style="display:flex;justify-content:center;margin-bottom:5px">'
+                + (check_icon(14) if _fp_done else icon(_fpico, 14, "#0A66C2"))
+                + f'</div>'
+                f'<div style="font-size:11px;font-weight:700;color:{"#057642" if _fp_done else "rgba(0,0,0,0.7)"}'
+                f';margin-bottom:2px">{_fpname}</div>'
+                f'<div style="font-size:9px;color:rgba(0,0,0,0.4);line-height:1.3">{_fpdesc}</div>'
+                f'</div>'
             )
-            if st.button(
-                "Load Demo Profile + Run Full Pipeline",
-                key="fp_demo_load",
-                type="primary",
-                use_container_width=True,
-            ):
-                load_demo_profile(st.session_state)
-                st.session_state.full_pipeline_triggered = True
-                st.rerun()
-            st.markdown('</div>', unsafe_allow_html=True)
-            st.caption("Or upload your own CV in the sidebar.")
-        elif not _oai_key_fp:
-            st.warning("Add your OpenAI API key in the sidebar — the pipeline requires LLM generation.")
-        else:
-            import concurrent.futures as _fp_cf
-            _fp_serp = st.session_state.get("serp_api_key", "")
-            _fp_key = _oai_key_fp if isinstance(_oai_key_fp, str) else st.secrets.get("OPENAI_API_KEY", "")
-            # Step-by-step status display
-            _fp_steps = [
-                ("search",    "Find matching jobs",           "SerpAPI real jobs or AI-generated listings"),
-                ("zap",       "Generate 3 applications",      "gpt-4o → gpt-4o-mini quality gate → auto-regen if needed"),
-                ("scale",     "Adversarial ranking",          "Advocate + Skeptic in parallel → Judge → hire_probability %"),
-                ("mic",       "Interview prep",               "Role-specific questions + STAR coaching"),
-            ]
-            _fp_status_html = '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px">'
-            _fp_results_ready = bool(st.session_state.smart_apply_package or st.session_state.pivot_narrative)
-            for _fpi, (_fpico, _fpname, _fpdesc) in enumerate(_fp_steps):
-                _fp_done = (_fpi == 0 and bool(st.session_state.get("auto_jobs_done"))) or \
-                           (_fpi == 1 and _fp_results_ready) or \
-                           (_fpi == 2 and bool(st.session_state.debate_result)) or \
-                           (_fpi == 3 and bool(st.session_state.interview_prep_done))
-                _fp_bg = "#F0FAF4" if _fp_done else "#F8FAFF"
-                _fp_border = "#057642" if _fp_done else "#C7D8F0"
-                _fp_status_html += (
-                    f'<div style="background:{_fp_bg};border:1px solid {_fp_border};border-radius:8px;'
-                    f'padding:10px 12px;text-align:center">'
-                    f'<div style="display:flex;justify-content:center;margin-bottom:5px">'
-                    + (check_icon(14) if _fp_done else icon(_fpico, 14, "#0A66C2"))
-                    + f'</div>'
-                    f'<div style="font-size:11px;font-weight:700;color:{"#057642" if _fp_done else "rgba(0,0,0,0.7)"}'
-                    f';margin-bottom:2px">{_fpname}</div>'
-                    f'<div style="font-size:9px;color:rgba(0,0,0,0.4);line-height:1.3">{_fpdesc}</div>'
-                    f'</div>'
-                )
-            _fp_status_html += '</div>'
-            st.markdown(_fp_status_html, unsafe_allow_html=True)
+        _fp_status_html += '</div>'
+        st.markdown(_fp_status_html, unsafe_allow_html=True)
 
-            if not _fp_results_ready:
-                if st.button("Launch Full Pipeline", type="primary", use_container_width=True, key="_fp_launch"):
-                    with st.status("Running full pipeline — all outputs pass quality gates before display...", expanded=True) as _fp_status:
-                        # Step 1: Find jobs
-                        st.write("**Step 1/4** — Searching for matching jobs...")
+        if not _fp_results_ready:
+            if st.button("Launch Full Pipeline", type="primary", use_container_width=True, key="_fp_launch"):
+                with st.status("Running full pipeline — all outputs pass quality gates before display...", expanded=True) as _fp_status:
+                    # Step 1: Find jobs
+                    st.write("**Step 1/4** — Searching for matching jobs...")
+                    try:
+                        _fp_jobs = generate_job_listings(
+                            current_role=str(current), target_role=str(target),
+                            n=3, api_key=_fp_key, prefer_online=True,
+                            cv_profile=st.session_state.cv_profile,
+                        )
+                        st.session_state["auto_jobs_done"] = True
+                        st.write(f"Found {len(_fp_jobs)} job listings")
+                    except Exception as _fp_e:
+                        st.error(f"Job search failed: {_fp_e}")
+                        _fp_jobs = []
+
+                    if _fp_jobs:
+                        # Step 2: Generate + evaluate application for top job
+                        st.write("**Step 2/4** — Generating application package (gpt-4o)...")
+                        _fp_top = _fp_jobs[0]
                         try:
-                            _fp_jobs = generate_job_listings(
+                            _fp_pkg = generate_application_package(
+                                job_title=_fp_top.title,
+                                company=_fp_top.company,
+                                job_description=_fp_top.description or "",
                                 current_role=str(current), target_role=str(target),
-                                n=3, api_key=_fp_key, prefer_online=True,
                                 cv_profile=st.session_state.cv_profile,
+                                top_transfer=[], top_missing=[],
+                                model="gpt-4o", prefer_online=True, api_key=_fp_key,
                             )
-                            st.session_state["auto_jobs_done"] = True
-                            st.write(f"Found {len(_fp_jobs)} job listings")
-                        except Exception as _fp_e:
-                            st.error(f"Job search failed: {_fp_e}")
-                            _fp_jobs = []
-
-                        if _fp_jobs:
-                            # Step 2: Generate + evaluate application for top job
-                            st.write("**Step 2/4** — Generating application package (gpt-4o)...")
-                            _fp_top = _fp_jobs[0]
-                            try:
+                            st.write("Evaluating quality (gpt-4o-mini quality gate)...")
+                            _fp_eval = evaluate_application_package(
+                                cover_letter=_fp_pkg.cover_letter,
+                                linkedin_inmail=_fp_pkg.linkedin_inmail,
+                                cv_rewrites=[{"skill_highlighted": r.skill_highlighted, "rewritten": r.rewritten}
+                                             for r in _fp_pkg.cv_bullet_rewrites],
+                                job_title=_fp_top.title, company=_fp_top.company,
+                                job_description=_fp_top.description or "",
+                                cv_text=st.session_state.cv_text or "",
+                                model="gpt-4o-mini", api_key=_fp_key, prefer_online=True,
+                            )
+                            _fp_score_v1 = int(_fp_eval.get("overall_score", 0))
+                            _fp_regen = _fp_eval.get("regenerate_recommended", False)
+                            if _fp_regen:
+                                st.write(f"Score {_fp_score_v1}/100 below threshold → auto-regenerating with gpt-4o...")
                                 _fp_pkg = generate_application_package(
-                                    job_title=_fp_top.title,
-                                    company=_fp_top.company,
+                                    job_title=_fp_top.title, company=_fp_top.company,
                                     job_description=_fp_top.description or "",
                                     current_role=str(current), target_role=str(target),
                                     cv_profile=st.session_state.cv_profile,
                                     top_transfer=[], top_missing=[],
                                     model="gpt-4o", prefer_online=True, api_key=_fp_key,
                                 )
-                                st.write("Evaluating quality (gpt-4o-mini quality gate)...")
                                 _fp_eval = evaluate_application_package(
                                     cover_letter=_fp_pkg.cover_letter,
                                     linkedin_inmail=_fp_pkg.linkedin_inmail,
@@ -10007,328 +10029,306 @@ if quick_apply:
                                     cv_text=st.session_state.cv_text or "",
                                     model="gpt-4o-mini", api_key=_fp_key, prefer_online=True,
                                 )
-                                _fp_score_v1 = int(_fp_eval.get("overall_score", 0))
-                                _fp_regen = _fp_eval.get("regenerate_recommended", False)
-                                if _fp_regen:
-                                    st.write(f"Score {_fp_score_v1}/100 below threshold → auto-regenerating with gpt-4o...")
-                                    _fp_pkg = generate_application_package(
-                                        job_title=_fp_top.title, company=_fp_top.company,
-                                        job_description=_fp_top.description or "",
-                                        current_role=str(current), target_role=str(target),
-                                        cv_profile=st.session_state.cv_profile,
-                                        top_transfer=[], top_missing=[],
-                                        model="gpt-4o", prefer_online=True, api_key=_fp_key,
-                                    )
-                                    _fp_eval = evaluate_application_package(
-                                        cover_letter=_fp_pkg.cover_letter,
-                                        linkedin_inmail=_fp_pkg.linkedin_inmail,
-                                        cv_rewrites=[{"skill_highlighted": r.skill_highlighted, "rewritten": r.rewritten}
-                                                     for r in _fp_pkg.cv_bullet_rewrites],
-                                        job_title=_fp_top.title, company=_fp_top.company,
-                                        job_description=_fp_top.description or "",
-                                        cv_text=st.session_state.cv_text or "",
-                                        model="gpt-4o-mini", api_key=_fp_key, prefer_online=True,
-                                    )
-                                _fp_score_final = int(_fp_eval.get("overall_score", 0))
-                                log_quality_event(
-                                    st.session_state, artifact="Application Pkg", tool="Full Pipeline",
-                                    score_v1=_fp_score_v1,
-                                    score_v2=_fp_score_final if _fp_regen else None,
-                                    regenerated=_fp_regen, passed=_fp_score_final >= 65,
-                                    company=_fp_top.company, job_title=_fp_top.title,
-                                )
-                                st.session_state.smart_apply_package = [{"job": _fp_top, "pkg": _fp_pkg, "eval": _fp_eval}]
-                                st.write(f"Quality gate passed: {_fp_score_final}/100" + (" (after regen)" if _fp_regen else ""))
-                            except Exception as _e2:
-                                st.error(f"Generation failed: {_e2}")
+                            _fp_score_final = int(_fp_eval.get("overall_score", 0))
+                            log_quality_event(
+                                st.session_state, artifact="Application Pkg", tool="Full Pipeline",
+                                score_v1=_fp_score_v1,
+                                score_v2=_fp_score_final if _fp_regen else None,
+                                regenerated=_fp_regen, passed=_fp_score_final >= 65,
+                                company=_fp_top.company, job_title=_fp_top.title,
+                            )
+                            st.session_state.smart_apply_package = [{"job": _fp_top, "pkg": _fp_pkg, "eval": _fp_eval}]
+                            st.write(f"Quality gate passed: {_fp_score_final}/100" + (" (after regen)" if _fp_regen else ""))
+                        except Exception as _e2:
+                            st.error(f"Generation failed: {_e2}")
 
-                            # Step 3: Adversarial debate
-                            st.write("**Step 3/4** — Adversarial ranking (Advocate vs Skeptic)...")
-                            try:
-                                _fp_pkg_data = (st.session_state.smart_apply_package or [{}])[0]
-                                _fp_pkg_obj = _fp_pkg_data.get("pkg")
-                                if _fp_pkg_obj:
-                                    _fp_debate = run_application_debate(
-                                        cover_letter=_fp_pkg_obj.cover_letter,
-                                        job_title=_fp_top.title, company=_fp_top.company,
-                                        job_description=_fp_top.description or "",
-                                        cv_text=st.session_state.cv_text or "",
-                                        api_key=_fp_key, prefer_online=True,
-                                    )
-                                    st.session_state.debate_result = _fp_debate
-                                    _fp_verdict = getattr(_fp_debate, "verdict_label", "—")
-                                    st.write(f"Verdict: {_fp_verdict}")
-                            except Exception as _e3:
-                                st.write("Debate skipped (offline mode)")
-
-                            # Step 4: Interview questions
-                            st.write("**Step 4/4** — Generating interview questions...")
-                            try:
-                                _fp_qs = generate_interview_questions(
+                        # Step 3: Adversarial debate
+                        st.write("**Step 3/4** — Adversarial ranking (Advocate vs Skeptic)...")
+                        try:
+                            _fp_pkg_data = (st.session_state.smart_apply_package or [{}])[0]
+                            _fp_pkg_obj = _fp_pkg_data.get("pkg")
+                            if _fp_pkg_obj:
+                                _fp_debate = run_application_debate(
+                                    cover_letter=_fp_pkg_obj.cover_letter,
                                     job_title=_fp_top.title, company=_fp_top.company,
                                     job_description=_fp_top.description or "",
                                     cv_text=st.session_state.cv_text or "",
-                                    n_questions=6, model="gpt-4o",
                                     api_key=_fp_key, prefer_online=True,
                                 )
-                                st.session_state.interview_questions = _fp_qs
-                                st.session_state.interview_prep_done = True
-                                st.write(f"{len(_fp_qs)} interview questions ready")
-                            except Exception as _e4:
-                                st.write("Interview prep skipped (offline mode)")
+                                st.session_state.debate_result = _fp_debate
+                                _fp_verdict = getattr(_fp_debate, "verdict_label", "—")
+                                st.write(f"Verdict: {_fp_verdict}")
+                        except Exception as _e3:
+                            st.write("Debate skipped (offline mode)")
 
-                        _fp_status.update(label="Full pipeline complete — all quality gates passed", state="complete")
-                    st.session_state.full_pipeline_triggered = False
-                    st.rerun()
-            else:
-                st.success("Pipeline complete. Results are in the sections below.")
-                if st.button("Reset + Run Again", key="_fp_reset"):
-                    st.session_state.full_pipeline_triggered = False
-                    st.rerun()
+                        # Step 4: Interview questions
+                        st.write("**Step 4/4** — Generating interview questions...")
+                        try:
+                            _fp_qs = generate_interview_questions(
+                                job_title=_fp_top.title, company=_fp_top.company,
+                                job_description=_fp_top.description or "",
+                                cv_text=st.session_state.cv_text or "",
+                                n_questions=6, model="gpt-4o",
+                                api_key=_fp_key, prefer_online=True,
+                            )
+                            st.session_state.interview_questions = _fp_qs
+                            st.session_state.interview_prep_done = True
+                            st.write(f"{len(_fp_qs)} interview questions ready")
+                        except Exception as _e4:
+                            st.write("Interview prep skipped (offline mode)")
 
-        st.markdown('</div>', unsafe_allow_html=True)
-        st.divider()
+                    _fp_status.update(label="Full pipeline complete — all quality gates passed", state="complete")
+                st.session_state.full_pipeline_triggered = False
+                st.rerun()
+        else:
+            st.success("Pipeline complete. Results are in the sections below.")
+            if st.button("Reset + Run Again", key="_fp_reset"):
+                st.session_state.full_pipeline_triggered = False
+                st.rerun()
 
-
-    # ============================================================
-    # Overview
-    # ============================================================
-    with st.container(border=True):
-        _llm_badge = (
-            '<span class="status-pill status-ok" style="font-size:11px">● LLM online</span>'
-            if _has_openai_secret()
-            else '<span class="status-pill status-warn" style="font-size:11px">○ LLM offline</span>'
-        )
-        # ── Command Center Hero Header ────────────────────────────────────────────
-        # ── Compute variables needed by Intelligence Brief and Journey Stepper ──────
-        _n_gaps = int((gap_df["gap"] > 0).sum()) if not gap_df.empty else 0
-        _n_total = len(gap_df) if not gap_df.empty else 1
-        _gap_ratio = _n_gaps / max(_n_total, 1)
-        _cv_score = min(float(_cv_profile.get("skills_mapped_count", 0)) / 40.0, 1.0) if _cv_profile else 0.5
-        _base_pts = int((0.45 * (match_score_display / 100) + 0.30 * (1 - _gap_ratio) + 0.25 * _cv_score) * 30)
-        _readiness = max(5, min(
-            _base_pts
-            + (8  if bool((st.session_state.cv_text or "").strip())      else 0)
-            + (10 if bool(st.session_state.learning_plan_md)             else 0)
-            + (12 if bool(st.session_state.debate_result)                else 0)
-            + (10 if bool(st.session_state.review_board_strategies)      else 0)
-            + (15 if bool(st.session_state.smart_apply_package)          else 0)
-            + (15 if bool(st.session_state.interview_prep_done)          else 0)
-        , 100))
-        _milestone_labels = [
-            ("Skill assessed",    True),
-            ("CV uploaded",       bool((st.session_state.cv_text or "").strip())),
-            ("Learning plan",     bool(st.session_state.learning_plan_md)),
-            ("Debate complete",   bool(st.session_state.debate_result)),
-            ("Decision board",    bool(st.session_state.review_board_strategies)),
-            ("Application ready", bool(st.session_state.smart_apply_package)),
-            ("Interview prepped", bool(st.session_state.interview_prep_done)),
-        ]
-        _r_color = "#117A37" if _readiness >= 65 else ("#A05A00" if _readiness >= 40 else "#B71C1C")
-        _r_label = "Strong" if _readiness >= 65 else ("Promising" if _readiness >= 40 else "Early Stage")
-        _weeks = max(4, int((_n_gaps * 3.5) * (1 - match_score_display / 200)))
-        _match_color_ov = "#117A37" if match_score_display >= 70 else ("#A05A00" if match_score_display >= 45 else "#B71C1C")
-
-        # Personal mode badge — compact, inline
-        if _personal_mode and _cv_profile:
-            p = _cv_profile
-            st.markdown(
-                f'<div style="background:#EEF3FB;border-radius:6px;padding:6px 12px;'
-                f'display:inline-flex;align-items:center;gap:8px;margin-bottom:6px">'
-                f'<span style="font-size:10px;font-weight:800;color:#0A66C2">✓ Personal Mode</span>'
-                f'<span style="font-size:12px;font-weight:700;color:rgba(0,0,0,0.75)">'
-                f'{p.get("extracted_role","") or "CV loaded"}'
-                f'</span>'
-                f'<span style="font-size:11px;color:rgba(0,0,0,0.4)">'
-                f'{p.get("years_experience",0):.0f} yrs · {p.get("skills_mapped_count",0)} skills</span>'
-                f'</div>',
-                unsafe_allow_html=True,
-            )
-
-        # ── Pivot Intelligence Brief ─────────────────────────────
-        # Rule-based synthesis of the current session state — always visible,
-        # always current, no API call needed.
-        _done_list = []
-        _next_list = []
-        if st.session_state.salary_result:          _done_list.append("salary trajectory")
-        else:                                        _next_list.append("Salary Estimator")
-        if st.session_state.learning_plan_md:        _done_list.append("learning roadmap")
-        else:                                        _next_list.append("AI Learning Plan")
-        if st.session_state.debate_result:           _done_list.append("adversarial debate")
-        else:                                        _next_list.append("Pivot Debate")
-        if st.session_state.review_board_strategies: _done_list.append("decision board")
-        if st.session_state.pivot_narrative:         _done_list.append("pivot narrative")
-        if st.session_state.job_analysis:            _done_list.append("job posting analysis")
-        if st.session_state.smart_apply_package:     _done_list.append("application package")
-        if st.session_state.linkedin_profile:        _done_list.append("LinkedIn profile")
-        if st.session_state.agent_result:            _done_list.append("agent deep analysis")
-        if st.session_state.interview_prep_done:     _done_list.append("interview preparation")
-        else:                                        _next_list.append("Interview Coach")
-
-        _situation_text = (
-            f"<b>{'Hard' if match_score_display < 45 else ('Promising' if match_score_display < 70 else 'Strong')} pivot</b> "
-            f"({match_score_display:.0f}/100 match · {_n_gaps} skill gaps · ~{_weeks}w to readiness)."
-        )
-        _done_text = (
-            f"Completed: {', '.join(_done_list)}." if _done_list
-            else "No analyses run yet — start with a tool below."
-        )
-        _next_text = (
-            f"<b>Recommended next:</b> {_next_list[0]}."
-            if _next_list else "<b>Journey complete — you're interview-ready.</b> Download your report."
-        )
-        _brief_readiness_color = "#117A37" if _readiness >= 65 else ("#A05A00" if _readiness >= 40 else "#B71C1C")
-
-        # Build milestone checklist pills
-        _milestone_pills_html = "".join(
-            f'<span style="font-size:10px;padding:2px 8px;border-radius:10px;margin-right:4px;margin-bottom:4px;display:inline-block;'
-            f'{"background:#E7F6EC;color:#117A37;border:1px solid #A8DDB8" if _done else "background:#F3F6F9;color:#5F6B7A;border:1px solid #C0CCDA"}">'
-            f'{"✓" if _done else "○"} {_label}</span>'
-            for _label, _done in _milestone_labels
-        )
-
-        # Intelligence Brief only shown in QA + Advanced — Sprint has its own step tracker
-        if not guided:
-            # ── Next Recommended Action (prominent command card) ──────────────────
-            _cmd_next  = _next_list[0] if _next_list else None
-            _cmd_done_count = len(_done_list) if _done_list else 0
-            _cmd_icon_svg  = icon("target", 24, "#A05A00") if _cmd_next else icon("award", 24, "#057642")
-            _cmd_bg    = "#FFF8E7" if _cmd_next else "#E7F6EC"
-            _cmd_border= "#F3D7A5" if _cmd_next else "#CBEAD5"
-            _cmd_tcol  = "#A05A00" if _cmd_next else "#057642"
-            _cmd_title = f"Next: {_cmd_next}" if _cmd_next else "Journey Complete — Download Your Playbook"
-            _cmd_sub   = f"{_cmd_done_count} analyses done · complete this step to raise P(offer)" if _cmd_next else "All 5 phases complete. You're interview-ready."
-            st.markdown(
-                f'<div style="background:{_cmd_bg};border:1px solid {_cmd_border};border-radius:10px;'
-                f'padding:14px 18px;margin-bottom:12px;display:flex;align-items:center;gap:14px">'
-                f'<div style="flex-shrink:0">{_cmd_icon_svg}</div>'
-                f'<div style="flex:1">'
-                f'<div style="font-size:14px;font-weight:800;color:{_cmd_tcol}">{_cmd_title}</div>'
-                f'<div style="font-size:12px;color:rgba(0,0,0,0.55);margin-top:2px">{_cmd_sub}</div>'
-                f'<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:4px">'
-                + "".join(
-                    f'<span style="font-size:10px;padding:2px 8px;border-radius:10px;'
-                    f'{"background:#E7F6EC;color:#057642;border:1px solid #A8DDB8" if done else "background:#F3F6F9;color:#5F6B7A;border:1px solid #C0CCDA"}">'
-                    f'{"✓ " if done else "○ "}{label}</span>'
-                    for label, done in _milestone_labels
-                )
-                + f'</div>'
-                f'</div>'
-                f'<div style="font-size:18px;font-weight:900;color:{_r_color};flex-shrink:0;text-align:center">'
-                f'{_readiness}<br><span style="font-size:9px;font-weight:700;letter-spacing:0.06em;'
-                f'text-transform:uppercase;color:rgba(0,0,0,0.40)">Readiness</span>'
-                f'</div>'
-                f'</div>',
-                unsafe_allow_html=True,
-            )
-
-            st.markdown(
-                f'<div style="background:#F8FAFF;border:1px solid #C7D8F0;border-radius:10px;'
-                f'padding:14px 18px;margin:4px 0 4px 0;">'
-                f'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">'
-                f'<div style="font-size:10px;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;color:#0A66C2">'
-                f'{icon("clipboard", 12, "#0A66C2")} Pivot Intelligence Brief</div>'
-                f'<div style="font-size:18px;font-weight:900;color:{_brief_readiness_color}">{_readiness}'
-                f'<span style="font-size:11px;font-weight:600;color:rgba(0,0,0,0.35)">/100</span></div>'
-                f'</div>'
-                f'<div style="height:6px;background:rgba(0,0,0,0.07);border-radius:3px;overflow:hidden;margin-bottom:10px">'
-                f'<div style="width:{_readiness}%;height:6px;background:{_brief_readiness_color};border-radius:3px;transition:width 0.8s"></div>'
-                f'</div>'
-                f'<div style="margin-bottom:8px">{_milestone_pills_html}</div>'
-                f'<div style="font-size:13px;color:rgba(0,0,0,0.75);line-height:1.7">'
-                f'<div>{_situation_text}</div>'
-                f'<div style="color:rgba(0,0,0,0.5);font-size:12px;margin-top:3px">{_done_text}</div>'
-                f'<div style="margin-top:5px;color:rgba(0,0,0,0.75)">{_next_text}</div>'
-                f'</div>'
-                f'</div>',
-                unsafe_allow_html=True,
-            )
+    st.markdown('</div>', unsafe_allow_html=True)
+    st.divider()
 
 
-
-    # ── Journey Stepper ────────────────────────────────────────────────────────
-    # Shown in Quick Apply and Advanced modes. Sprint mode has an equivalent step
-    # tracker built into the Sprint header — showing both would be redundant.
-    _journey_phases = [
-        ("", "Assess",    "Skill landscape",   True),                                                  # always done
-        ("", "Plan",      "Salary + roadmap",  bool(st.session_state.learning_plan_md or st.session_state.salary_result)),
-        ("", "Validate",  "Debate + decision", bool(st.session_state.debate_result or st.session_state.review_board_consensus)),
-        ("", "Execute",   "Apply + materials", bool(st.session_state.smart_apply_package or st.session_state.pivot_narrative)),
-        ("", "Interview", "Prep + Coach",      bool(st.session_state.interview_prep_done)),
+# ============================================================
+# Overview
+# ============================================================
+with st.container(border=True):
+    _llm_badge = (
+        '<span class="status-pill status-ok" style="font-size:11px">● LLM online</span>'
+        if _has_openai_secret()
+        else '<span class="status-pill status-warn" style="font-size:11px">○ LLM offline</span>'
+    )
+    # ── Command Center Hero Header ────────────────────────────────────────────
+    # ── Compute variables needed by Intelligence Brief and Journey Stepper ──────
+    _n_gaps = int((gap_df["gap"] > 0).sum()) if not gap_df.empty else 0
+    _n_total = len(gap_df) if not gap_df.empty else 1
+    _gap_ratio = _n_gaps / max(_n_total, 1)
+    _cv_score = min(float(_cv_profile.get("skills_mapped_count", 0)) / 40.0, 1.0) if _cv_profile else 0.5
+    _base_pts = int((0.45 * (match_score_display / 100) + 0.30 * (1 - _gap_ratio) + 0.25 * _cv_score) * 30)
+    _readiness = max(5, min(
+        _base_pts
+        + (8  if bool((st.session_state.cv_text or "").strip())      else 0)
+        + (10 if bool(st.session_state.learning_plan_md)             else 0)
+        + (12 if bool(st.session_state.debate_result)                else 0)
+        + (10 if bool(st.session_state.review_board_strategies)      else 0)
+        + (15 if bool(st.session_state.smart_apply_package)          else 0)
+        + (15 if bool(st.session_state.interview_prep_done)          else 0)
+    , 100))
+    _milestone_labels = [
+        ("Skill assessed",    True),
+        ("CV uploaded",       bool((st.session_state.cv_text or "").strip())),
+        ("Learning plan",     bool(st.session_state.learning_plan_md)),
+        ("Debate complete",   bool(st.session_state.debate_result)),
+        ("Decision board",    bool(st.session_state.review_board_strategies)),
+        ("Application ready", bool(st.session_state.smart_apply_package)),
+        ("Interview prepped", bool(st.session_state.interview_prep_done)),
     ]
-    _n_phases_done = sum(1 for _, _, _, _done in _journey_phases if _done)
-    _journey_pct = int(_n_phases_done / len(_journey_phases) * 100)
+    _r_color = "#117A37" if _readiness >= 65 else ("#A05A00" if _readiness >= 40 else "#B71C1C")
+    _r_label = "Strong" if _readiness >= 65 else ("Promising" if _readiness >= 40 else "Early Stage")
+    _weeks = max(4, int((_n_gaps * 3.5) * (1 - match_score_display / 200)))
+    _match_color_ov = "#117A37" if match_score_display >= 70 else ("#A05A00" if match_score_display >= 45 else "#B71C1C")
 
-    _phase_nodes_html = ""
-    for _pi, (_, _phase_name, _phase_sub, _phase_done) in enumerate(_journey_phases):
-        _is_last = _pi == len(_journey_phases) - 1
-        _node_color   = "#0A66C2" if _phase_done else "rgba(0,0,0,0.12)"
-        _node_bg      = "#0A66C2" if _phase_done else "#fff"
-        _label_color  = "rgba(0,0,0,0.88)" if _phase_done else "rgba(0,0,0,0.38)"
-        _check        = "✓" if _phase_done else str(_pi + 1)
-        _connector    = (
-            f'<div style="flex:1;height:2px;margin:0 4px;'
-            f'background:{"#0A66C2" if _phase_done else "rgba(0,0,0,0.1)"};'
-            f'border-radius:1px;margin-top:-18px"></div>'
-            if not _is_last else ""
-        )
-        _phase_nodes_html += (
-            f'<div style="display:flex;flex-direction:column;align-items:center;gap:5px;min-width:64px">'
-            f'<div style="width:32px;height:32px;border-radius:50%;background:{_node_bg};'
-            f'border:2px solid {_node_color};display:flex;align-items:center;justify-content:center;'
-            f'font-size:12px;font-weight:900;color:{"#fff" if _phase_done else "rgba(0,0,0,0.25)"}">{_check}</div>'
-            f'<div style="font-size:11px;font-weight:800;color:{_label_color};text-align:center;line-height:1.2">{_phase_name}</div>'
-            f'<div style="font-size:9px;color:rgba(0,0,0,0.35);text-align:center;line-height:1.2">{_phase_sub}</div>'
-            f'</div>'
-            + _connector
-        )
-
-    _readiness_bar_color = "#117A37" if _readiness >= 65 else ("#0A66C2" if _readiness >= 40 else "#A05A00")
-
-    # Journey Stepper card — hidden in Sprint mode (Sprint has its own dedicated step tracker)
-    if not guided:
+    # Personal mode badge — compact, inline
+    if _personal_mode and _cv_profile:
+        p = _cv_profile
         st.markdown(
-            f'<div style="background:#fff;border:1px solid rgba(0,0,0,0.1);border-radius:12px;'
-            f'padding:16px 24px 14px 24px;margin:12px 0 8px 0;'
-            f'box-shadow:0 1px 4px rgba(0,0,0,0.05)">'
+            f'<div style="background:#EEF3FB;border-radius:6px;padding:6px 12px;'
+            f'display:inline-flex;align-items:center;gap:8px;margin-bottom:6px">'
+            f'<span style="font-size:10px;font-weight:800;color:#0A66C2">✓ Personal Mode</span>'
+            f'<span style="font-size:12px;font-weight:700;color:rgba(0,0,0,0.75)">'
+            f'{p.get("extracted_role","") or "CV loaded"}'
+            f'</span>'
+            f'<span style="font-size:11px;color:rgba(0,0,0,0.4)">'
+            f'{p.get("years_experience",0):.0f} yrs · {p.get("skills_mapped_count",0)} skills</span>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
 
-            # Top row: tagline left, readiness score right
-            f'<div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:14px">'
-            f'<div>'
-            f'<div style="font-size:13px;font-weight:900;color:#1D2226;letter-spacing:-0.2px">'
-            f'{str(current).replace("_", " ")} → {str(target).replace("_", " ")}'
-            f'</div>'
-            f'<div style="font-size:11px;color:rgba(0,0,0,0.45);margin-top:2px">'
-            f'Career Pivot Simulator · from career thought to interview-ready in one session'
-            f'</div>'
-            f'</div>'
-            f'<div style="text-align:right;flex-shrink:0;padding-left:16px">'
-            f'<div style="font-size:22px;font-weight:900;color:{_readiness_bar_color};line-height:1">'
-            f'{_readiness}<span style="font-size:11px;font-weight:600;color:rgba(0,0,0,0.3)">/100</span></div>'
-            f'<div style="font-size:9px;font-weight:800;letter-spacing:0.06em;text-transform:uppercase;'
-            f'color:rgba(0,0,0,0.4)">Pivot Readiness</div>'
-            f'</div>'
-            f'</div>'
+    # ── Pivot Intelligence Brief ─────────────────────────────
+    # Rule-based synthesis of the current session state — always visible,
+    # always current, no API call needed.
+    _done_list = []
+    _next_list = []
+    if st.session_state.salary_result:          _done_list.append("salary trajectory")
+    else:                                        _next_list.append("Salary Estimator")
+    if st.session_state.learning_plan_md:        _done_list.append("learning roadmap")
+    else:                                        _next_list.append("AI Learning Plan")
+    if st.session_state.debate_result:           _done_list.append("adversarial debate")
+    else:                                        _next_list.append("Pivot Debate")
+    if st.session_state.review_board_strategies: _done_list.append("decision board")
+    if st.session_state.pivot_narrative:         _done_list.append("pivot narrative")
+    if st.session_state.job_analysis:            _done_list.append("job posting analysis")
+    if st.session_state.smart_apply_package:     _done_list.append("application package")
+    if st.session_state.linkedin_profile:        _done_list.append("LinkedIn profile")
+    if st.session_state.agent_result:            _done_list.append("agent deep analysis")
+    if st.session_state.interview_prep_done:     _done_list.append("interview preparation")
+    else:                                        _next_list.append("Interview Coach")
 
-            # Journey stepper nodes
-            f'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">'
-            f'{_phase_nodes_html}'
-            f'</div>'
+    _situation_text = (
+        f"<b>{'Hard' if match_score_display < 45 else ('Promising' if match_score_display < 70 else 'Strong')} pivot</b> "
+        f"({match_score_display:.0f}/100 match · {_n_gaps} skill gaps · ~{_weeks}w to readiness)."
+    )
+    _done_text = (
+        f"Completed: {', '.join(_done_list)}." if _done_list
+        else "No analyses run yet — start with a tool below."
+    )
+    _next_text = (
+        f"<b>Recommended next:</b> {_next_list[0]}."
+        if _next_list else "<b>Journey complete — you're interview-ready.</b> Download your report."
+    )
+    _brief_readiness_color = "#117A37" if _readiness >= 65 else ("#A05A00" if _readiness >= 40 else "#B71C1C")
 
-            # Progress bar
-            f'<div style="height:4px;background:rgba(0,0,0,0.07);border-radius:2px;overflow:hidden">'
-            f'<div style="width:{_journey_pct}%;height:4px;background:{_readiness_bar_color};'
-            f'border-radius:2px;transition:width 0.8s"></div>'
-            f'</div>'
-            f'<div style="display:flex;justify-content:space-between;margin-top:4px">'
-            f'<div style="font-size:9px;color:rgba(0,0,0,0.35)">{_n_phases_done}/{len(_journey_phases)} phases complete</div>'
-            f'<div style="font-size:9px;font-weight:700;color:{_readiness_bar_color}">'
-            + ("Interview-ready" if _journey_pct == 100 else f"{100 - _journey_pct}% to interview-ready")
+    # Build milestone checklist pills
+    _milestone_pills_html = "".join(
+        f'<span style="font-size:10px;padding:2px 8px;border-radius:10px;margin-right:4px;margin-bottom:4px;display:inline-block;'
+        f'{"background:#E7F6EC;color:#117A37;border:1px solid #A8DDB8" if _done else "background:#F3F6F9;color:#5F6B7A;border:1px solid #C0CCDA"}">'
+        f'{"✓" if _done else "○"} {_label}</span>'
+        for _label, _done in _milestone_labels
+    )
+
+    # Intelligence Brief only shown in QA + Advanced — Sprint has its own step tracker
+    if not guided:
+        # ── Next Recommended Action (prominent command card) ──────────────────
+        _cmd_next  = _next_list[0] if _next_list else None
+        _cmd_done_count = len(_done_list) if _done_list else 0
+        _cmd_icon_svg  = icon("target", 24, "#A05A00") if _cmd_next else icon("award", 24, "#057642")
+        _cmd_bg    = "#FFF8E7" if _cmd_next else "#E7F6EC"
+        _cmd_border= "#F3D7A5" if _cmd_next else "#CBEAD5"
+        _cmd_tcol  = "#A05A00" if _cmd_next else "#057642"
+        _cmd_title = f"Next: {_cmd_next}" if _cmd_next else "Journey Complete — Download Your Playbook"
+        _cmd_sub   = f"{_cmd_done_count} analyses done · complete this step to raise P(offer)" if _cmd_next else "All 5 phases complete. You're interview-ready."
+        st.markdown(
+            f'<div style="background:{_cmd_bg};border:1px solid {_cmd_border};border-radius:10px;'
+            f'padding:14px 18px;margin-bottom:12px;display:flex;align-items:center;gap:14px">'
+            f'<div style="flex-shrink:0">{_cmd_icon_svg}</div>'
+            f'<div style="flex:1">'
+            f'<div style="font-size:14px;font-weight:800;color:{_cmd_tcol}">{_cmd_title}</div>'
+            f'<div style="font-size:12px;color:rgba(0,0,0,0.55);margin-top:2px">{_cmd_sub}</div>'
+            f'<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:4px">'
+            + "".join(
+                f'<span style="font-size:10px;padding:2px 8px;border-radius:10px;'
+                f'{"background:#E7F6EC;color:#057642;border:1px solid #A8DDB8" if done else "background:#F3F6F9;color:#5F6B7A;border:1px solid #C0CCDA"}">'
+                f'{"✓ " if done else "○ "}{label}</span>'
+                for label, done in _milestone_labels
+            )
             + f'</div>'
+            f'</div>'
+            f'<div style="font-size:18px;font-weight:900;color:{_r_color};flex-shrink:0;text-align:center">'
+            f'{_readiness}<br><span style="font-size:9px;font-weight:700;letter-spacing:0.06em;'
+            f'text-transform:uppercase;color:rgba(0,0,0,0.40)">Readiness</span>'
             f'</div>'
             f'</div>',
             unsafe_allow_html=True,
         )
+
+        st.markdown(
+            f'<div style="background:#F8FAFF;border:1px solid #C7D8F0;border-radius:10px;'
+            f'padding:14px 18px;margin:4px 0 4px 0;">'
+            f'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">'
+            f'<div style="font-size:10px;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;color:#0A66C2">'
+            f'{icon("clipboard", 12, "#0A66C2")} Pivot Intelligence Brief</div>'
+            f'<div style="font-size:18px;font-weight:900;color:{_brief_readiness_color}">{_readiness}'
+            f'<span style="font-size:11px;font-weight:600;color:rgba(0,0,0,0.35)">/100</span></div>'
+            f'</div>'
+            f'<div style="height:6px;background:rgba(0,0,0,0.07);border-radius:3px;overflow:hidden;margin-bottom:10px">'
+            f'<div style="width:{_readiness}%;height:6px;background:{_brief_readiness_color};border-radius:3px;transition:width 0.8s"></div>'
+            f'</div>'
+            f'<div style="margin-bottom:8px">{_milestone_pills_html}</div>'
+            f'<div style="font-size:13px;color:rgba(0,0,0,0.75);line-height:1.7">'
+            f'<div>{_situation_text}</div>'
+            f'<div style="color:rgba(0,0,0,0.5);font-size:12px;margin-top:3px">{_done_text}</div>'
+            f'<div style="margin-top:5px;color:rgba(0,0,0,0.75)">{_next_text}</div>'
+            f'</div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+
+
+
+# ── Journey Stepper ────────────────────────────────────────────────────────
+# Shown in Quick Apply and Advanced modes. Sprint mode has an equivalent step
+# tracker built into the Sprint header — showing both would be redundant.
+_journey_phases = [
+    ("", "Assess",    "Skill landscape",   True),                                                  # always done
+    ("", "Plan",      "Salary + roadmap",  bool(st.session_state.learning_plan_md or st.session_state.salary_result)),
+    ("", "Validate",  "Debate + decision", bool(st.session_state.debate_result or st.session_state.review_board_consensus)),
+    ("", "Execute",   "Apply + materials", bool(st.session_state.smart_apply_package or st.session_state.pivot_narrative)),
+    ("", "Interview", "Prep + Coach",      bool(st.session_state.interview_prep_done)),
+]
+_n_phases_done = sum(1 for _, _, _, _done in _journey_phases if _done)
+_journey_pct = int(_n_phases_done / len(_journey_phases) * 100)
+
+_phase_nodes_html = ""
+for _pi, (_, _phase_name, _phase_sub, _phase_done) in enumerate(_journey_phases):
+    _is_last = _pi == len(_journey_phases) - 1
+    _node_color   = "#0A66C2" if _phase_done else "rgba(0,0,0,0.12)"
+    _node_bg      = "#0A66C2" if _phase_done else "#fff"
+    _label_color  = "rgba(0,0,0,0.88)" if _phase_done else "rgba(0,0,0,0.38)"
+    _check        = "✓" if _phase_done else str(_pi + 1)
+    _connector    = (
+        f'<div style="flex:1;height:2px;margin:0 4px;'
+        f'background:{"#0A66C2" if _phase_done else "rgba(0,0,0,0.1)"};'
+        f'border-radius:1px;margin-top:-18px"></div>'
+        if not _is_last else ""
+    )
+    _phase_nodes_html += (
+        f'<div style="display:flex;flex-direction:column;align-items:center;gap:5px;min-width:64px">'
+        f'<div style="width:32px;height:32px;border-radius:50%;background:{_node_bg};'
+        f'border:2px solid {_node_color};display:flex;align-items:center;justify-content:center;'
+        f'font-size:12px;font-weight:900;color:{"#fff" if _phase_done else "rgba(0,0,0,0.25)"}">{_check}</div>'
+        f'<div style="font-size:11px;font-weight:800;color:{_label_color};text-align:center;line-height:1.2">{_phase_name}</div>'
+        f'<div style="font-size:9px;color:rgba(0,0,0,0.35);text-align:center;line-height:1.2">{_phase_sub}</div>'
+        f'</div>'
+        + _connector
+    )
+
+_readiness_bar_color = "#117A37" if _readiness >= 65 else ("#0A66C2" if _readiness >= 40 else "#A05A00")
+
+# Journey Stepper card — hidden in Sprint mode (Sprint has its own dedicated step tracker)
+if not guided:
+    st.markdown(
+        f'<div style="background:#fff;border:1px solid rgba(0,0,0,0.1);border-radius:12px;'
+        f'padding:16px 24px 14px 24px;margin:12px 0 8px 0;'
+        f'box-shadow:0 1px 4px rgba(0,0,0,0.05)">'
+
+        # Top row: tagline left, readiness score right
+        f'<div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:14px">'
+        f'<div>'
+        f'<div style="font-size:13px;font-weight:900;color:#1D2226;letter-spacing:-0.2px">'
+        f'{str(current).replace("_", " ")} → {str(target).replace("_", " ")}'
+        f'</div>'
+        f'<div style="font-size:11px;color:rgba(0,0,0,0.45);margin-top:2px">'
+        f'Career Pivot Simulator · from career thought to interview-ready in one session'
+        f'</div>'
+        f'</div>'
+        f'<div style="text-align:right;flex-shrink:0;padding-left:16px">'
+        f'<div style="font-size:22px;font-weight:900;color:{_readiness_bar_color};line-height:1">'
+        f'{_readiness}<span style="font-size:11px;font-weight:600;color:rgba(0,0,0,0.3)">/100</span></div>'
+        f'<div style="font-size:9px;font-weight:800;letter-spacing:0.06em;text-transform:uppercase;'
+        f'color:rgba(0,0,0,0.4)">Pivot Readiness</div>'
+        f'</div>'
+        f'</div>'
+
+        # Journey stepper nodes
+        f'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">'
+        f'{_phase_nodes_html}'
+        f'</div>'
+
+        # Progress bar
+        f'<div style="height:4px;background:rgba(0,0,0,0.07);border-radius:2px;overflow:hidden">'
+        f'<div style="width:{_journey_pct}%;height:4px;background:{_readiness_bar_color};'
+        f'border-radius:2px;transition:width 0.8s"></div>'
+        f'</div>'
+        f'<div style="display:flex;justify-content:space-between;margin-top:4px">'
+        f'<div style="font-size:9px;color:rgba(0,0,0,0.35)">{_n_phases_done}/{len(_journey_phases)} phases complete</div>'
+        f'<div style="font-size:9px;font-weight:700;color:{_readiness_bar_color}">'
+        + ("Interview-ready" if _journey_pct == 100 else f"{100 - _journey_pct}% to interview-ready")
+        + f'</div>'
+        f'</div>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
 
 # ══════════════════════════════════════════════════════════════════════════════
 # SPRINT MODE — Guided linear flow (one active step at a time)
