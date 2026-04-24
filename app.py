@@ -9785,43 +9785,36 @@ if not st.session_state.has_run:
         if not st.session_state.get("cv_text"):
             st.caption("No CV? Demo profile auto-loads.")
 
-    # ── Architecture layer — 6 cards (3×2 CSS Grid — guaranteed equal height) ──
-    _arch_cards = [
-        ("layers",    "#EEF3FB", "#0A66C2", False, "Structured Data",
-         "O*NET 894 occupations × 119 skill dimensions · IDF weighting · cosine similarity offline → O(1) runtime"),
-        ("cpu",       "#EEF3FB", "#0A66C2", False, "Dual-LLM Pattern",
-         "gpt-4o generates quality-critical artifacts → gpt-4o-mini evaluates each. Validated: +14pt on cover letters vs. single-pass (n=3 zero-shot)"),
-        ("zap",       "#EEF3FB", "#0A66C2", False, "Parallel Generation",
-         "ThreadPoolExecutor generates + evaluates 3 applications simultaneously. Advocate + Skeptic also run in parallel."),
-        ("refresh-cw","#EEF3FB", "#0A66C2", True,  "Agentic Loop",
-         "gpt-4o orchestrator selects tools, chains steps, detects conflicts — multi-step reasoning, not prompt chaining"),
-        ("scale",     "#EEF3FB", "#0A66C2", False, "Adversarial Evaluation",
-         "Advocate + Skeptic (parallel) → Judge synthesises → hire_prob %. LLM output never shown raw"),
-        ("activity",  "#EEF3FB", "#0A66C2", False, "Python Aggregation",
-         "Two layers: (1) hire_prob = 0.65×quality + 0.35×fit for portfolio ranking · (2) controversy score + std penalty for multi-reviewer consensus — neither formula used raw"),
-    ]
-    _arch_html = (
-        '<div style="font-size:10px;font-weight:800;letter-spacing:0.1em;text-transform:uppercase;'
-        'color:rgba(0,0,0,0.35);margin:22px 0 10px 0">What makes this technically non-trivial</div>'
-        '<div style="display:grid;grid-template-columns:repeat(3,1fr);grid-auto-rows:1fr;gap:10px">'
-    )
-    for _ico, _bg, _col, _highlight, _name, _desc in _arch_cards:
-        _border = "#0A66C2" if _highlight else "#C7D8F0"
-        _card_bg = "#EEF3FB" if _highlight else "#F8FAFF"
-        _title_col = "#0A66C2"
-        _arch_html += (
-            f'<div style="background:{_card_bg};border:1.5px solid {_border};border-radius:8px;'
-            f'padding:14px 13px;display:flex;flex-direction:column;box-sizing:border-box">'
-            f'<div style="margin-bottom:8px">{icon_box(_ico, bg=_bg, color=_col, size=16, box_size=30, radius=6)}</div>'
-            f'<div style="font-size:12px;font-weight:800;color:{_title_col};margin-bottom:5px;line-height:1.2">{_name}</div>'
-            f'<div style="font-size:11px;color:rgba(0,0,0,0.55);line-height:1.5;flex:1">{_desc}</div>'
-            f'</div>'
-        )
-    _arch_html += '</div>'
-    st.markdown(_arch_html, unsafe_allow_html=True)
+    # ── Technical Architecture (collapsed by default — keep landing clean) ──
+    with st.expander("Technical architecture — models, formulas, design decisions", expanded=False):
+        # Architecture overview cards
+        _arch_cards = [
+            ("layers",    "#EEF3FB", "#0A66C2", False, "Structured Data",
+             "O*NET 894 occupations × 119 skill dimensions · IDF weighting · cosine similarity offline → O(1) runtime"),
+            ("cpu",       "#EEF3FB", "#0A66C2", False, "Dual-LLM Pattern",
+             "gpt-4o generates quality-critical artifacts → gpt-4o-mini evaluates each. Validated: +14pt on cover letters vs. single-pass"),
+            ("zap",       "#EEF3FB", "#0A66C2", False, "Parallel Generation",
+             "ThreadPoolExecutor generates + evaluates 3 applications simultaneously. Advocate + Skeptic also run in parallel."),
+            ("refresh-cw","#EEF3FB", "#0A66C2", True,  "Agentic Loop",
+             "gpt-4o orchestrator selects tools, chains steps, detects conflicts — multi-step reasoning, not prompt chaining"),
+            ("scale",     "#EEF3FB", "#0A66C2", False, "Adversarial Evaluation",
+             "Advocate + Skeptic (parallel) → Judge synthesises → hire_prob %. LLM output never shown raw"),
+            ("activity",  "#EEF3FB", "#0A66C2", False, "Python Aggregation",
+             "hire_prob = 0.65×quality + 0.35×fit for ranking · controversy score + std penalty for multi-reviewer consensus"),
+        ]
+        _arch_html_inner = '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px">'
+        for _ico, _bg, _col, _hl, _name, _desc in _arch_cards:
+            _b = "#0A66C2" if _hl else "#C7D8F0"
+            _cbg = "#EEF3FB" if _hl else "#F8FAFF"
+            _arch_html_inner += (
+                f'<div style="background:{_cbg};border:1.5px solid {_b};border-radius:8px;padding:12px;">'
+                f'<div style="font-size:12px;font-weight:800;color:#0A66C2;margin-bottom:4px">{_name}</div>'
+                f'<div style="font-size:11px;color:rgba(0,0,0,0.55);line-height:1.45">{_desc}</div>'
+                f'</div>'
+            )
+        _arch_html_inner += '</div>'
+        st.markdown(_arch_html_inner, unsafe_allow_html=True)
 
-    # ── Model Decisions + Aggregation Formulas (professor-requested detail) ──
-    with st.expander("Why these models? — Architecture decisions + aggregation formulas", expanded=False):
         st.markdown(
             '<div style="font-size:10px;font-weight:800;letter-spacing:0.1em;text-transform:uppercase;'
             'color:rgba(0,0,0,0.35);margin-bottom:12px">LLM routing rationale</div>',
@@ -10001,75 +9994,10 @@ conf = compute_confidence_score(mat, art.pca_meta, str(current), str(target))
 neighbors_df = recommend_neighbors(bool(use_idf), str(current), top_k=10)
 
 
-# ============================================================
-# Pipeline Stage Progress — persistent "where are you?" bar
-# Shows the 5-stage interview pipeline status at the top of every active view
-# ============================================================
+# ── Stage done helper (used by Journey Stepper below) ──────────────────────
 def _stage_done(checks: list) -> bool:
     return all(checks)
 
-_pipeline_stages = [
-    (
-        "file-text", "Profile",
-        "CV + Pivot DNA",
-        _stage_done([bool(st.session_state.get("cv_text")), bool(st.session_state.get("pivot_dna"))]),
-    ),
-    (
-        "bar-chart-2", "Intelligence",
-        "O*NET + Market",
-        _stage_done([bool(st.session_state.get("onet_match") or st.session_state.get("cv_profile"))]),
-    ),
-    (
-        "zap", "Portfolio",
-        "Applications + Ranked",
-        _stage_done([bool(st.session_state.get("smart_apply_package") or st.session_state.get("pivot_narrative"))]),
-    ),
-    (
-        "scale", "Validated",
-        "Debated + Scored",
-        _stage_done([bool(st.session_state.get("debate_result") or st.session_state.get("review_board_result"))]),
-    ),
-    (
-        "mic", "Interview",
-        "Prep + Mock ready",
-        _stage_done([bool(st.session_state.get("interview_prep_done") or st.session_state.get("mock_interview_report"))]),
-    ),
-]
-_stages_done = sum(1 for *_, done in _pipeline_stages if done)
-_stage_pct = int(_stages_done / len(_pipeline_stages) * 100)
-_stage_bar_color = "#057642" if _stages_done == 5 else ("#0A66C2" if _stages_done >= 2 else "#A05A00")
-
-_stage_html = (
-    f'<div style="background:#fff;border:1px solid rgba(0,0,0,0.08);border-radius:10px;'
-    f'padding:10px 16px;margin-bottom:14px">'
-    f'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">'
-    f'<div style="font-size:10px;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;'
-    f'color:rgba(0,0,0,0.38)">Pipeline to Interview</div>'
-    f'<div style="font-size:11px;font-weight:700;color:{_stage_bar_color}">'
-    f'{_stages_done}/5 stages · {_stage_pct}% to interview-ready</div>'
-    f'</div>'
-    f'<div style="height:4px;background:rgba(0,0,0,0.06);border-radius:2px;margin-bottom:10px;overflow:hidden">'
-    f'<div style="width:{_stage_pct}%;height:4px;background:{_stage_bar_color};border-radius:2px;transition:width 0.6s"></div>'
-    f'</div>'
-    f'<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px">'
-)
-for _sico, _sname, _scap, _sdone in _pipeline_stages:
-    _s_border = "#057642" if _sdone else "rgba(0,0,0,0.1)"
-    _s_bg = "#F0FAF4" if _sdone else "#F8FAFF"
-    _s_icon_col = "#057642" if _sdone else "rgba(0,0,0,0.25)"
-    _s_title_col = "#057642" if _sdone else "rgba(0,0,0,0.55)"
-    _stage_html += (
-        f'<div style="background:{_s_bg};border:1px solid {_s_border};border-radius:6px;'
-        f'padding:7px 8px;text-align:center">'
-        f'<div style="display:flex;align-items:center;justify-content:center;margin-bottom:3px">'
-        + (check_icon(13) if _sdone else icon(_sico, 13, "rgba(0,0,0,0.25)"))
-        + f'</div>'
-        f'<div style="font-size:10px;font-weight:800;color:{_s_title_col};line-height:1.2">{_sname}</div>'
-        f'<div style="font-size:9px;color:rgba(0,0,0,0.35);margin-top:1px;line-height:1.2">{_scap}</div>'
-        f'</div>'
-    )
-_stage_html += '</div></div>'
-st.markdown(_stage_html, unsafe_allow_html=True)
 
 # ── Demo Mode banner (visible in active session) ──────────────────────────
 if st.session_state.get("demo_mode"):
@@ -10089,68 +10017,57 @@ if st.session_state.get("demo_mode"):
     )
 
 # ============================================================
-# OPS — Offer Probability Score (live northstar widget)
-# The single most important number in PivotOS.
+# OPS North Star Banner — single, compact, all key numbers in one row
 # ============================================================
-_ops_c1, _ops_c2 = st.columns([1, 2], gap="medium")
+_ops_grade_bg = {
+    "A": "#F0FAF4", "B": "#EEF3FB", "C": "#FFF8E7",
+    "D": "#FFF0E5", "F": "#FFF0F0",
+}.get(_ops_result["grade"], "#F8FAFF")
+_ops_delta_txt = ""
+if _ops_result["delta"] != 0:
+    _d = _ops_result["delta"]
+    _d_col = "#057642" if _d > 0 else "#B71C1C"
+    _ops_delta_txt = f'<span style="font-size:11px;font-weight:700;color:{_d_col}">{("+" if _d>0 else "")}{_d}pts vs last session</span>'
 
-with _ops_c1:
-    _ops_grade_bg = {
-        "A": "#F0FAF4", "B": "#EEF3FB", "C": "#FFF8E7",
-        "D": "#FFF0E5", "F": "#FFF0F0",
-    }.get(_ops_result["grade"], "#F8FAFF")
-    _ops_conf_label = {
-        "high": "High confidence · model well-calibrated",
-        "medium": "Medium confidence · more data will sharpen this",
-        "low": "Low confidence · upload CV & run more applications",
-    }.get(_ops_result["confidence"], "")
-    _ops_delta_disp = f'<span style="font-size:13px;font-weight:700;color:{"#057642" if _ops_result["delta"]>0 else ("#B71C1C" if _ops_result["delta"]<0 else "#5F6B7A")}">'
-    _ops_delta_disp += (f'+{_ops_result["delta"]}' if _ops_result["delta"] > 0 else str(_ops_result["delta"])) + "pts vs last session</span>"
-    st.markdown(
-        f'<div style="background:{_ops_grade_bg};border:1.5px solid {_ops_color};border-radius:12px;'
-        f'padding:20px 22px;text-align:center">'
-        f'<div style="font-size:10px;font-weight:800;letter-spacing:0.12em;text-transform:uppercase;'
-        f'color:rgba(0,0,0,0.4);margin-bottom:6px">Offer Probability</div>'
-        f'<div style="font-size:56px;font-weight:900;color:{_ops_color};line-height:1;margin-bottom:4px">'
-        f'{_ops_val}<span style="font-size:28px">%</span></div>'
-        f'<div style="font-size:13px;font-weight:800;color:{_ops_color};margin-bottom:6px">'
-        f'{ops_label(_ops_val)} · Grade {_ops_result["grade"]}</div>'
-        f'{_ops_delta_disp if _ops_result["delta"] != 0 else ""}'
-        f'<div style="font-size:10px;color:rgba(0,0,0,0.38);margin-top:6px">{_ops_conf_label}</div>'
-        f'</div>',
-        unsafe_allow_html=True,
+st.markdown(
+    f'<div style="background:#fff;border:1.5px solid {_ops_color};border-radius:12px;'
+    f'padding:16px 20px;margin-bottom:12px;display:flex;align-items:center;gap:20px;flex-wrap:wrap">'
+
+    # P(offer) — the north star number
+    f'<div style="display:flex;align-items:baseline;gap:4px;flex-shrink:0">'
+    f'<div style="font-size:48px;font-weight:900;color:{_ops_color};line-height:1">{_ops_val}</div>'
+    f'<div style="font-size:20px;font-weight:700;color:{_ops_color}">%</div>'
+    f'</div>'
+    f'<div style="flex-shrink:0">'
+    f'<div style="font-size:13px;font-weight:800;color:{_ops_color}">{ops_label(_ops_val)} · Grade {_ops_result["grade"]}</div>'
+    f'<div style="font-size:10px;color:rgba(0,0,0,0.4);margin-top:1px">P(offer) — your north star</div>'
+    f'{_ops_delta_txt}'
+    f'</div>'
+
+    # Divider
+    f'<div style="width:1px;height:40px;background:rgba(0,0,0,0.08);flex-shrink:0"></div>'
+
+    # Next lever
+    f'<div style="flex:1;min-width:160px">'
+    f'<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;'
+    f'color:rgba(0,0,0,0.38);margin-bottom:3px">Next lever to move this number</div>'
+    f'<div style="font-size:13px;font-weight:700;color:#0A66C2">{icon("zap",13,"#0A66C2")} {_ops_result["next_lever"]}</div>'
+    f'</div>'
+
+    # Top driver (if any)
+    + (
+        f'<div style="background:{_ops_grade_bg};border-radius:8px;padding:8px 12px;flex-shrink:0">'
+        f'<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;'
+        f'color:rgba(0,0,0,0.38);margin-bottom:3px">Top factor</div>'
+        f'<div style="font-size:12px;font-weight:700;color:rgba(0,0,0,0.75)">'
+        f'{(_ops_result["drivers"] or [{"factor":"—"}])[0].get("factor","—")}</div>'
+        f'</div>'
+        if _ops_result.get("drivers") else ""
     )
 
-with _ops_c2:
-    st.markdown(
-        f'<div style="background:#fff;border:1px solid rgba(0,0,0,0.08);border-radius:12px;padding:16px 18px">'
-        f'<div style="font-size:11px;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;'
-        f'color:rgba(0,0,0,0.38);margin-bottom:10px">What\'s driving your OPS</div>',
-        unsafe_allow_html=True,
-    )
-    for _drv in (_ops_result["drivers"] or [])[:5]:
-        _drv_dir = _drv.get("direction", "~")
-        _drv_col = "#057642" if _drv_dir == "+" else ("#B71C1C" if _drv_dir == "-" else "#A05A00")
-        _drv_icon = check_icon(11) if _drv_dir == "+" else (x_icon(11) if _drv_dir == "-" else warn_icon(11))
-        _drv_impact = _drv.get("impact", 0)
-        _drv_sign = "+" if _drv_impact > 0 else ""
-        st.markdown(
-            f'<div style="display:flex;align-items:center;gap:8px;padding:5px 0;'
-            f'border-bottom:1px solid rgba(0,0,0,0.05)">'
-            f'<div style="flex-shrink:0">{_drv_icon}</div>'
-            f'<div style="flex:1;font-size:12px;color:rgba(0,0,0,0.72)">{_drv.get("factor","")}</div>'
-            f'<div style="font-size:11px;font-weight:800;color:{_drv_col};white-space:nowrap">'
-            f'{_drv_sign}{_drv_impact}pts</div>'
-            f'</div>',
-            unsafe_allow_html=True,
-        )
-    st.markdown(
-        f'<div style="margin-top:10px;background:#EEF3FB;border-radius:6px;padding:8px 10px;'
-        f'font-size:11px;color:#0A66C2;font-weight:600">'
-        f'{icon("zap",12,"#0A66C2")} &nbsp;Next lever: {_ops_result["next_lever"]}'
-        f'</div></div>',
-        unsafe_allow_html=True,
-    )
+    + f'</div>',
+    unsafe_allow_html=True,
+)
 
 
 # ============================================================
@@ -10368,17 +10285,7 @@ with st.container(border=True):
         else '<span class="status-pill status-warn" style="font-size:11px">○ LLM offline</span>'
     )
     # ── Command Center Hero Header ────────────────────────────────────────────
-    _ops_hero_col  = ops_color(_ops_val)
-    _ops_hero_lbl  = ops_label(_ops_val)
-    _ops_hero_desc = ops_description(_ops_val)
-    _pipeline_count = len(st.session_state.get("pipeline_jobs") or [])
-    _active_apps    = sum(1 for j in (st.session_state.get("pipeline_jobs") or [])
-                         if j.get("status") not in ("offer", "rejected", "withdrawn"))
-    _next_action_text = (
-        _next_list[0] if _next_list else "Download Pivot Playbook"
-    ) if '_next_list' in dir() else "Start with Assess tab"
-
-    # ── Pivot Readiness Score — must be computed before the hero st.markdown ──
+    # ── Compute variables needed by Intelligence Brief and Journey Stepper ──────
     _n_gaps = int((gap_df["gap"] > 0).sum()) if not gap_df.empty else 0
     _n_total = len(gap_df) if not gap_df.empty else 1
     _gap_ratio = _n_gaps / max(_n_total, 1)
@@ -10393,100 +10300,6 @@ with st.container(border=True):
         + (15 if bool(st.session_state.smart_apply_package)          else 0)
         + (15 if bool(st.session_state.interview_prep_done)          else 0)
     , 100))
-
-    st.markdown(
-        # ── Dark hero band ───────────────────────────────────────────────────
-        f'<div style="background:linear-gradient(135deg,#0A1628 0%,#0F2347 60%,#0A1628 100%);'
-        f'border-radius:12px;padding:20px 24px;margin-bottom:16px">'
-
-        # Row 1: route title + LLM badge
-        f'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">'
-        f'<div style="display:flex;align-items:center;gap:10px">'
-        f'<div style="font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;'
-        f'color:rgba(255,255,255,0.45)">Pivot OS · Command Center</div>'
-        f'{_llm_badge.replace("status-ok", "status-ok").replace("font-size:11px", "font-size:10px;background:rgba(255,255,255,0.08);border:none;color:rgba(255,255,255,0.6)")}'
-        f'</div>'
-        f'<div style="font-size:10px;color:rgba(255,255,255,0.30);font-weight:600">'
-        f'O*NET · {len(OCCS):,} occupations · gpt-4o agent</div>'
-        f'</div>'
-
-        # Row 2: pivot route (big)
-        f'<div style="font-size:22px;font-weight:900;color:#fff;letter-spacing:-0.5px;margin-bottom:16px;line-height:1.2">'
-        f'{str(current)[:40]} '
-        f'<span style="color:#4ADE80;font-size:20px;font-weight:400">→</span> '
-        f'<span style="color:#60A5FA">{str(target)[:40]}</span>'
-        f'</div>'
-
-        # Row 3: 5 live metrics
-        f'<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:16px">'
-
-        # P(offer)
-        f'<div style="background:rgba(255,255,255,0.07);border-radius:8px;padding:10px 12px;border:1px solid rgba(255,255,255,0.10)">'
-        f'<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:rgba(255,255,255,0.45);margin-bottom:4px">P(offer)</div>'
-        f'<div style="font-size:24px;font-weight:900;color:{_ops_hero_col};line-height:1">{_ops_val}</div>'
-        f'<div style="font-size:9px;color:rgba(255,255,255,0.35);margin-top:2px">{_ops_hero_lbl}</div>'
-        f'</div>'
-
-        # Match score
-        f'<div style="background:rgba(255,255,255,0.07);border-radius:8px;padding:10px 12px;border:1px solid rgba(255,255,255,0.10)">'
-        f'<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:rgba(255,255,255,0.45);margin-bottom:4px">Match</div>'
-        f'<div style="font-size:24px;font-weight:900;color:#fff;line-height:1">{match_score_display:.0f}</div>'
-        f'<div style="font-size:9px;color:rgba(255,255,255,0.35);margin-top:2px">O*NET cosine</div>'
-        f'</div>'
-
-        # Skill gaps
-        f'<div style="background:rgba(255,255,255,0.07);border-radius:8px;padding:10px 12px;border:1px solid rgba(255,255,255,0.10)">'
-        f'<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:rgba(255,255,255,0.45);margin-bottom:4px">Gaps</div>'
-        f'<div style="font-size:24px;font-weight:900;color:#FCD34D;line-height:1">{_n_gaps}</div>'
-        f'<div style="font-size:9px;color:rgba(255,255,255,0.35);margin-top:2px">skills to close</div>'
-        f'</div>'
-
-        # Readiness
-        f'<div style="background:rgba(255,255,255,0.07);border-radius:8px;padding:10px 12px;border:1px solid rgba(255,255,255,0.10)">'
-        f'<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:rgba(255,255,255,0.45);margin-bottom:4px">Readiness</div>'
-        f'<div style="font-size:24px;font-weight:900;color:#4ADE80;line-height:1">{_readiness}</div>'
-        f'<div style="font-size:9px;color:rgba(255,255,255,0.35);margin-top:2px">/100</div>'
-        f'</div>'
-
-        # Pipeline
-        f'<div style="background:rgba(255,255,255,0.07);border-radius:8px;padding:10px 12px;border:1px solid rgba(255,255,255,0.10)">'
-        f'<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:rgba(255,255,255,0.45);margin-bottom:4px">Pipeline</div>'
-        f'<div style="font-size:24px;font-weight:900;color:#C084FC;line-height:1">{_pipeline_count}</div>'
-        f'<div style="font-size:9px;color:rgba(255,255,255,0.35);margin-top:2px">{_active_apps} active</div>'
-        f'</div>'
-
-        f'</div>'  # end metrics grid
-
-        # Row 4: P(offer) readiness bar + description
-        f'<div style="background:rgba(255,255,255,0.05);border-radius:6px;padding:10px 14px;'
-        f'display:flex;align-items:center;gap:14px">'
-        f'<div style="flex:1">'
-        f'<div style="height:5px;background:rgba(255,255,255,0.10);border-radius:3px;overflow:hidden">'
-        f'<div style="height:5px;width:{min(_ops_val, 100)}%;background:{_ops_hero_col};border-radius:3px;transition:width 0.8s"></div>'
-        f'</div>'
-        f'</div>'
-        f'<div style="font-size:11px;color:rgba(255,255,255,0.50);white-space:nowrap;flex-shrink:0">'
-        f'{_ops_hero_desc[:60]}</div>'
-        f'</div>'
-
-        f'</div>',  # end dark hero
-        unsafe_allow_html=True,
-    )
-
-    # Personal mode badge (shown below hero band)
-    if _personal_mode and _cv_profile:
-        p = _cv_profile
-        st.markdown(
-            f'<div style="background:#EEF3FB;border-radius:8px;padding:10px 14px;'
-            f'display:inline-block;margin-bottom:8px">'
-            f'<span style="font-size:10px;font-weight:800;letter-spacing:0.05em;text-transform:uppercase;color:#0A66C2">✓ Personal Mode — </span>'
-            f'<span style="font-size:13px;font-weight:700;color:rgba(0,0,0,0.85)">{p.get("extracted_role","") or "CV loaded"}</span>'
-            f' <span style="font-size:11px;color:rgba(0,0,0,0.5)">· {p.get("years_experience",0):.0f} yrs exp · {p.get("skills_mapped_count",0)} skills mapped</span>'
-            f'</div>',
-            unsafe_allow_html=True,
-        )
-
-    # Milestone breakdown shown in tooltip
     _milestone_labels = [
         ("Skill assessed",    True),
         ("CV uploaded",       bool((st.session_state.cv_text or "").strip())),
@@ -10498,86 +10311,24 @@ with st.container(border=True):
     ]
     _r_color = "#117A37" if _readiness >= 65 else ("#A05A00" if _readiness >= 40 else "#B71C1C")
     _r_label = "Strong" if _readiness >= 65 else ("Promising" if _readiness >= 40 else "Early Stage")
-    _weeks = max(4, int((_n_gaps * 3.5) * (1 - match_score_display / 200)))  # rough weeks estimate
-
-    _gap_color = "#117A37" if _n_gaps <= 10 else ("#A05A00" if _n_gaps <= 25 else "#B71C1C")
-    _conf_val = int(conf['confidence_score'])
-    _conf_color = "#117A37" if _conf_val >= 70 else ("#A05A00" if _conf_val >= 45 else "#B71C1C")
+    _weeks = max(4, int((_n_gaps * 3.5) * (1 - match_score_display / 200)))
     _match_color_ov = "#117A37" if match_score_display >= 70 else ("#A05A00" if match_score_display >= 45 else "#B71C1C")
-    st.markdown(
-        f'<div class="li-stats-row">'
-        f'<div class="li-stat-card">'
-        f'  <div class="li-stat-val" style="color:{_match_color_ov}">{match_score_display:.0f}<span style="font-size:14px;font-weight:600;color:rgba(0,0,0,0.3)">/100</span></div>'
-        f'  <div class="li-stat-label">Match Score</div>'
-        f'  <div class="li-stat-sub">{"Strong" if match_score_display >= 70 else ("Promising" if match_score_display >= 45 else "Hard pivot")}</div>'
-        f'</div>'
-        f'<div class="li-stat-card">'
-        f'  <div class="li-stat-val" style="color:{_conf_color}">{_conf_val}<span style="font-size:14px;font-weight:600;color:rgba(0,0,0,0.3)">/100</span></div>'
-        f'  <div class="li-stat-label">Confidence</div>'
-        f'  <div class="li-stat-sub">Data reliability</div>'
-        f'</div>'
-        f'<div class="li-stat-card">'
-        f'  <div class="li-stat-val" style="color:{_gap_color}">{_n_gaps}</div>'
-        f'  <div class="li-stat-label">Skill Gaps</div>'
-        f'  <div class="li-stat-sub">skills to develop</div>'
-        f'</div>'
-        f'<div class="li-stat-card">'
-        f'  <div class="li-stat-val" style="color:#0A66C2">~{_weeks}<span style="font-size:14px;font-weight:600;color:rgba(0,0,0,0.3)">w</span></div>'
-        f'  <div class="li-stat-label">Est. Readiness</div>'
-        f'  <div class="li-stat-sub">weeks to apply-ready</div>'
-        f'</div>'
-        f'</div>',
-        unsafe_allow_html=True,
-    )
 
-    st.markdown(
-        f'<div style="margin:14px 0 8px 0;display:flex;align-items:center;gap:12px;">'
-        f'<div style="flex:1;background:rgba(0,0,0,0.07);border-radius:4px;height:8px;overflow:hidden;">'
-        f'<div style="width:{_readiness}%;height:8px;background:{_r_color};border-radius:4px;transition:width 0.6s;"></div></div>'
-        f'<div style="font-size:13px;font-weight:800;color:{_r_color};white-space:nowrap">'
-        f'Pivot Readiness: {_readiness}/100 · {_r_label}</div>'
-        f'</div>',
-        unsafe_allow_html=True,
-    )
-
-    # ── Match score distribution sparkline (Advanced + Quick Apply only) ──────
-    # Hidden in Sprint mode — the radar chart in Step 1 carries this information visually
-    if scores_all_sorted.size > 10 and not guided:
-        _hist_counts, _hist_edges = np.histogram(scores_all_sorted, bins=40)
-        _bin_centers = (_hist_edges[:-1] + _hist_edges[1:]) / 2
-        _fig_dist = go.Figure()
-        _fig_dist.add_trace(go.Bar(
-            x=_bin_centers, y=_hist_counts,
-            marker_color=["#0A66C2" if abs(bc - raw_target) < 2.5 else "rgba(10,102,194,0.18)"
-                          for bc in _bin_centers],
-            hovertemplate="%{x:.0f} score · %{y} roles<extra></extra>",
-        ))
-        _fig_dist.add_vline(
-            x=raw_target, line_color="#0A66C2", line_width=2, line_dash="solid",
-            annotation_text=f"  {target[:25]}… ({raw_target:.0f})",
-            annotation_font_size=11, annotation_font_color="#0A66C2",
+    # Personal mode badge — compact, inline
+    if _personal_mode and _cv_profile:
+        p = _cv_profile
+        st.markdown(
+            f'<div style="background:#EEF3FB;border-radius:6px;padding:6px 12px;'
+            f'display:inline-flex;align-items:center;gap:8px;margin-bottom:6px">'
+            f'<span style="font-size:10px;font-weight:800;color:#0A66C2">✓ Personal Mode</span>'
+            f'<span style="font-size:12px;font-weight:700;color:rgba(0,0,0,0.75)">'
+            f'{p.get("extracted_role","") or "CV loaded"}'
+            f'</span>'
+            f'<span style="font-size:11px;color:rgba(0,0,0,0.4)">'
+            f'{p.get("years_experience",0):.0f} yrs · {p.get("skills_mapped_count",0)} skills</span>'
+            f'</div>',
+            unsafe_allow_html=True,
         )
-        _fig_dist.update_layout(
-            margin=dict(l=0, r=0, t=24, b=0), height=110,
-            paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-            title=dict(text="Where this pivot sits among all possible pivots from your current role",
-                       font_size=11, font_color="rgba(0,0,0,0.45)", x=0),
-            showlegend=False,
-            xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
-            yaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
-            bargap=0.05,
-        )
-        st.plotly_chart(_fig_dist, use_container_width=True, config={"displayModeBar": False})
-
-    st.markdown("<div style='margin-top:4px'></div>", unsafe_allow_html=True)
-    if _personal_mode:
-        st.info("Personal mode active — skill gaps reflect YOUR CV profile vs. the target role, not the O*NET role average.")
-    if match_score_display >= 70:
-        st.success("Strong overlap — validate the story, build evidence, and compare strategies.")
-    elif match_score_display >= 45:
-        st.info("Promising with gaps — a stepping-stone or hybrid strategy may outperform a direct pivot.")
-    else:
-        st.warning("Hard pivot — use route analysis, skill investment, and the review board before deciding.")
 
     # ── Pivot Intelligence Brief ─────────────────────────────
     # Rule-based synthesis of the current session state — always visible,
