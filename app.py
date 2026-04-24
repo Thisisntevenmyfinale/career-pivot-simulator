@@ -9547,95 +9547,154 @@ if quick_apply:
 # ============================================================
 if not st.session_state.has_run:
 
-    # ── Single-obsession headline ──────────────────────────────────────────
+    # ── Hero: short, clear, no pipeline diagram ────────────────────────────
     st.markdown(
         '<div style="background:linear-gradient(135deg,#0A66C2 0%,#004182 100%);'
-        'border-radius:14px;padding:40px 44px 36px 44px;margin-bottom:22px;color:#fff">'
-        '<div style="font-size:10px;font-weight:800;letter-spacing:0.16em;text-transform:uppercase;'
-        'opacity:0.6;margin-bottom:14px">Career Pivot Simulator — A3</div>'
-        '<div style="font-size:34px;font-weight:900;line-height:1.12;margin-bottom:14px;letter-spacing:-0.8px">'
-        'One number.<br>'
-        '<span style="color:#7DD3FC">Your Offer Probability.</span>'
+        'border-radius:14px;padding:32px 40px;margin-bottom:20px;color:#fff">'
+        '<div style="font-size:10px;font-weight:800;letter-spacing:0.14em;text-transform:uppercase;'
+        'opacity:0.55;margin-bottom:12px">Pivot OS · Career Pivot Simulator</div>'
+        '<div style="font-size:30px;font-weight:900;line-height:1.15;margin-bottom:10px;letter-spacing:-0.5px">'
+        'Know your offer probability<br>'
+        '<span style="color:#7DD3FC">before you apply.</span>'
         '</div>'
-        '<div style="font-size:14px;opacity:0.82;line-height:1.7;max-width:580px;margin-bottom:32px">'
-        'PivotOS tracks one thing: how likely you are to receive an offer. '
-        'Every action — better application, mock interview, more volume — moves that number. '
-        'The pipeline exists to drive it up.<br>'
-        '<span style="opacity:0.65;font-size:12px">'
-        'Every generative output passes a dual-LLM quality gate. '
-        'Rejections are auto-diagnosed. Company timing is analysed. '
-        'Your writing compounds over sessions.'
-        '</span>'
+        '<div style="font-size:13px;opacity:0.80;line-height:1.65;max-width:560px">'
+        'Pick a target role, upload your CV, and instantly see your P(offer) score. '
+        'AI generates a tailored application, an adversarial debate tests it, '
+        'and the system calibrates itself every time you log an outcome.'
         '</div>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
 
-        # Pipeline visual — CSS grid: 6 step cards + 5 arrows, all locked to one row
-        '<div style="font-size:10px;font-weight:800;letter-spacing:0.1em;text-transform:uppercase;'
-        'opacity:0.5;margin-bottom:10px">The pipeline</div>'
-        '<div style="display:grid;grid-template-columns:1fr 20px 1fr 20px 1fr 20px 1fr 20px 1fr 20px 1fr;'
-        'align-items:center;gap:0;margin-bottom:28px">'
+    # ── Getting started: 3 clear steps + one primary CTA ──────────────────
+    _lp_has_cv   = bool(st.session_state.get("cv_profile") or st.session_state.get("demo_mode"))
+    _lp_has_pivot = str(current) != (occupations[0] if occupations else "")
 
-        '<div style="background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);'
-        'border-radius:8px;padding:10px 12px;display:flex;flex-direction:column;align-items:center;'
-        'justify-content:flex-start;min-height:82px;box-sizing:border-box">'
-        f'<div style="display:flex;align-items:center;justify-content:center;margin-bottom:5px;height:26px">{icon("file-text", 20, "rgba(255,255,255,0.9)")}</div>'
-        '<div style="font-size:11px;font-weight:800;text-align:center;line-height:1.25">Upload CV</div>'
-        '<div style="font-size:10px;opacity:0.6;margin-top:3px;text-align:center;line-height:1.3">skill extraction<br>O*NET mapping</div>'
-        '</div>'
-        f'<div style="display:flex;align-items:center;justify-content:center;opacity:0.45">{icon("arrow-right", 14, "rgba(255,255,255,0.9)")}</div>'
+    st.markdown(
+        '<div style="background:#fff;border:1px solid rgba(0,0,0,0.10);border-radius:14px;'
+        'padding:24px 28px;margin-bottom:16px">'
+        '<div style="font-size:16px;font-weight:800;color:#1D2226;margin-bottom:20px">'
+        'Get started in 3 steps</div>'
 
-        '<div style="background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);'
-        'border-radius:8px;padding:10px 12px;display:flex;flex-direction:column;align-items:center;'
-        'justify-content:flex-start;min-height:82px;box-sizing:border-box">'
-        f'<div style="display:flex;align-items:center;justify-content:center;margin-bottom:5px;height:26px">{icon("search", 20, "rgba(255,255,255,0.9)")}</div>'
-        '<div style="font-size:11px;font-weight:800;text-align:center;line-height:1.25">Find / Paste Job</div>'
-        '<div style="font-size:10px;opacity:0.6;margin-top:3px;text-align:center;line-height:1.3">SerpAPI real jobs<br>or paste one JD</div>'
-        '</div>'
-        f'<div style="display:flex;align-items:center;justify-content:center;opacity:0.45">{icon("arrow-right", 14, "rgba(255,255,255,0.9)")}</div>'
+        # Step 1
+        f'<div style="display:flex;align-items:flex-start;gap:16px;padding:14px 0;'
+        f'border-bottom:1px solid rgba(0,0,0,0.07)">'
+        f'<div style="width:32px;height:32px;border-radius:50%;flex-shrink:0;'
+        f'background:{"#057642" if _lp_has_pivot else "#0A66C2"};'
+        f'display:flex;align-items:center;justify-content:center;'
+        f'font-size:13px;font-weight:900;color:#fff">{"✓" if _lp_has_pivot else "1"}</div>'
+        f'<div style="flex:1">'
+        f'<div style="font-size:14px;font-weight:700;color:#1D2226;margin-bottom:3px">Set your career pivot</div>'
+        f'<div style="font-size:12px;color:rgba(0,0,0,0.50)">Choose your current and target occupation in the sidebar on the left.</div>'
+        f'</div>'
+        f'<div style="font-size:11px;font-weight:700;color:{"#057642" if _lp_has_pivot else "#0A66C2"};'
+        f'white-space:nowrap;padding-top:6px">{"✓ Done" if _lp_has_pivot else "← Sidebar"}</div>'
+        f'</div>'
 
-        '<div style="background:rgba(255,255,255,0.18);border:1.5px solid rgba(255,255,255,0.5);'
-        'border-radius:8px;padding:10px 12px;display:flex;flex-direction:column;align-items:center;'
-        'justify-content:flex-start;min-height:82px;box-sizing:border-box">'
-        f'<div style="display:flex;align-items:center;justify-content:center;margin-bottom:5px;height:26px">{icon("zap", 20, "rgba(255,255,255,0.9)")}</div>'
-        '<div style="font-size:11px;font-weight:800;text-align:center;line-height:1.25">Generate Portfolio</div>'
-        '<div style="font-size:10px;opacity:0.7;margin-top:3px;text-align:center;line-height:1.3">1–3 apps<br>parallel (gpt-4o)</div>'
-        '</div>'
-        f'<div style="display:flex;align-items:center;justify-content:center;opacity:0.45">{icon("arrow-right", 14, "rgba(255,255,255,0.9)")}</div>'
+        # Step 2
+        f'<div style="display:flex;align-items:flex-start;gap:16px;padding:14px 0;'
+        f'border-bottom:1px solid rgba(0,0,0,0.07)">'
+        f'<div style="width:32px;height:32px;border-radius:50%;flex-shrink:0;'
+        f'background:{"#057642" if _lp_has_cv else "rgba(0,0,0,0.10)"};'
+        f'display:flex;align-items:center;justify-content:center;'
+        f'font-size:13px;font-weight:900;color:{"#fff" if _lp_has_cv else "rgba(0,0,0,0.35)"}">{"✓" if _lp_has_cv else "2"}</div>'
+        f'<div style="flex:1">'
+        f'<div style="font-size:14px;font-weight:700;color:#1D2226;margin-bottom:3px">Add your profile</div>'
+        f'<div style="font-size:12px;color:rgba(0,0,0,0.50);margin-bottom:8px">'
+        f'Upload your CV to get a personalised skill match score. No CV? Use the demo profile.</div>'
+        + (
+            '<div style="font-size:11px;font-weight:700;color:#057642">✓ Profile loaded</div>'
+            if _lp_has_cv else ""
+        )
+        + f'</div>'
+        f'<div style="font-size:11px;font-weight:700;color:{"#057642" if _lp_has_cv else "rgba(0,0,0,0.35)"};'
+        f'white-space:nowrap;padding-top:6px">{"✓ Done" if _lp_has_cv else "← Sidebar"}</div>'
+        f'</div>'
 
-        '<div style="background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);'
-        'border-radius:8px;padding:10px 12px;display:flex;flex-direction:column;align-items:center;'
-        'justify-content:flex-start;min-height:82px;box-sizing:border-box">'
-        f'<div style="display:flex;align-items:center;justify-content:center;margin-bottom:5px;height:26px">{icon("scale", 20, "rgba(255,255,255,0.9)")}</div>'
-        '<div style="font-size:11px;font-weight:800;text-align:center;line-height:1.25">Debate + Rank</div>'
-        '<div style="font-size:10px;opacity:0.6;margin-top:3px;text-align:center;line-height:1.3">adversarial test<br>hire probability %</div>'
-        '</div>'
-        f'<div style="display:flex;align-items:center;justify-content:center;opacity:0.45">{icon("arrow-right", 14, "rgba(255,255,255,0.9)")}</div>'
-
-        '<div style="background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);'
-        'border-radius:8px;padding:10px 12px;display:flex;flex-direction:column;align-items:center;'
-        'justify-content:flex-start;min-height:82px;box-sizing:border-box">'
-        f'<div style="display:flex;align-items:center;justify-content:center;margin-bottom:5px;height:26px">{icon("mic", 20, "rgba(255,255,255,0.9)")}</div>'
-        '<div style="font-size:11px;font-weight:800;text-align:center;line-height:1.25">Interview Prep</div>'
-        '<div style="font-size:10px;opacity:0.6;margin-top:3px;text-align:center;line-height:1.3">tailored questions<br>answer coaching</div>'
-        '</div>'
-        f'<div style="display:flex;align-items:center;justify-content:center;opacity:0.45">{icon("arrow-right", 14, "rgba(255,255,255,0.9)")}</div>'
-
-        '<div style="background:rgba(125,211,252,0.2);border:1.5px solid rgba(125,211,252,0.5);'
-        'border-radius:8px;padding:10px 12px;display:flex;flex-direction:column;align-items:center;'
-        'justify-content:flex-start;min-height:82px;box-sizing:border-box">'
-        f'<div style="display:flex;align-items:center;justify-content:center;margin-bottom:5px;height:26px">{icon("calendar", 20, "rgba(125,211,252,0.9)")}</div>'
-        '<div style="font-size:11px;font-weight:800;text-align:center;color:#7DD3FC;line-height:1.25">Interview</div>'
-        '<div style="font-size:10px;color:rgba(125,211,252,0.8);margin-top:3px;text-align:center;line-height:1.3">the only goal<br>that matters</div>'
-        '</div>'
-
-        '</div>'
+        # Step 3
+        f'<div style="display:flex;align-items:flex-start;gap:16px;padding:14px 0">'
+        f'<div style="width:32px;height:32px;border-radius:50%;flex-shrink:0;'
+        f'background:rgba(0,0,0,0.07);'
+        f'display:flex;align-items:center;justify-content:center;'
+        f'font-size:13px;font-weight:900;color:rgba(0,0,0,0.35)">3</div>'
+        f'<div style="flex:1">'
+        f'<div style="font-size:14px;font-weight:700;color:#1D2226;margin-bottom:3px">Get your P(offer) score</div>'
+        f'<div style="font-size:12px;color:rgba(0,0,0,0.50)">Click the button below. The AI generates a tailored application and tells you your hire probability.</div>'
+        f'</div>'
+        f'</div>'
 
         '</div>',
         unsafe_allow_html=True,
     )
 
-    # ── Career Command Center (shown when data exists) ────────────────────
+    # Primary CTA — one button, no ambiguity
+    _lp_cta_col1, _lp_cta_col2 = st.columns([2, 1], gap="medium")
+    with _lp_cta_col1:
+        if st.button(
+            "→ Get my P(offer) score",
+            use_container_width=True,
+            type="primary",
+            key="_hero_main_cta",
+        ):
+            st.session_state["_pending_mode"] = "Quick Apply"
+            st.session_state["has_run"] = True
+            st.rerun()
+    with _lp_cta_col2:
+        if not _lp_has_cv:
+            if st.button("Load demo profile first", use_container_width=True, key="_hero_demo_cta"):
+                load_demo_profile(st.session_state)
+                st.rerun()
+
+    # Feature row — what's inside, compact
+    st.markdown(
+        '<div style="display:flex;gap:8px;flex-wrap:wrap;margin:14px 0 6px 0">'
+        + "".join([
+            f'<div style="background:#F3F6F9;border-radius:20px;padding:5px 12px;'
+            f'font-size:11px;font-weight:600;color:rgba(0,0,0,0.60)">{f}</div>'
+            for f in ["P(offer) Score", "Skill Gap Map", "AI Cover Letter",
+                      "Adversarial Debate", "Interview Coach", "Outcome Calibration"]
+        ])
+        + '</div>',
+        unsafe_allow_html=True,
+    )
+
+    # Other modes — secondary, not the first thing you see
+    with st.expander("Other ways to start — Career Sprint or Expert Mode", expanded=False):
+        _om_c1, _om_c2 = st.columns(2, gap="medium")
+        with _om_c1:
+            st.markdown(
+                '<div style="background:#F8FAFF;border:1px solid #C7D8F0;border-radius:10px;'
+                'padding:14px 16px;margin-bottom:8px">'
+                '<div style="font-size:12px;font-weight:800;color:#0A66C2;margin-bottom:4px">Career Sprint</div>'
+                '<div style="font-size:11px;color:rgba(0,0,0,0.55);line-height:1.5">'
+                'Step-by-step guided journey: gap analysis → debate → plan → apply → interview. ~45 min.</div>'
+                '</div>',
+                unsafe_allow_html=True,
+            )
+            if st.button("Start Career Sprint", use_container_width=True, key="_hero_gs_btn2"):
+                st.session_state["_pending_mode"] = "Career Sprint"
+                st.session_state["has_run"] = True
+                st.rerun()
+        with _om_c2:
+            st.markdown(
+                '<div style="background:#F0FAF4;border:1px solid #CBEAD5;border-radius:10px;'
+                'padding:14px 16px;margin-bottom:8px">'
+                '<div style="font-size:12px;font-weight:800;color:#057642;margin-bottom:4px">Expert Mode</div>'
+                '<div style="font-size:11px;color:rgba(0,0,0,0.55);line-height:1.5">'
+                'Full tab-based tool with all modules. Auto-run the complete pipeline end-to-end.</div>'
+                '</div>',
+                unsafe_allow_html=True,
+            )
+            if st.button("Open Expert Mode", use_container_width=True, key="_hero_full_btn2"):
+                if not st.session_state.get("cv_text"):
+                    load_demo_profile(st.session_state)
+                st.session_state["_pending_mode"] = "Expert Mode"
+                st.session_state["has_run"] = True
+                st.session_state["full_pipeline_triggered"] = True
+                st.rerun()
+
+    # ── If returning user has data: show a compact status card ────────────
     _lp_pl_jobs = st.session_state.pipeline_jobs or []
-    _lp_pl_stats = compute_pipeline_stats(_lp_pl_jobs)
     _lp_has_data = bool(
         _lp_pl_jobs or st.session_state.cv_profile or
         st.session_state.qa_package or st.session_state.qa_portfolio_packages
@@ -9644,204 +9703,26 @@ if not st.session_state.has_run:
     if _lp_has_data and st.session_state.advisor_result:
         _lp_adv = st.session_state.advisor_result
         _lp_phase = _lp_adv.get("phase", "Exploration")
-        _lp_mom = _lp_adv.get("momentum_score", 0)
-        _lp_mom_col = "#117A37" if _lp_mom >= 65 else ("#A05A00" if _lp_mom >= 35 else "#B71C1C")
+        _lp_pl_stats = compute_pipeline_stats(_lp_pl_jobs)
         _lp_phase_col = {
             "Exploration": "#7A2A8A", "Active Application": "#0A66C2",
             "Interview Loop": "#057642", "Negotiation": "#A05A00"
         }.get(_lp_phase, "#0A66C2")
 
         st.markdown(
-            f'<div style="background:#fff;border:1px solid rgba(0,0,0,0.1);border-radius:12px;'
-            f'padding:20px 24px;margin-bottom:16px">'
-            f'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">'
-            f'<div style="display:flex;align-items:center;gap:8px;font-size:15px;font-weight:900;color:#1D2226">{icon("compass", 18, "#1D2226")} Career Command Center</div>'
+            f'<div style="background:#fff;border:1px solid rgba(0,0,0,0.10);border-radius:12px;'
+            f'padding:16px 20px;margin-top:12px;display:flex;align-items:center;gap:16px">'
+            f'<div style="flex:1">'
+            f'<div style="font-size:13px;font-weight:800;color:#1D2226;margin-bottom:2px">Welcome back — your progress is saved</div>'
+            f'<div style="font-size:12px;color:rgba(0,0,0,0.50)">'
+            f'{len(_lp_pl_jobs)} applications · {_lp_pl_stats.get("response_rate",0)}% response rate · phase: {_lp_phase}</div>'
+            f'</div>'
             f'<div style="background:{_lp_phase_col};color:#fff;border-radius:20px;'
-            f'padding:3px 12px;font-size:11px;font-weight:800">{_lp_phase}</div>'
-            f'</div>'
-            f'<div style="display:flex;gap:20px;margin-bottom:14px">'
-            # Momentum
-            f'<div style="flex:1;background:#F3F6F9;border-radius:8px;padding:10px 14px">'
-            f'<div style="font-size:10px;font-weight:800;text-transform:uppercase;'
-            f'letter-spacing:0.05em;color:rgba(0,0,0,0.4);margin-bottom:4px">Momentum</div>'
-            f'<div style="font-size:22px;font-weight:900;color:{_lp_mom_col}">{_lp_mom}</div>'
-            f'<div style="font-size:10px;color:{_lp_mom_col}">{_lp_adv.get("momentum_label","")}</div>'
-            f'</div>'
-            # Pipeline
-            f'<div style="flex:1;background:#F3F6F9;border-radius:8px;padding:10px 14px">'
-            f'<div style="font-size:10px;font-weight:800;text-transform:uppercase;'
-            f'letter-spacing:0.05em;color:rgba(0,0,0,0.4);margin-bottom:4px">Pipeline</div>'
-            f'<div style="font-size:22px;font-weight:900;color:#0A66C2">{_lp_pl_stats.get("total",0)}</div>'
-            f'<div style="font-size:10px;color:rgba(0,0,0,0.5)">'
-            f'{_lp_pl_stats.get("response_rate",0)}% response · {_lp_pl_stats.get("offers",0)} offers</div>'
-            f'</div>'
-            # Time estimate
-            f'<div style="flex:2;background:#F0FAF4;border-left:3px solid #057642;'
-            f'border-radius:0 8px 8px 0;padding:10px 14px">'
-            f'<div style="font-size:10px;font-weight:800;text-transform:uppercase;'
-            f'letter-spacing:0.05em;color:#057642;margin-bottom:4px">Next Action</div>'
-            f'<div style="font-size:12px;font-weight:700;color:#1D2226;line-height:1.4">'
-            f'{_lp_adv.get("primary_action","")}</div>'
-            f'</div>'
-            f'</div>'
-            f'<div style="font-size:11px;color:rgba(0,0,0,0.5);font-style:italic">'
-            f'Time to offer: {_lp_adv.get("time_to_offer_estimate","unknown")}</div>'
+            f'padding:3px 12px;font-size:11px;font-weight:700;white-space:nowrap">{_lp_phase}</div>'
             f'</div>',
             unsafe_allow_html=True,
         )
 
-    # ── CTA buttons — three entry points ─────────────────────────────────────
-    _cta_c1, _cta_c2, _cta_c3 = st.columns(3, gap="medium")
-    with _cta_c1:
-        st.markdown(
-            '<div style="background:#fff;border:1px solid rgba(0,0,0,0.1);border-radius:10px;'
-            'padding:16px 18px;margin-bottom:12px;min-height:110px">'
-            '<div style="font-size:10px;font-weight:800;text-transform:uppercase;'
-            f'letter-spacing:0.08em;color:#0A66C2;margin-bottom:5px">{icon("zap", 12, "#0A66C2")} Quick Apply</div>'
-            '<div style="font-size:13px;font-weight:700;color:#1D2226;margin-bottom:5px;line-height:1.3">'
-            'Find jobs → 3 applications in parallel → ranked by hire probability'
-            '</div>'
-            '<div style="font-size:10px;color:rgba(0,0,0,0.5)">'
-            '~60 sec · gpt-4o generation · adversarial verdict'
-            '</div>'
-            '</div>',
-            unsafe_allow_html=True,
-        )
-        if st.button("Start Quick Apply", use_container_width=True, type="primary", key="_hero_qa_btn"):
-            st.session_state["_pending_mode"] = "Quick Apply"
-            st.rerun()
-    with _cta_c2:
-        st.markdown(
-            '<div style="background:#fff;border:1px solid rgba(0,0,0,0.1);border-radius:10px;'
-            'padding:16px 18px;margin-bottom:12px;min-height:110px">'
-            '<div style="font-size:10px;font-weight:800;text-transform:uppercase;'
-            f'letter-spacing:0.08em;color:rgba(0,0,0,0.5);margin-bottom:5px">{icon("compass", 12, "rgba(0,0,0,0.5)")} Career Sprint</div>'
-            '<div style="font-size:13px;font-weight:700;color:#1D2226;margin-bottom:5px;line-height:1.3">'
-            'Validate the pivot: gap → debate → plan → apply → interview'
-            '</div>'
-            '<div style="font-size:10px;color:rgba(0,0,0,0.5)">'
-            '~45 min guided · AI agent orchestrates each step'
-            '</div>'
-            '</div>',
-            unsafe_allow_html=True,
-        )
-        if st.button("Start Career Sprint", use_container_width=True, key="_hero_gs_btn"):
-            st.session_state["_pending_mode"] = "Career Sprint"
-            st.session_state["has_run"] = True
-            st.rerun()
-    with _cta_c3:
-        st.markdown(
-            '<div style="background:linear-gradient(135deg,#F0FAF4 0%,#EEF3FB 100%);'
-            'border:1.5px solid #057642;border-radius:10px;'
-            'padding:16px 18px;margin-bottom:12px;min-height:110px">'
-            '<div style="font-size:10px;font-weight:800;text-transform:uppercase;'
-            f'letter-spacing:0.08em;color:#057642;margin-bottom:5px">{icon("trending-up", 12, "#057642")} Full Pipeline Demo</div>'
-            '<div style="font-size:13px;font-weight:700;color:#1D2226;margin-bottom:5px;line-height:1.3">'
-            'Auto-run all 5 stages end-to-end with live step-by-step progress'
-            '</div>'
-            '<div style="font-size:10px;color:rgba(0,0,0,0.5)">'
-            'Requires CV + API key · Shows quality gates in real-time'
-            '</div>'
-            '</div>',
-            unsafe_allow_html=True,
-        )
-        _fp_demo_active = st.session_state.get("demo_mode")
-        if st.button(
-            "Run Full Pipeline" if not _fp_demo_active else "Run Full Pipeline (Demo Active)",
-            use_container_width=True,
-            key="_hero_full_btn",
-            type="primary" if _fp_demo_active else "secondary",
-            help="Chains CV analysis → job search → application generation → adversarial ranking → interview prep automatically",
-        ):
-            if not st.session_state.get("cv_text"):
-                load_demo_profile(st.session_state)
-            st.session_state["_pending_mode"] = "Expert Mode"
-            st.session_state["has_run"] = True
-            st.session_state["full_pipeline_triggered"] = True
-            st.rerun()
-        if not st.session_state.get("cv_text"):
-            st.caption("No CV? Demo profile auto-loads.")
-
-    # ── Technical Architecture (collapsed by default — keep landing clean) ──
-    with st.expander("Technical architecture — models, formulas, design decisions", expanded=False):
-        # Architecture overview cards
-        _arch_cards = [
-            ("layers",    "#EEF3FB", "#0A66C2", False, "Structured Data",
-             "O*NET 894 occupations × 119 skill dimensions · IDF weighting · cosine similarity offline → O(1) runtime"),
-            ("cpu",       "#EEF3FB", "#0A66C2", False, "Dual-LLM Pattern",
-             "gpt-4o generates quality-critical artifacts → gpt-4o-mini evaluates each. Validated: +14pt on cover letters vs. single-pass"),
-            ("zap",       "#EEF3FB", "#0A66C2", False, "Parallel Generation",
-             "ThreadPoolExecutor generates + evaluates 3 applications simultaneously. Advocate + Skeptic also run in parallel."),
-            ("refresh-cw","#EEF3FB", "#0A66C2", True,  "Agentic Loop",
-             "gpt-4o orchestrator selects tools, chains steps, detects conflicts — multi-step reasoning, not prompt chaining"),
-            ("scale",     "#EEF3FB", "#0A66C2", False, "Adversarial Evaluation",
-             "Advocate + Skeptic (parallel) → Judge synthesises → hire_prob %. LLM output never shown raw"),
-            ("activity",  "#EEF3FB", "#0A66C2", False, "Python Aggregation",
-             "hire_prob = 0.65×quality + 0.35×fit for ranking · controversy score + std penalty for multi-reviewer consensus"),
-        ]
-        _arch_html_inner = '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px">'
-        for _ico, _bg, _col, _hl, _name, _desc in _arch_cards:
-            _b = "#0A66C2" if _hl else "#C7D8F0"
-            _cbg = "#EEF3FB" if _hl else "#F8FAFF"
-            _arch_html_inner += (
-                f'<div style="background:{_cbg};border:1.5px solid {_b};border-radius:8px;padding:12px;">'
-                f'<div style="font-size:12px;font-weight:800;color:#0A66C2;margin-bottom:4px">{_name}</div>'
-                f'<div style="font-size:11px;color:rgba(0,0,0,0.55);line-height:1.45">{_desc}</div>'
-                f'</div>'
-            )
-        _arch_html_inner += '</div>'
-        st.markdown(_arch_html_inner, unsafe_allow_html=True)
-
-        st.markdown(
-            '<div style="font-size:10px;font-weight:800;letter-spacing:0.1em;text-transform:uppercase;'
-            'color:rgba(0,0,0,0.35);margin-bottom:12px">LLM routing rationale</div>',
-            unsafe_allow_html=True,
-        )
-        _md_html = '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:16px">'
-        for _md in MODEL_DECISIONS:
-            _md_html += (
-                f'<div style="background:#F8FAFF;border:1px solid #C7D8F0;border-radius:8px;padding:12px 14px">'
-                f'<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'
-                f'<div style="background:#EEF3FB;border-radius:6px;padding:2px 8px;font-size:10px;'
-                f'font-weight:900;color:{_md["color"]};text-transform:uppercase;letter-spacing:0.05em">'
-                f'{_md["model"]}</div>'
-                f'<div style="font-size:11px;font-weight:700;color:rgba(0,0,0,0.75)">{_md["task"]}</div>'
-                f'</div>'
-                f'<div style="font-size:11px;color:rgba(0,0,0,0.6);line-height:1.5;margin-bottom:5px">{_md["why"]}</div>'
-                f'<div style="font-size:10px;color:rgba(0,0,0,0.38);font-style:italic">Alternative considered: {_md["alt"]} — {_md["alt_why"]}</div>'
-                f'</div>'
-            )
-        _md_html += '</div>'
-
-        _af = AGGREGATION_FORMULAS
-        _md_html += (
-            '<div style="font-size:10px;font-weight:800;letter-spacing:0.1em;text-transform:uppercase;'
-            'color:rgba(0,0,0,0.35);margin:8px 0 10px 0">Python aggregation layer — formulas exposed</div>'
-            '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px">'
-        )
-        _formula_names = {
-            "portfolio_ranking":    "Portfolio Ranking",
-            "controversy_penalty":  "Controversy Penalty",
-            "tripartite_aggregation": "Tripartite Aggregation",
-            "brier_calibration":    "Brier Calibration",
-        }
-        for _fkey, _fdata in _af.items():
-            _fname = _formula_names.get(_fkey, _fkey.replace("_", " ").title())
-            _md_html += (
-                f'<div style="background:#FFF8E7;border:1px solid #F0D9A0;border-radius:8px;padding:12px 14px">'
-                f'<div style="font-size:11px;font-weight:800;color:#A05A00;margin-bottom:6px">{_fname}</div>'
-                f'<div style="font-family:monospace;font-size:11px;color:#1D2226;background:rgba(0,0,0,0.04);'
-                f'border-radius:4px;padding:5px 8px;margin-bottom:6px">{_fdata["formula"]}</div>'
-                f'<div style="font-size:10px;color:rgba(0,0,0,0.55);line-height:1.5">'
-                + (f'{_fdata.get("quality_def","")}' if _fdata.get("quality_def") else "")
-                + (f'<br>{_fdata.get("fit_def","")}' if _fdata.get("fit_def") else "")
-                + (f'<br><em>{_fdata.get("weight_why","")}</em>' if _fdata.get("weight_why") else "")
-                + (f'<br>λ={_fdata.get("lambda","")}' if _fdata.get("lambda") else "")
-                + (f'<br><em>{_fdata.get("conflict_why","")}</em>' if _fdata.get("conflict_why") else "")
-                + f'</div></div>'
-            )
-        _md_html += '</div>'
-        st.markdown(_md_html, unsafe_allow_html=True)
 
     # ── Quality Shield — live evaluation log (shown if any quality events logged) ──
     _ql = st.session_state.get("quality_log") or []
