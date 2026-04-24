@@ -10378,6 +10378,22 @@ with st.container(border=True):
         _next_list[0] if _next_list else "Download Pivot Playbook"
     ) if '_next_list' in dir() else "Start with Assess tab"
 
+    # ── Pivot Readiness Score — must be computed before the hero st.markdown ──
+    _n_gaps = int((gap_df["gap"] > 0).sum()) if not gap_df.empty else 0
+    _n_total = len(gap_df) if not gap_df.empty else 1
+    _gap_ratio = _n_gaps / max(_n_total, 1)
+    _cv_score = min(float(_cv_profile.get("skills_mapped_count", 0)) / 40.0, 1.0) if _cv_profile else 0.5
+    _base_pts = int((0.45 * (match_score_display / 100) + 0.30 * (1 - _gap_ratio) + 0.25 * _cv_score) * 30)
+    _readiness = max(5, min(
+        _base_pts
+        + (8  if bool((st.session_state.cv_text or "").strip())      else 0)
+        + (10 if bool(st.session_state.learning_plan_md)             else 0)
+        + (12 if bool(st.session_state.debate_result)                else 0)
+        + (10 if bool(st.session_state.review_board_strategies)      else 0)
+        + (15 if bool(st.session_state.smart_apply_package)          else 0)
+        + (15 if bool(st.session_state.interview_prep_done)          else 0)
+    , 100))
+
     st.markdown(
         # ── Dark hero band ───────────────────────────────────────────────────
         f'<div style="background:linear-gradient(135deg,#0A1628 0%,#0F2347 60%,#0A1628 100%);'
@@ -10470,28 +10486,6 @@ with st.container(border=True):
             unsafe_allow_html=True,
         )
 
-    # ── Pivot Readiness Score (milestone-based journey progress) ──────
-    # Each completed phase milestone contributes fixed points toward 100.
-    # The base score (0-30) reflects skill match quality — it's always present.
-    # Milestone contributions reward completing the full career pivot journey.
-    _n_gaps = int((gap_df["gap"] > 0).sum()) if not gap_df.empty else 0
-    _n_total = len(gap_df) if not gap_df.empty else 1
-    _gap_ratio = _n_gaps / max(_n_total, 1)
-    _cv_score = min(float(_cv_profile.get("skills_mapped_count", 0)) / 40.0, 1.0) if _cv_profile else 0.5
-
-    # Base: 0-30 pts from skill match quality (continuous signal)
-    _base_pts = int((0.45 * (match_score_display / 100) + 0.30 * (1 - _gap_ratio) + 0.25 * _cv_score) * 30)
-
-    # Milestone pts — each tool completion moves the needle toward 100
-    _readiness = max(5, min(
-        _base_pts
-        + (8  if bool((st.session_state.cv_text or "").strip())      else 0)  # CV uploaded (+8)
-        + (10 if bool(st.session_state.learning_plan_md)             else 0)  # Learning plan (+10)
-        + (12 if bool(st.session_state.debate_result)                else 0)  # Debate done (+12)
-        + (10 if bool(st.session_state.review_board_strategies)      else 0)  # Decision board (+10)
-        + (15 if bool(st.session_state.smart_apply_package)          else 0)  # Application pkg (+15)
-        + (15 if bool(st.session_state.interview_prep_done)          else 0)  # Interview prep (+15)
-    , 100))
     # Milestone breakdown shown in tooltip
     _milestone_labels = [
         ("Skill assessed",    True),
