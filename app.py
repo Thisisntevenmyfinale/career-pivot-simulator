@@ -2828,7 +2828,87 @@ if quick_apply:
     _tab_apply, _tab_tools = st.tabs(["Apply", "Analysis & Tools"])
 
     with _tab_tools:
-        with st.expander("Daily Pivot Brief", expanded=False):
+        # ── Retention summary strip ─────────────────────────────────────────────
+        _t_n_apps = len(st.session_state.pipeline_jobs or [])
+        _t_n_resp = sum(1 for j in (st.session_state.pipeline_jobs or [])
+                        if j.get("status") in ("response","interview","offer","hired"))
+        _t_rr     = round(_t_n_resp / max(_t_n_apps, 1) * 100)
+        _t_cal    = st.session_state.get("calibration_data") or {}
+        _t_is_cal = _t_cal.get("calibrated", False)
+        _t_adj    = float(_t_cal.get("adjustment_factor", 1.0) or 1.0)
+        _t_trend  = st.session_state.get("p_offer_trend_data") or {}
+        _t_start_p = float((_t_trend.get("start_p") or _ns_prob_pct) or _ns_prob_pct)
+        _t_delta   = round(_ns_prob_pct - _t_start_p, 1)
+        _t_dstr    = (f"+{_t_delta}pp" if _t_delta > 0 else (f"{_t_delta}pp" if _t_delta < 0 else "—"))
+        _t_dcol    = "#057642" if _t_delta > 0 else ("#B71C1C" if _t_delta < 0 else "rgba(0,0,0,0.45)")
+        _tc1, _tc2, _tc3 = st.columns(3, gap="small")
+        _card_css = "background:#fff;border:1px solid rgba(0,0,0,0.10);border-radius:10px;padding:14px 16px"
+        _lbl_css  = "font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:rgba(0,0,0,0.40);margin-bottom:4px"
+        with _tc1:
+            st.markdown(
+                f'<div style="{_card_css}">'
+                f'<div style="{_lbl_css}">P(offer)</div>'
+                f'<div style="font-size:28px;font-weight:900;color:{_ns_col};line-height:1">{_ns_prob_pct}%</div>'
+                f'<div style="font-size:11px;color:{_t_dcol};margin-top:2px">{_t_dstr} since start</div>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+        with _tc2:
+            st.markdown(
+                f'<div style="{_card_css}">'
+                f'<div style="{_lbl_css}">Pipeline</div>'
+                f'<div style="font-size:28px;font-weight:900;color:#0A66C2;line-height:1">{_t_n_apps}</div>'
+                f'<div style="font-size:11px;color:rgba(0,0,0,0.50);margin-top:2px">{_t_rr}% response rate</div>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+        with _tc3:
+            _cal_col = "#057642" if _t_is_cal else "rgba(0,0,0,0.30)"
+            _cal_val = ("x" + str(round(_t_adj,2))) if _t_is_cal else "—"
+            _cal_sub = "Active · predictions personalised" if _t_is_cal else "Log 3+ outcomes to activate"
+            st.markdown(
+                f'<div style="{_card_css}">'
+                f'<div style="{_lbl_css}">Calibration</div>'
+                f'<div style="font-size:28px;font-weight:900;color:{_cal_col};line-height:1">{_cal_val}</div>'
+                f'<div style="font-size:11px;color:rgba(0,0,0,0.50);margin-top:2px">{_cal_sub}</div>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+        st.markdown("<div style='margin-bottom:8px'></div>", unsafe_allow_html=True)
+
+        # ── Tool selector ────────────────────────────────────────────────────────
+        _tool_options = [
+            "— Select a tool —",
+            "📊  P(offer) Command Center",
+            "🎯  Per-JD Offer Predictor",
+            "📋  Application Pipeline",
+            "📝  Outcome Tracker & Calibration",
+            "📅  Daily Pivot Brief",
+            "🤝  Career Command Center",
+            "👥  Cohort Intelligence & Momentum",
+            "🗺️  Pivot Roadmap",
+            "🔄  Closed-Loop Architecture",
+            "📰  Job Market Pulse & Warm Intro",
+            "⚖️  Decision Matrix",
+            "💰  Compensation Engine",
+            "📱  LinkedIn Content Engine",
+            "🏰  Personal Moat Builder",
+            "📋  Week Zero Protocol",
+        ]
+        _tool_sel_raw = st.selectbox(
+            "Tools",
+            _tool_options,
+            index=0,
+            key="tools_tab_sel",
+            label_visibility="collapsed",
+        )
+        # Strip emoji prefix to get bare tool name for if/elif matching
+        _tool_sel = (_tool_sel_raw.split("  ", 1)[-1].strip()
+                     if "  " in _tool_sel_raw else _tool_sel_raw)
+        if _tool_sel == "— Select a tool —":
+            st.caption("↑ Select a tool above to explore it.")
+
+        if _tool_sel == "Daily Pivot Brief":
             # DAILY PIVOT BRIEF — the first thing you see every morning
             # ════════════════════════════════════════════════════════════════════════
             from datetime import date as _date_cls
@@ -2909,7 +2989,7 @@ if quick_apply:
                         unsafe_allow_html=True,
                     )
 
-        with st.expander("Career Command Center", expanded=False):
+        if _tool_sel == "Career Command Center":
             # ════════════════════════════════════════════════════════════════════════
             # CAREER COMMAND CENTER — AI Advisor Layer
             # Cross-module synthesis: reads all session state → one clear next action.
@@ -3099,7 +3179,7 @@ if quick_apply:
                     unsafe_allow_html=True,
                 )
 
-        with st.expander("Cohort Intelligence & Momentum", expanded=False):
+        if _tool_sel == "Cohort Intelligence & Momentum":
             # ════════════════════════════════════════════════════════════════════════
             # COHORT INTELLIGENCE + MOMENTUM ENGINE
             # What people in your exact situation actually experienced.
@@ -3259,7 +3339,7 @@ if quick_apply:
                         st.session_state["_momentum_activity_today"] = True
                         st.rerun()
 
-        with st.expander("Per-JD Offer Predictor", expanded=False):
+        if _tool_sel == "Per-JD Offer Predictor":
             # ════════════════════════════════════════════════════════════════════════
             # PER-JD OFFER PREDICTOR — "Should I apply to THIS job?"
             # ════════════════════════════════════════════════════════════════════════
@@ -3410,7 +3490,7 @@ if quick_apply:
                         )
                     st.caption(f"Role: {_jda.get('role_title','')} · Seniority match: {_jda.get('seniority_match','?')}")
 
-        with st.expander("Pivot Roadmap — 30/60/90 Days", expanded=False):
+        if _tool_sel == "Pivot Roadmap":
             # ════════════════════════════════════════════════════════════════════════
             # PIVOT ROADMAP — 30/60/90 Day Execution Plan
             # ════════════════════════════════════════════════════════════════════════
@@ -3538,7 +3618,7 @@ if quick_apply:
                                 unsafe_allow_html=True,
                             )
 
-        with st.expander("P(offer) Command Center", expanded=False):
+        if _tool_sel == "P(offer) Command Center":
             # ════════════════════════════════════════════════════════════════════════
             # PIVOT OS COMMAND CENTER — Diagnosis → Action → Measure
             # One number (P(offer)) drives every section below.
@@ -3684,7 +3764,7 @@ if quick_apply:
                 unsafe_allow_html=True,
             )
 
-        with st.expander("Closed-Loop Architecture", expanded=False):
+        if _tool_sel == "Closed-Loop Architecture":
             # ════════════════════════════════════════════════════════════════════════
             # CLOSED LOOP ARCHITECTURE — "How the system learns"
             # This section makes the evaluate → improve → calibrate loop explicit.
@@ -3856,7 +3936,7 @@ if quick_apply:
                     unsafe_allow_html=True,
                 )
 
-        with st.expander("Application Pipeline", expanded=False):
+        if _tool_sel == "Application Pipeline":
             # ════════════════════════════════════════════════════════════════════════
             # APPLICATION PIPELINE CRM — Search OS
             # Tracks every application, every stage, every rejection.
@@ -4189,7 +4269,7 @@ if quick_apply:
                     st.session_state.pipeline_diagnosis = None
                     st.rerun()
 
-        with st.expander("Outcome Tracker & Calibration", expanded=False):
+        if _tool_sel == "Outcome Tracker & Calibration":
             # ════════════════════════════════════════════════════════════════════════
             # OUTCOME TRACKER + CALIBRATION MOTOR
             # Record what actually happened → calibrate your personal ROI model
@@ -4702,7 +4782,7 @@ if quick_apply:
                 else:
                     st.caption("No outcomes logged yet. Log 3+ outcomes to unlock calibration and rejection diagnosis.")
 
-        with st.expander("Job Market Pulse & Warm Intro", expanded=False):
+        if _tool_sel == "Job Market Pulse & Warm Intro":
             # ════════════════════════════════════════════════════════════════════════
             # JOB MARKET PULSE + WARM INTRO PATHFINDER
             # ════════════════════════════════════════════════════════════════════════
@@ -5463,7 +5543,7 @@ if quick_apply:
                             )
                             st.plotly_chart(_fig2, use_container_width=True, config={"displayModeBar": False})
 
-        with st.expander("Decision Matrix", expanded=False):
+        if _tool_sel == "Decision Matrix":
             # ════════════════════════════════════════════════════════════════════════
             # DECISION MATRIX — The 3 hardest decisions in any pivot
             # ════════════════════════════════════════════════════════════════════════
@@ -5631,7 +5711,7 @@ if quick_apply:
                                 unsafe_allow_html=True,
                             )
 
-        with st.expander("Compensation Engine", expanded=False):
+        if _tool_sel == "Compensation Engine":
             # ════════════════════════════════════════════════════════════════════════
             # COMPENSATION ENGINE — Negotiate with data, not gratitude
             # ════════════════════════════════════════════════════════════════════════
@@ -5776,7 +5856,7 @@ if quick_apply:
                             unsafe_allow_html=True,
                         )
 
-        with st.expander("LinkedIn Content Engine", expanded=False):
+        if _tool_sel == "LinkedIn Content Engine":
             # ════════════════════════════════════════════════════════════════════════
             # LINKEDIN CONTENT ENGINE + MOAT BUILDER
             # ════════════════════════════════════════════════════════════════════════
@@ -5875,11 +5955,7 @@ if quick_apply:
         # ════════════════════════════════════════════════════════════════════════
         # PERSONAL MOAT BUILDER — Build what others can't copy
         # ════════════════════════════════════════════════════════════════════════
-        with st.expander(
-            "Personal Moat Builder — What can you do that PM lifers can't?",
-            expanded=False,
-        ):
-            _mb_has_data = bool(st.session_state.get("cv_profile") and st.session_state.get("pivot_dna"))
+        if _tool_sel == "Personal Moat Builder":
             if not _mb_has_data:
                 st.caption("Upload your CV and build a Pivot DNA first.")
             else:
@@ -5962,7 +6038,7 @@ if quick_apply:
                             unsafe_allow_html=True,
                         )
 
-        with st.expander("Week Zero Protocol", expanded=False):
+        if _tool_sel == "Week Zero Protocol":
             # ════════════════════════════════════════════════════════════════════════
             # WEEK ZERO PROTOCOL — First 30 days in the new role
             # ════════════════════════════════════════════════════════════════════════
