@@ -2784,6 +2784,7 @@ _ns_brier_data   = st.session_state.get("brier_stats") or {}
 _ns_brier_factor = _ns_brier_data.get("correction_factor", 1.0) if not _ns_brier_data.get("insufficient_data") else 1.0
 _ns_prob_pct     = round(min(35, max(0.5, _ns_base * _ns_ops_factor * _ns_cal_factor * _ns_brier_factor * 100)), 1)
 _ns_prob_col     = "#4ADE80" if _ns_prob_pct >= 10 else ("#FCD34D" if _ns_prob_pct >= 5 else "#F87171")
+_ns_col          = _ns_prob_col  # alias used throughout (retention strip, command center)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # QUICK APPLY MODE
