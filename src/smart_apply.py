@@ -216,17 +216,24 @@ def _offline_pivot_peers(current_role: str, target_role: str) -> List[PivotPeer]
 
 def generate_job_listings(
     target_role: str,
-    current_role: str,
-    match_score: float,
-    top_transfer: List[str],
-    top_missing: List[str],
+    current_role: str = "",
+    match_score: float = 50.0,
+    top_transfer: Optional[List[str]] = None,
+    top_missing: Optional[List[str]] = None,
     cv_profile: Optional[Dict] = None,
     n_jobs: int = 4,
+    n: Optional[int] = None,          # alias for n_jobs (backward compat)
     model: str = "gpt-4o-mini",
     prefer_online: bool = True,
     api_key: Optional[str] = None,
 ) -> List[JobListing]:
     """Generate n realistic LinkedIn-style job listings for the target role."""
+    if n is not None:
+        n_jobs = n
+    if top_transfer is None:
+        top_transfer = []
+    if top_missing is None:
+        top_missing = []
     if not prefer_online:
         return _offline_job_listings(target_role, match_score)
 

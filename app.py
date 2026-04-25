@@ -6725,7 +6725,7 @@ if quick_apply:
                                 _auto_jobs = _rj2
                         if not _auto_jobs:
                             _ai_ls2 = generate_job_listings(
-                                str(current), str(target), n=5,
+                                str(target), str(current), n=5,
                                 prefer_online=bool(_qa_key), api_key=_qa_key or None,
                             )
                             _auto_jobs = [
@@ -6947,7 +6947,7 @@ if quick_apply:
                                     else:
                                         st.warning("SerpAPI returned no results — falling back to AI listings.")
                                         _ai_listings = generate_job_listings(
-                                            str(current), str(target), n=5,
+                                            str(target), str(current), n=5,
                                             prefer_online=bool(_qa_key), api_key=_qa_key or None,
                                         )
                                         st.session_state.qa_portfolio_jobs = [
@@ -6959,7 +6959,7 @@ if quick_apply:
                             else:
                                 with st.spinner("Generating job listings with AI…"):
                                     _ai_listings = generate_job_listings(
-                                        str(current), str(target), n=5,
+                                        str(target), str(current), n=5,
                                         prefer_online=bool(_qa_key), api_key=_qa_key or None,
                                     )
                                     st.session_state.qa_portfolio_jobs = [
@@ -11527,10 +11527,10 @@ if guided:
                                         st.session_state.smart_apply_jobs = [real_job_to_listing(r, i) for i, r in enumerate(_rj)]
                                         st.session_state.smart_apply_jobs_source = "real"
                                     else:
-                                        st.session_state.smart_apply_jobs = generate_job_listings(str(current), str(target), n=3, prefer_online=bool(_sa_api_sp))
+                                        st.session_state.smart_apply_jobs = generate_job_listings(str(target), str(current), n=3, prefer_online=bool(_sa_api_sp))
                                         st.session_state.smart_apply_jobs_source = "ai"
                                 else:
-                                    st.session_state.smart_apply_jobs = generate_job_listings(str(current), str(target), n=3, prefer_online=bool(_sa_api_sp))
+                                    st.session_state.smart_apply_jobs = generate_job_listings(str(target), str(current), n=3, prefer_online=bool(_sa_api_sp))
                                     st.session_state.smart_apply_jobs_source = "ai"
                             st.rerun()
                 else:
