@@ -6805,7 +6805,7 @@ if quick_apply:
                             )
                             _auto_jobs = [
                                 {"title": j.title, "company": j.company, "location": j.location,
-                                 "description": j.description, "apply_link": j.apply_link,
+                                 "description": (j.full_description or j.description_preview or ""), "apply_link": j.apply_link,
                                  "salary": getattr(j, "salary_range", ""), "is_real": False}
                                 for j in _ai_ls2
                             ]
@@ -7027,7 +7027,7 @@ if quick_apply:
                                         )
                                         st.session_state.qa_portfolio_jobs = [
                                             {"title": j.title, "company": j.company, "location": j.location,
-                                             "description": j.description, "apply_link": j.apply_link,
+                                             "description": (j.full_description or j.description_preview or ""), "apply_link": j.apply_link,
                                              "salary": getattr(j, "salary_range", ""), "is_real": False}
                                             for j in _ai_listings
                                         ]
@@ -7039,7 +7039,7 @@ if quick_apply:
                                     )
                                     st.session_state.qa_portfolio_jobs = [
                                         {"title": j.title, "company": j.company, "location": j.location,
-                                         "description": j.description, "apply_link": j.apply_link,
+                                         "description": (j.full_description or j.description_preview or ""), "apply_link": j.apply_link,
                                          "salary": getattr(j, "salary_range", ""), "is_real": False}
                                         for j in _ai_listings
                                     ]
