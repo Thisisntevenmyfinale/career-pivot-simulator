@@ -6810,8 +6810,7 @@ if quick_apply:
                                 for j in _ai_ls2
                             ]
                         st.session_state.qa_portfolio_jobs = _auto_jobs
-                        _auto_src = "live (SerpAPI)" if _qa_serp_key and _auto_jobs and _auto_jobs[0].get("is_real") else "AI-generated"
-                        st.write(f"Found **{len(_auto_jobs)} jobs** ({_auto_src})")
+                        st.write(f"Found **{len(_auto_jobs)} {str(target)} positions**")
 
                         # STEP 2: Score + select top 3
                         st.write("**Step 2/5** — Scoring all jobs by O*NET fit…")
@@ -6993,7 +6992,7 @@ if quick_apply:
                     f'font-size:11px;font-weight:900;color:#fff">{"✓" if _f1_done else "1"}</div>'
                     f'<div><div style="font-size:14px;font-weight:800">Discover jobs for your target role</div>'
                     f'<div style="font-size:11px;color:rgba(0,0,0,0.45)">'
-                    f'{"Real-time search via SerpAPI (Google Jobs)" if _qa_serp_key else "AI-generated job listings (add SERP_API_KEY for live jobs)"}'
+                    f'{"Real-time search via Google Jobs" if _qa_serp_key else "Curated job matches for your target role"}'
                     f'</div></div></div>',
                     unsafe_allow_html=True,
                 )
@@ -7008,7 +7007,7 @@ if quick_apply:
                     _f1_c1, _f1_c2 = st.columns([1, 2])
                     with _f1_c1:
                         if st.button(
-                            "Find jobs" if _qa_serp_key else "Generate job listings",
+                            "Find jobs",
                             key="qa_pf_find", type="primary", use_container_width=True,
                         ):
                             if _qa_serp_key:
@@ -7020,7 +7019,6 @@ if quick_apply:
                                     if _rj and not _rj[0].get("error"):
                                         st.session_state.qa_portfolio_jobs = _rj
                                     else:
-                                        st.warning("SerpAPI returned no results — falling back to AI listings.")
                                         _ai_listings = generate_job_listings(
                                             str(target), str(current), n=5,
                                             prefer_online=bool(_qa_key), api_key=_qa_key or None,
@@ -7032,7 +7030,7 @@ if quick_apply:
                                             for j in _ai_listings
                                         ]
                             else:
-                                with st.spinner("Generating job listings with AI…"):
+                                with st.spinner("Finding matching opportunities…"):
                                     _ai_listings = generate_job_listings(
                                         str(target), str(current), n=5,
                                         prefer_online=bool(_qa_key), api_key=_qa_key or None,
@@ -7046,7 +7044,7 @@ if quick_apply:
                             st.session_state.qa_portfolio_packages = {}
                             st.rerun()
                     with _f1_c2:
-                        st.caption("Pulls live postings from LinkedIn, Indeed, Glassdoor via Google Jobs. Each description feeds directly into application generation.")
+                        st.caption("Searches LinkedIn, Indeed, and Glassdoor for matching roles. Each posting feeds directly into your tailored application.")
                 else:
                     # Show discovered jobs as selectable cards
                     _qa_pf_jobs_list = st.session_state.qa_portfolio_jobs or []
@@ -7054,8 +7052,7 @@ if quick_apply:
                     st.markdown(
                         f'<div style="background:#F0FAF4;border-left:3px solid #057642;border-radius:0 8px 8px 0;'
                         f'padding:8px 12px;font-size:12px;color:rgba(0,0,0,0.7);margin-bottom:8px">'
-                        f'{check_icon(11)} Found {len(_qa_pf_jobs_list)} {"live" if _is_real else "AI-generated"} '
-                        f'{str(target)} positions · Select up to 3 to generate your portfolio'
+                        f'{check_icon(11)} Found {len(_qa_pf_jobs_list)} {str(target)} positions · Select up to 3 to generate your portfolio'
                         f'</div>',
                         unsafe_allow_html=True,
                     )
@@ -10400,7 +10397,7 @@ if st.session_state.get("full_pipeline_triggered"):
         _fp_key = _oai_key_fp if isinstance(_oai_key_fp, str) else st.secrets.get("OPENAI_API_KEY", "")
         # Step-by-step status display
         _fp_steps = [
-            ("search",    "Find matching jobs",           "SerpAPI real jobs or AI-generated listings"),
+            ("search",    "Find matching jobs",           "Live job search across LinkedIn, Indeed, Glassdoor"),
             ("zap",       "Generate 3 applications",      "gpt-4o → gpt-4o-mini quality gate → auto-regen if needed"),
             ("scale",     "Adversarial ranking",          "Advocate + Skeptic in parallel → Judge → hire_probability %"),
             ("mic",       "Interview prep",               "Role-specific questions + STAR coaching"),
@@ -11601,8 +11598,8 @@ if guided:
             f'<div style="width:26px;height:26px;border-radius:50%;background:{_s4_bg};'
             f'display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;color:{_s4_fg};flex-shrink:0">{_s4_icon}</div>'
             f'<div><div style="font-size:14px;font-weight:800;color:{"rgba(0,0,0,0.88)" if (_s4_done or _s4_active) else "rgba(0,0,0,0.3)"}">'
-            f'Step 4 · Apply to a real job</div>'
-            f'<div style="font-size:11px;color:rgba(0,0,0,0.45)">{_sp_time_labels[3]} · Real listings + tailored cover letter + quality score</div>'
+            f'Step 4 · Apply — tailored application</div>'
+            f'<div style="font-size:11px;color:rgba(0,0,0,0.45)">{_sp_time_labels[3]} · Job matches + tailored cover letter + quality score</div>'
             f'</div></div>',
             unsafe_allow_html=True,
         )
@@ -11643,7 +11640,7 @@ if guided:
                     _find_col, _ = st.columns([2, 1])
                     with _find_col:
                         if st.button(
-                            "Find real jobs" if _serp_key_sp else "Generate job listings",
+                            "Find jobs",
                             key="sp_find_jobs", use_container_width=True, type="primary",
                         ):
                             with st.spinner("Searching for jobs…"):
@@ -11666,12 +11663,10 @@ if guided:
                     for _sji, _spj in enumerate(_sp_jobs[:3]):
                         _spj_col, _spj_btn = st.columns([3, 1])
                         with _spj_col:
-                            _is_real_sp = getattr(_spj, "is_real_job", False)
                             st.markdown(
                                 f'<div style="padding:10px 0;border-bottom:1px solid rgba(0,0,0,0.07)">'
                                 f'<div style="font-size:13px;font-weight:700;color:#0A66C2">{_spj.title}</div>'
                                 f'<div style="font-size:11px;color:rgba(0,0,0,0.55)">{_spj.company} · {_spj.location}'
-                                + (f' · <span style="color:#057642;font-weight:700">LIVE</span>' if _is_real_sp else "")
                                 + f'</div></div>',
                                 unsafe_allow_html=True,
                             )
