@@ -3361,9 +3361,29 @@ if quick_apply:
                     unsafe_allow_html=True,
                 )
 
+                _jd_demo_col, _ = st.columns([1, 3])
+                with _jd_demo_col:
+                    if st.button("⚡ Load demo JD", key="jd_demo_fill", help="Fill with a realistic PM job description"):
+                        st.session_state["jd_predictor_input"] = (
+                            "Senior Product Manager — Growth · Personio (Munich / Remote)\n\n"
+                            "We are looking for a Senior Product Manager to lead our Growth squad, "
+                            "driving activation and expansion revenue across our SMB customer base.\n\n"
+                            "Responsibilities:\n"
+                            "- Define and execute the product roadmap for growth loops and self-serve onboarding\n"
+                            "- Work closely with Engineering, Design, and Marketing to ship high-impact features\n"
+                            "- Set and monitor KPIs (activation rate, time-to-value, NRR)\n"
+                            "- Run structured discovery: user interviews, data analysis, A/B tests\n\n"
+                            "Requirements:\n"
+                            "- 3+ years of product management experience, ideally in B2B SaaS\n"
+                            "- Strong data skills (SQL, product analytics tools like Amplitude or Mixpanel)\n"
+                            "- Experience working with cross-functional engineering teams\n"
+                            "- Excellent communication and stakeholder management\n"
+                            "- Bonus: experience in HR tech, or transitioning from a technical / analytical background"
+                        )
+                        st.rerun()
                 _jd_text_input = st.text_area(
                     "Paste job description",
-                    value=st.session_state.get("jd_analysis_text", ""),
+                    value=st.session_state.get("jd_predictor_input", st.session_state.get("jd_analysis_text", "")),
                     height=160,
                     placeholder="Paste the full job description here...",
                     key="jd_predictor_input",
@@ -4320,6 +4340,14 @@ if quick_apply:
 
                 # ── Manually add application ─────────────────────────────────────
                 if st.checkbox("+ Add application manually", key="pl_show_manual"):
+                    _ma_demo_c, _ = st.columns([1, 4])
+                    with _ma_demo_c:
+                        if st.button("⚡ Load demo entry", key="pl_manual_demo", help="Fill with a demo application"):
+                            st.session_state["pl_manual_title"] = "Product Manager"
+                            st.session_state["pl_manual_company"] = "Celonis"
+                            st.session_state["pl_manual_location"] = "Munich, Germany"
+                            st.session_state["pl_manual_ats"] = 74
+                            st.rerun()
                     _ma_c1, _ma_c2 = st.columns(2)
                     with _ma_c1:
                         _ma_title = st.text_input("Job title", key="pl_manual_title")
@@ -4636,6 +4664,11 @@ if quick_apply:
                         _ri_entry = _rej_log_items[-(8 - _ri_idx)] if _ri_idx < len(_rej_log_items) else _rej_log_items[-1]
                         _ri_entry_id = _ri_entry.get("id", "") or _ri_entry.get("date","") + _ri_entry.get("company","")
 
+                        _ri_demo_c, _ = st.columns([1, 4])
+                        with _ri_demo_c:
+                            if st.button("⚡ Demo feedback", key="ri_demo_fill", help="Fill with example rejection feedback"):
+                                st.session_state["ri_feedback"] = "Thank you for your application. We decided to move forward with a candidate who has more direct product management experience. We were impressed by your technical background but felt the PM role requires someone who has already made that transition."
+                                st.rerun()
                         _ri_feedback = st.text_area(
                             "Paste feedback (optional — leave blank for pattern-based diagnosis)",
                             key="ri_feedback", height=55,
@@ -5050,13 +5083,21 @@ if quick_apply:
                         '</div>',
                         unsafe_allow_html=True,
                     )
+                    _wi_demo_c, _ = st.columns([1, 4])
+                    with _wi_demo_c:
+                        if st.button("⚡ Load demo data", key="wi_demo_fill", help="Fill with Alex's warm intro scenario"):
+                            st.session_state["wi_company"] = "Celonis"
+                            st.session_state["wi_conn"] = "Maria Schmidt (met at TechCrunch Munich, she's a PM there)"
+                            st.session_state["wi_name"] = "Alex Müller"
+                            st.session_state["wi_bg"] = "6 years as a Software Engineer building data pipelines; now pivoting to Product Management with a focus on data-heavy B2B products."
+                            st.rerun()
                     _wi_company = st.text_input("Target company", key="wi_company",
                                                 placeholder="e.g. Stripe, Anthropic, Linear")
                     _wi_conn = st.text_input("Connection name / description", key="wi_conn",
                                              placeholder="e.g. Jane Smith (former colleague), 2nd-degree LinkedIn")
                     _wi_conn_type = st.selectbox(
                         "Connection type",
-                        ["LinkedIn 2nd-degree", "Former colleague", "University alumni", "Conference contact", "Cold (no mutual)"],
+                        ["LinkedIn 2nd-degree", "Former colleague", "University Alumni", "Conference contact", "Cold (no mutual)"],
                         key="wi_conn_type",
                     )
                     _wi_name = st.text_input("Your name (for personalisation)", key="wi_name",
@@ -5126,6 +5167,12 @@ if quick_apply:
                         '</div>',
                         unsafe_allow_html=True,
                     )
+                    _hw_demo_c, _ = st.columns([1, 4])
+                    with _hw_demo_c:
+                        if st.button("⚡ Load demo data", key="hw_demo_fill", help="Fill with Celonis hiring window example"):
+                            st.session_state["hw_company"] = "Celonis"
+                            st.session_state["hw_role"] = "Product Manager"
+                            st.rerun()
                     _hw_company = st.text_input(
                         "Target company", key="hw_company",
                         placeholder="e.g. Stripe, Notion, Linear",
@@ -5744,6 +5791,18 @@ if quick_apply:
                 )
 
                 if _dm_scenario == "Two offers at the same time":
+                    _dm_demo_c, _ = st.columns([1, 4])
+                    with _dm_demo_c:
+                        if st.button("⚡ Load demo offers", key="dm_demo_fill", help="Fill with two realistic PM offers"):
+                            st.session_state["dm_co_a"] = "Personio"
+                            st.session_state["dm_title_a"] = "Product Manager — Core HR"
+                            st.session_state["dm_sal_a"] = 82000
+                            st.session_state["dm_notes_a"] = "Strong brand in HR tech, Series E, good work-life balance. Stock options with 4y vest."
+                            st.session_state["dm_co_b"] = "Celonis"
+                            st.session_state["dm_title_b"] = "PM — Data Platform"
+                            st.session_state["dm_sal_b"] = 90000
+                            st.session_state["dm_notes_b"] = "Faster growth, higher equity upside, more technical role. Longer hours expected."
+                            st.rerun()
                     _dm_c1, _dm_c2 = st.columns(2)
                     with _dm_c1:
                         st.markdown('<div style="font-size:11px;font-weight:700;color:#0A66C2;margin-bottom:4px">Offer A</div>', unsafe_allow_html=True)
@@ -5904,6 +5963,15 @@ if quick_apply:
                     '</div>',
                     unsafe_allow_html=True,
                 )
+                _comp_demo_c, _ = st.columns([1, 4])
+                with _comp_demo_c:
+                    if st.button("⚡ Load demo offer", key="comp_demo_fill", help="Fill with a realistic PM offer scenario"):
+                        st.session_state["comp_offered"] = 82000
+                        st.session_state["comp_current"] = 68000
+                        st.session_state["comp_role"] = "Product Manager"
+                        st.session_state["comp_company"] = "Personio"
+                        st.session_state["comp_location"] = "Munich, Germany"
+                        st.rerun()
                 _comp_c1, _comp_c2, _comp_c3 = st.columns(3)
                 with _comp_c1:
                     _comp_offer = st.number_input("Offered salary (annual)", min_value=0, value=75000, step=1000, key="comp_offered")
@@ -6234,6 +6302,13 @@ if quick_apply:
                     unsafe_allow_html=True,
                 )
 
+                _wz_demo_c, _ = st.columns([1, 4])
+                with _wz_demo_c:
+                    if st.button("⚡ Load demo data", key="wz_demo_fill", help="Fill with a realistic Week Zero scenario"):
+                        st.session_state["wz_role"] = "Product Manager"
+                        st.session_state["wz_company"] = "Personio"
+                        st.session_state["wz_prev_role"] = "Software Engineer"
+                        st.rerun()
                 _wz_c1, _wz_c2 = st.columns(2)
                 with _wz_c1:
                     _wz_role    = st.text_input("Your new role", key="wz_role", value=str(target) if "target" in dir() else "Product Manager")
@@ -7472,6 +7547,29 @@ if quick_apply:
                 unsafe_allow_html=True,
             )
             if not _qa_phase1_done:
+                _qa_demo_c, _ = st.columns([1, 4])
+                with _qa_demo_c:
+                    if st.button("⚡ Load demo job", key="qa_demo_jd", help="Fill with a realistic PM posting"):
+                        st.session_state.qa_job_text = (
+                            "Product Manager — Data Platform · Celonis (Munich / Remote)\n\n"
+                            "Celonis is looking for a Product Manager to lead our Data Platform squad. "
+                            "You'll own the roadmap for the core data ingestion and transformation layer "
+                            "that powers all Celonis applications.\n\n"
+                            "What you'll do:\n"
+                            "- Define product vision and roadmap for data connectors, ETL pipelines, and platform APIs\n"
+                            "- Partner with enterprise customers to understand data integration pain points\n"
+                            "- Drive alignment across Engineering, Solutions, and Sales\n"
+                            "- Ship features that reduce time-to-value for our top 50 accounts\n\n"
+                            "What we look for:\n"
+                            "- 3+ years in product management or a technical role with strong product instinct\n"
+                            "- Solid understanding of data engineering concepts (SQL, APIs, ETL)\n"
+                            "- Experience with B2B enterprise software — bonus if process mining or ERP\n"
+                            "- Strong analytical skills and comfort with ambiguity\n"
+                            "- Fluent in English; German is a plus\n\n"
+                            "Location: Munich or fully remote (EU time zones)\n"
+                            "Salary: €70,000–€95,000 depending on experience + equity"
+                        )
+                        st.rerun()
                 _qa_input = st.text_area(
                     "Job posting",
                     value=st.session_state.qa_job_text,
@@ -8892,6 +8990,14 @@ if quick_apply:
 
                 # ── Tab 1: Market Salary Analysis ────────────────────────────
                 with _neg_tab1:
+                    _neg_demo_c, _ = st.columns([1, 4])
+                    with _neg_demo_c:
+                        if st.button("⚡ Load demo offer", key="neg_demo_fill", help="Fill with a realistic negotiation scenario"):
+                            st.session_state["neg_location"] = "Munich, Germany"
+                            st.session_state["neg_salary_offered"] = 82000
+                            st.session_state["neg_equity"] = "0.1% options, 4-year vest, 1-year cliff"
+                            st.session_state["neg_benefits"] = "30 days PTO, €50/mo mobility, €1,000 learning budget"
+                            st.rerun()
                     _neg_c1, _neg_c2 = st.columns(2, gap="medium")
                     with _neg_c1:
                         _neg_location = st.text_input("Location", value="United States", key="neg_location",
@@ -9148,6 +9254,12 @@ if quick_apply:
                         value=int((_neg_analysis3.get("market_salary_mid") or 0) * 1.05) or 0,
                         key="neg_counter_salary",
                     )
+                    _neg_letter_demo_c, _ = st.columns([1, 4])
+                    with _neg_letter_demo_c:
+                        if st.button("⚡ Load demo names", key="neg_letter_demo", help="Fill with demo names"):
+                            st.session_state["neg_hm_name"] = "Sarah Chen"
+                            st.session_state["neg_cand_name"] = "Alex Müller"
+                            st.rerun()
                     _neg_hm_name = st.text_input("Hiring manager name", key="neg_hm_name", placeholder="e.g. Sarah Chen")
                     _neg_cand_name = st.text_input("Your name", key="neg_cand_name",
                                                    placeholder=_neg_cv.get("extracted_role", ""))
@@ -9351,6 +9463,12 @@ if quick_apply:
                     '</div>',
                     unsafe_allow_html=True,
                 )
+                _hmd_demo_c, _ = st.columns([1, 4])
+                with _hmd_demo_c:
+                    if st.button("⚡ Load demo data", key="hmd_demo_fill", help="Fill with a demo hiring manager profile"):
+                        st.session_state["hmd_name"] = "Sarah Chen"
+                        st.session_state["hmd_bg"] = "VP of Product at Celonis. Ex-Salesforce PM. Posts frequently about process mining and enterprise AI on LinkedIn. Focuses on B2B user research and data-driven product decisions. MBA from INSEAD."
+                        st.rerun()
                 _hmd_col1, _hmd_col2 = st.columns(2, gap="medium")
                 with _hmd_col1:
                     _hmd_name = st.text_input("Hiring manager name", key="hmd_name",
@@ -9666,6 +9784,14 @@ if quick_apply:
                 unsafe_allow_html=True,
             )
             _pb_cv = st.session_state.cv_profile or {}
+            _pb_demo_c, _ = st.columns([1, 4])
+            with _pb_demo_c:
+                if st.button("⚡ Load demo data", key="pb_demo_fill", help="Fill with Alex Müller's pivot brief"):
+                    st.session_state["pb_name"] = "Alex Müller"
+                    st.session_state["pb_motivation"] = "After 6 years building APIs and data pipelines, I realised the highest-leverage version of my technical skills is in defining what gets built — not just building it."
+                    st.session_state["pb_targets"] = "Celonis, Personio, Contentful, Forto, Tier"
+                    st.session_state["pb_upskilling"] = "Product Strategy, OKRs, Amplitude, User Research"
+                    st.rerun()
             _pb_name = st.text_input("Your name (for the brief)", key="pb_name",
                                      placeholder="e.g. Alex Chen")
             _pb_motivation = st.text_area(
@@ -14884,6 +15010,26 @@ with _tab_execute:
             + (" Personalised to your CV." if _jp_personal else " Upload your CV for personalised results.")
         )
 
+        _jp_demo_c, _ = st.columns([1, 4])
+        with _jp_demo_c:
+            if st.button("⚡ Load demo JD", key="jp_demo_fill", help="Fill with a realistic PM job description"):
+                st.session_state.job_posting_text = (
+                    "Senior Product Manager — Growth · Personio (Munich / Remote)\n\n"
+                    "We are looking for a Senior Product Manager to lead our Growth squad, "
+                    "driving activation and expansion revenue across our SMB customer base.\n\n"
+                    "Responsibilities:\n"
+                    "- Define and execute the product roadmap for growth loops and self-serve onboarding\n"
+                    "- Work closely with Engineering, Design, and Marketing to ship high-impact features\n"
+                    "- Set and monitor KPIs (activation rate, time-to-value, NRR)\n"
+                    "- Run structured discovery: user interviews, data analysis, A/B tests\n\n"
+                    "Requirements:\n"
+                    "- 3+ years of product management experience, ideally in B2B SaaS\n"
+                    "- Strong data skills (SQL, product analytics tools like Amplitude or Mixpanel)\n"
+                    "- Experience working with cross-functional engineering teams\n"
+                    "- Excellent communication and stakeholder management\n"
+                    "- Bonus: technical background (engineering, data science)"
+                )
+                st.rerun()
         job_text_input = st.text_area(
             "Job posting",
             value=st.session_state.job_posting_text,

@@ -335,17 +335,48 @@ Range: 50-92. Vary them realistically — not all jobs are equal matches.
 
 
 def generate_application_package(
-    job: JobListing,
-    current_role: str,
-    target_role: str,
+    job: Optional[JobListing] = None,
+    current_role: str = "",
+    target_role: str = "",
     cv_profile: Optional[Dict] = None,
     top_transfer: Optional[List[str]] = None,
     top_missing: Optional[List[str]] = None,
     model: str = "gpt-4o",
     prefer_online: bool = True,
     api_key: Optional[str] = None,
+    # flat kwargs accepted when callers don't construct a JobListing object
+    job_title: str = "",
+    company: str = "",
+    job_description: str = "",
 ) -> ApplicationPackage:
-    """Generate a complete, personalised application package for a specific job."""
+    """Generate a complete, personalised application package for a specific job.
+
+    Accepts either a JobListing object (job=...) or flat fields
+    (job_title=, company=, job_description=) for backward compatibility.
+    """
+    # Build a minimal JobListing from flat kwargs if no object supplied
+    if job is None:
+        import uuid
+        job = JobListing(
+            id=str(uuid.uuid4())[:8],
+            title=job_title or target_role,
+            company=company or "Unknown Company",
+            company_emoji="🏢",
+            location="",
+            job_type="Full-time",
+            salary_range="",
+            posted_ago="",
+            applicant_count=0,
+            is_easy_apply=False,
+            match_score=70,
+            key_requirements=[],
+            description_preview=job_description[:300] if job_description else "",
+            hiring_manager_name="",
+            hiring_manager_title="",
+            network_connections=0,
+            seniority="",
+            full_description=job_description,
+        )
     if not prefer_online:
         return _offline_application_package(job, current_role, target_role)
 
