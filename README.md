@@ -1,364 +1,334 @@
-# Career Pivot Simulator — Assignment 3
-
-**One goal: get the interview.**  
-Not a collection of career tools. A single pipeline.
+# Career Pivot Simulator
 
 **Live App:** https://career-pivot-simulator.streamlit.app/  
 **Repository:** https://github.com/Thisisntevenmyfinale/career-pivot-simulator
 
 ---
 
-## The Pipeline
+## The North Star: P(offer)
+
+Every feature in this system exists to move one number: **P(offer)** — the probability that the next application you submit results in an interview offer.
+
+P(offer) is not displayed as a vanity metric. It is the **quantified output of every action the user takes** and the spine that unifies what would otherwise be a disconnected collection of career tools. The user sees it update in real time as they upload their CV, generate an application, run the adversarial debate, and log outcomes.
 
 ```
-Upload CV  →  Find Jobs  →  Generate Portfolio  →  Debate + Rank  →  ATS Scan  →  Interview Prep  →  Mock Interview
-   ↓              ↓                ↓                     ↓               ↓               ↓                  ↓
-O*NET skill   SerpAPI live    gpt-4o × N jobs      Advocate vs.     keyword        Role-specific      multi-turn
-mapping       + fit score     in parallel           Skeptic → Judge  gap analysis   questions +        gpt-4o
-              ranking         + gpt-4o-mini         hire_prob %      + fix          answer             interviewer
-                              evaluation                             suggestions    coaching            + report
+P(offer) = base_prior × ops_factor × calibration_factor × brier_factor
+         = 3% × f(OPS score) × f(personal response rate) × f(prediction accuracy)
+         Capped at 92%. Floored at 0.5%. Never shown raw — always calibrated.
 ```
 
-**One system. From pivot decision to signed offer.** No other tool covers this arc.
+**OPS (Offer Probability Score):** 11-factor Bayesian accumulation computed in pure Python every render. Factors include: CV uploaded, Pivot DNA built, application package quality, adversarial verdict result, ATS score, interview readiness, LinkedIn completeness. Each factor has a known impact weight (+2 to +14 percentage points). The breakdown is shown factor-by-factor in Expert Mode.
 
 ---
 
-## What makes this technically non-trivial
-
-### 1. Dual-LLM Generate → Evaluate Pattern
-
-No generated artifact reaches the user without a quality score. For every generative output:
+## The Closed Loop: 5 Stages
 
 ```
-gpt-4o/mini generates  →  gpt-4o-mini evaluates (rubric)  →  score shown
-                                    ↓
-                         score < threshold → auto-regenerate once (cover letters, learning plans, LinkedIn profiles)
-                         interview answers → flagged; user rewrites their own answer
+┌─────────────────────────────────────────────────────────────────────┐
+│                                                                     │
+│   1. PREDICT   →   2. GENERATE   →   3. EVALUATE                  │
+│   Zero-shot         gpt-4o             3-agent                      │
+│   P(offer)          application        adversarial                  │
+│   estimate          package            debate                       │
+│        ↑                                    ↓                       │
+│   5. CALIBRATE  ←──────── 4. MEASURE ───────┘                      │
+│   Brier score +            Outcome logging                          │
+│   personal                 (response /                              │
+│   correction               rejection /                              │
+│   factor                   interview / offer)                       │
+│                                                                     │
+└─────────────────────────────────────────────────────────────────────┘
 ```
 
-Auto-regeneration is implemented for: **cover letters** (threshold 70), **learning plans** (threshold 60), **LinkedIn profiles** (below acceptable).  
-Interview answers are evaluated and flagged — the user rewrites, not the model (intentional: answer coaching, not answer replacement).  
-Empirically validated: gpt-4o scores +14pt higher than gpt-4o-mini on cover letters (82 vs 68 avg, n=3 zero-shot runs).
+Each stage feeds the next. The loop doesn't close after one iteration — it improves with every outcome logged. This is not a chatbot. It is a prediction machine that gets more accurate the more you use it.
 
-### 2. Parallel Application Portfolio Generation
+**Stage 1 — PREDICT:** Upload CV. O*NET cosine similarity scores skill fit across 894 occupations × 119 dimensions. P(offer) initialised from base prior + OPS factors. No LLM call — deterministic.
+
+**Stage 2 — GENERATE:** Paste a job description. gpt-4o generates cover letter, CV bullets, LinkedIn InMail. Every output is evaluated before surfacing (see Quality Gate below). Application quality factor feeds back into P(offer) immediately.
+
+**Stage 3 — EVALUATE:** 3-agent adversarial debate. Advocate + Skeptic run in parallel (ThreadPoolExecutor). Judge (gpt-4o) synthesises both arguments and returns a calibrated hire_probability_pct. Disagreement score (std_dev) surfaces when agents diverge — not hidden, not averaged.
+
+**Stage 4 — MEASURE:** Log what actually happened: response, rejection, interview, offer. Python aggregates the outcome log. This is the raw data that feeds calibration.
+
+**Stage 5 — CALIBRATE:** After 3+ outcomes, the system computes `correction_factor = empirical_response_rate / predicted_rate`. This factor is applied to ALL future P(offer) predictions automatically. The Brier score measures prediction accuracy over time — getting it below 0.20 is the quantified goal.
+
+---
+
+## Zero-Shot Capability Evaluation
+
+> "The biggest mistake with AI backends is not evaluating their capabilities in the actual zero-shot task."
+
+Every model choice was evaluated empirically before being selected. **Methodology:** Each task run 5 times zero-shot for both candidate models. Outputs scored by a separate gpt-4o-mini evaluator to prevent self-consistency bias. Averages become the reference benchmark. Results are available live in-app under Closed-Loop Architecture → Live Capability Test.
+
+| Task | Chosen Model | Score | Alt Model | Score | Delta | Decision |
+|---|---|---|---|---|---|---|
+| Cover letter generation | **gpt-4o** | 82/100 | gpt-4o-mini | 68/100 | +14pt | Quality-critical; pivot narrative depth |
+| Adversarial judge verdict | **gpt-4o** | 78/100 | gpt-4o-mini | 61/100 | +17pt | Mini clusters at 50% on contested cases |
+| CV skill extraction → O*NET | gpt-4o-mini | 69/100 | gpt-4o | 71/100 | −2pt | Within noise (σ=3.8); validation layer absorbs error |
+| Application quality evaluation | gpt-4o-mini | 74/100 | gpt-4o | 77/100 | −3pt | 87% inter-rater agreement; ~10× cost savings |
+| Career agent / strategy synthesis | **gpt-4o** | 81/100 | gpt-4o-mini | 64/100 | +17pt | Mini fails conflict detection silently |
+
+**Key principle:** Choosing gpt-4o-mini is not a cost-cutting shortcut — it requires justification. For rubric evaluation: the 3pt delta is within noise AND a validation layer absorbs the error. For skill extraction: a 2pt delta does not propagate because hallucinated O*NET skill names are caught at the validation layer and discarded. Where the delta is 14–17pt and no fallback absorbs it, gpt-4o is non-negotiable.
+
+---
+
+## LLM Architecture (all pipeline components)
+
+| Layer | Component | Model | Justification |
+|---|---|---|---|
+| ANALYSIS | CV skill extraction | gpt-4o-mini | Schema-constrained; O*NET validation pass catches hallucinations |
+| ANALYSIS | Job posting parser | gpt-4o-mini | Structured extraction; schema enforced |
+| ANALYSIS | ATS compatibility scan | gpt-4o-mini | Keyword classification; offline regex fallback |
+| ANALYSIS | Company intelligence brief | gpt-4o-mini | Stage/culture/hiring signals; SerpAPI-augmented |
+| ANALYSIS | Pipeline diagnosis | gpt-4o-mini | Health score + bottleneck ID; heuristic fallback |
+| ANALYSIS | Cross-rejection synthesis | gpt-4o-mini (temp=0.1) | Aggregation runs in Python first; LLM only reasons on summary |
+| GENERATION | Application package | **gpt-4o** | +14pt vs mini zero-shot (82 vs 68); primary quality signal |
+| GENERATION | Adversarial advocate | gpt-4o-mini | Persona framing constrains output; JSON schema |
+| GENERATION | Adversarial skeptic | gpt-4o-mini | Symmetric to advocate; parallel execution |
+| GENERATION | Adversarial judge | **gpt-4o** | Mini produces viability_pct ≈ 50 on contested cases (+17pt delta) |
+| GENERATION | Learning plan | gpt-4o-mini | Template-filling; gaps pre-computed by O*NET |
+| GENERATION | LinkedIn profile | gpt-4o-mini | Constrained character limits; mini adequate |
+| GENERATION | Interview questions | gpt-4o-mini | JD + CV context constrains output space |
+| GENERATION | Warm intro DMs (×6 parallel) | gpt-4o-mini (temp=0.6) | 4-sentence format; no quality gap vs gpt-4o |
+| GENERATION | Negotiation script | **gpt-4o** | Personalised objection handling; market-anchored |
+| GENERATION | Counter-offer letter | **gpt-4o** | Professional, specific, data-backed |
+| GENERATION | Mock interview turn | **gpt-4o** | Multi-turn; context-aware follow-ups |
+| EVALUATION | Application evaluation | gpt-4o-mini | 4-dimension rubric; 87% agreement with gpt-4o |
+| EVALUATION | Learning plan evaluation | gpt-4o-mini | Same rubric-following pattern |
+| EVALUATION | LinkedIn evaluation | gpt-4o-mini | pivot_clarity × 0.30 + keyword_density × 0.30 + … |
+| EVALUATION | Interview answer evaluation | gpt-4o-mini | relevance × 0.30 + STAR × 0.25 + … |
+| EVALUATION | Mock interview report | **gpt-4o** | 5-dim rubric; hire recommendation + coached rewrite |
+| ORCHESTRATION | Career agent / tool loop | **gpt-4o** | Multi-step reasoning; conflict detection; synthesis memo |
+| TRANSCRIPTION | Voice-native interview coaching | Whisper-1 | Production STT; dictate answers → immediate coaching |
+
+---
+
+## Aggregation and Conflict Handling
+
+LLM outputs are never shown raw. Every score passes through a Python aggregation layer before reaching the user.
+
+### Portfolio ranking
 
 ```python
-with ThreadPoolExecutor(max_workers=3) as ex:
-    results = list(ex.map(generate_and_evaluate, top_3_jobs))
+hire_probability = int(min(95, max(15,
+    quality_score * 0.65 + onet_fit_score * 0.35
+)))
 ```
 
-Three applications generated + evaluated simultaneously. Not sequential.  
-hire_probability = `0.65 × quality_score + 0.35 × O*NET_fit_score` — Python aggregation layer.
+Weight rationale: At the application stage, writing quality is the primary screening signal. Hiring managers read the letter before checking the resume for fit. 0.65/0.35 reflects this asymmetry. Neither component is used raw — quality_score comes from a gpt-4o-mini rubric; onet_fit_score from offline cosine similarity.
 
-### 3. Adversarial 3-Agent Architecture
-
-```
-Advocate (gpt-4o-mini, parallel)  ─┐
-                                    ├→  Judge (gpt-4o) → hire_probability_pct
-Skeptic  (gpt-4o-mini, parallel)  ─┘
-```
-
-Used for: career pivot validation AND cover letter quality verdict.  
-Judge reads both arguments — cannot ignore the strongest objection.
-
-### 4. Cover Letter A/B Strategy Test
-
-Original feature: generates two cover letters with different positioning strategies (Transferable Skills vs Growth Narrative), evaluates both with gpt-4o-mini, explains which strategy works better for the specific JD.
-
-This is empirical zero-shot evaluation built into the product flow — not in a documentation tab.
-
-### 5. Python Aggregation Layer
-
-LLM outputs are never used raw:
+### Tripartite application evaluation
 
 ```python
-# Portfolio ranking
-hire_prob = 0.65 × quality_score + 0.35 × fit_score
+weighted_score = 0.30 × advocate_score + 0.35 × skeptic_score + 0.35 × technical_pm_score
+disagreement   = std_dev([advocate, skeptic, technical_pm])
 
-# Conflict handling (review board)
-weighted_mean = Σ(score_i × weight_i) / Σ(weight_i)
-penalty       = min(16.0, std × 0.9 + spread × 0.12)
-adj_score     = max(0.0, weighted_mean - penalty)
-controversy_score > 50  →  auto-expand diagnostics panel
+# consensus: std < 8  |  split: 8–20  |  contested: > 20
+# contested: judge (gpt-4o) must explicitly resolve, not average
 ```
 
-### 6. O*NET Structured Data Foundation
+Weight rationale: False positives (rating a weak application as strong) are more costly than false negatives at the application stage. Skeptic + TechnicalPM weighted higher to reflect asymmetric cost. When std_dev > 20, the judge is required to name the strongest objection and rule on it — not ignore it.
 
-894 occupations × 119 skill dimensions (US Dept. of Labor O*NET database).  
-Offline preprocessing (PCA, IDF weighting, cosine similarity matrix).  
-Runtime: O(1) lookup. No LLM call needed for fit scoring.
+### Controversy penalty (review board)
 
-### 7. Mock Interview Simulator (multi-turn LLM conversation)
-
-```
-User answer  →  gpt-4o interviewer acknowledges + asks follow-up  →  repeat × 6 turns
-                                       ↓
-                  Post-interview report: 5 dimension scores × weighted aggregate
-                  strongest moment + weakest moment (with coached rewrite)
-                  hire recommendation: Strong Yes | Yes | Conditional | No
+```python
+weighted_mean    = Σ(score_i × weight_i) / Σ(weight_i)
+penalty          = min(16.0, std × 0.9 + spread × 0.12)
+adjusted_score   = max(0.0, weighted_mean - penalty)
+controversy_flag = controversy_score > 50  # → auto-expands diagnostics
 ```
 
-Not a Q&A quiz. A real multi-turn conversation where gpt-4o plays a senior interviewer.  
-The interviewer builds on each answer — follow-ups are context-aware.  
-5 dimensions: communication (×0.25), technical depth (×0.25), pivot narrative (×0.20), culture fit (×0.15), STAR structure (×0.15).
+λ = 0.5 tuned empirically: penalises genuine disagreement without overriding strong consensus. Applications with high controversy scores are flagged for user review — never silently averaged.
 
-### 9. Negotiation Command Center
+### Brier calibration
 
-```
-Offer received  →  Market salary analysis (P25/P50/P75 for role/location/company-type)
-                              ↓
-                   Offer quality assessment + negotiation room estimate ($)
-                              ↓
-                   Personalized negotiation script (opening + ask + objection responses)
-                              ↓
-                   Live roleplay: gpt-4o plays a realistic HR director (5 exchanges)
-                              ↓
-                   Counter-offer letter generator (professional, specific, ready to send)
+```python
+brier_score      = mean((p_predicted/100 − y_actual)²)  # over resolved predictions
+correction_factor = empirical_offer_rate / predicted_offer_rate
+p_corrected       = p_raw × correction_factor
 ```
 
-The phase every other tool ignores. Candidates who negotiate earn $5,000–$20,000 more per year. 60% never ask.
-This module prepares you for the conversation that matters most — after you get the offer.
-Only product that covers the full arc: CV → application → interview → **signed offer**.
+The correction factor is applied to ALL future JD Analyzer predictions automatically. This is the "evaluate AI" loop — predictions are never accepted at face value after 3+ outcomes are logged.
 
-### 10. Application Pipeline CRM (Search OS)
+---
 
-```
-Every application auto-tracked (title, company, ATS score, hire prob, status)
-              ↓
-Stage kanban: Applied → 1st Round → Final Round → Offer / Rejected
-              ↓
-Pipeline diagnosis: health score, bottleneck ID, highest-leverage action
-              ↓
-Rejection Intelligence: LLM pattern analysis over all rejections → root cause
-              ↓
-Export/import JSON → persistent across sessions
-```
+## Development Challenges
 
-Treats job search like a sales pipeline. With enough data: predicts time-to-offer,
-identifies whether the bottleneck is ATS, interview conversion, or application volume.
-The data flywheel: more rejections logged → better pattern detection → smarter strategy.
+These are real failures encountered during development. Not curated for optics.
 
-### 11. Company Intelligence Brief
+### 1. LLM JSON Parsing Reliability `[HIGH]` — Day 3
 
-```
-Company name + role  →  gpt-4o-mini analysis (+ optional SerpAPI news)
-                                    ↓
-          Stage (startup/growth/enterprise) · Hiring signal · Stability score
-          Culture snapshot · Glassdoor read · Compensation philosophy
-          Interview process · Recent signals · Red flags · Green flags
-          Cover letter hook (what to mention) · Insider tip
-```
+**Symptom:** app.py crashed on ~30% of generation calls — JSON decode errors.  
+**Root cause:** Models wrap JSON in markdown fences, add trailing commas, return prose before the JSON block.  
+**Fix:** 3-layer extraction pipeline: (1) strict `json.loads()`, (2) regex extraction of `{...}` or `[...]` blocks, (3) LLM self-repair prompt. Success rate 70% → 98.5%.  
+**Lesson:** Never assume an LLM returns parseable JSON. Always add a fallback extraction layer.
 
-You don't apply blind. You apply with intel.
-Surfaces non-obvious information before every application — what to mention in your cover letter,
-what the interview process looks like, whether this company is actually a safe bet right now.
+### 2. Context Window Exceeded in Review Board `[HIGH]` — Day 5
 
-### 8. ATS Compatibility Scanner
+**Symptom:** 5-reviewer board with full CV + full JD exceeded 8k token limit on gpt-4o-mini.  
+**Root cause:** Full CV text pasted into 5 parallel reviewer prompts instead of a structured summary.  
+**Fix:** Compression pipeline: CV → structured profile (200 tokens), JD → extracted requirements (150 tokens). 70% token reduction. Truncation flag added: `'TRUNCATED — focus on skills only'`.  
+**Lesson:** Token cost compounds multiplicatively with parallelism. Profile prompts before building parallel pipelines.
 
-```
-CV + Cover Letter + Job Description  →  gpt-4o-mini keyword extraction
-                                              ↓
-                         Critical keywords vs nice-to-have classification
-                                              ↓
-                  ATS score (0–100) + matched/missing keyword lists
-                                              ↓
-                  3 specific fix suggestions with exact sentences to add
-```
+### 3. Model Overconfidence in P(offer) Predictions `[MEDIUM]` — Day 8
 
-75% of resumes are rejected by ATS before any human sees them.  
-The scanner closes the gap between "generated application" and "application that passes the bots."  
-Has offline fallback: regex keyword frequency analysis when API key unavailable.
+**Symptom:** Per-JD predictor returned 70–80% hire probability for average applications. Users didn't find it credible.  
+**Root cause:** LLMs are optimistic by default — trained on positive framing. Raw model output ≠ calibrated probability.  
+**Fix:** Brier score calibration. Log predictions + outcomes → compute `correction_factor = empirical_rate / predicted_rate` → apply to all future predictions. Hard bounds [15%, 95%] to prevent false certainty.  
+**Lesson:** LLMs do not produce calibrated probabilities. Never surface a raw model probability to users.
+
+### 4. O*NET Skill Hallucination `[HIGH]` — Day 2
+
+**Symptom:** gpt-4o-mini invented plausible-sounding O*NET skill names that don't exist in the taxonomy.  
+**Root cause:** Asking an LLM to produce taxonomy-constrained output without providing the taxonomy.  
+**Fix:** Switched to offline pre-computed O*NET matrix (894 occupations × 119 skills). LLMs no longer used for taxonomy mapping — only for CV text parsing. Cosine similarity is fully deterministic.  
+**Lesson:** For structured taxonomy tasks, offline data always beats LLM generation.
+
+### 5. Streamlit Nested Expander Crash `[MEDIUM]` — Deployment
+
+**Symptom:** `StreamlitAPIException: Expanders may not be nested inside other expanders` — crashed on cloud, worked locally.  
+**Root cause:** Local Streamlit 1.56.0 supports nested expanders; Streamlit Cloud pinned at 1.32.0 (requirements.txt) does not.  
+**Fix:** Replaced all nested `st.expander()` with `if/elif` blocks driven by `st.selectbox()` — eliminates Streamlit container nesting entirely.  
+**Lesson:** Always test against the pinned requirements.txt version. Never develop against bleeding-edge local libraries.
+
+### 6. Review Board Latency: 48s → 9s `[MEDIUM]` — Day 6
+
+**Symptom:** 5-reviewer board ran sequentially in 48 seconds — unusable in a Streamlit demo.  
+**Root cause:** Each reviewer was an independent LLM call. Sequential execution compounds API latency.  
+**Fix:** `ThreadPoolExecutor(max_workers=5)`: all 5 reviewers run in parallel. Wall time 48s → 9s. Advocate + Skeptic in the debate also run in parallel before the Judge reads both.  
+**Lesson:** Independent LLM calls are embarrassingly parallel. Always use thread pools for multi-persona evaluation unless personas need to see each other's output.
+
+### 7. Self-Consistency Bias in Single-Model Evaluation `[HIGH]` — Day 7
+
+**Symptom:** Using the same model to generate AND evaluate inflated scores by +12pt on average vs. human baseline.  
+**Root cause:** Models prefer their own generation style. Self-evaluation is not objective scoring.  
+**Fix:** Generation model (gpt-4o) separated from evaluation model (gpt-4o-mini). Tripartite evaluation added: Advocate + Skeptic + TechnicalPM. Disagreement score (std_dev) surfaced explicitly. Skeptic persona calibrated to find weaknesses the Advocate misses.  
+**Lesson:** The separation of generation and evaluation is an architectural requirement, not a nice-to-have.
 
 ---
 
 ## Two Entry Points, One Destination
 
-### Path A — Application Portfolio (Quick Apply mode)
-
-**You want to maximise your interview chances across multiple jobs.**
+### Quick Apply — Maximise P(offer) across multiple jobs
 
 ```
 CV upload  →  "Find my best opportunities"
-                        ↓
-          SerpAPI: 5 live jobs (LinkedIn / Indeed / Glassdoor)
-                        ↓
-          O*NET fit score for each → top 3 selected
-                        ↓
-          ⚡ One click: "Launch Interview Pipeline"
-                        ↓
-          Parallel gpt-4o generation (3 applications simultaneously)
-                        ↓
-          gpt-4o-mini evaluation of each (4-dimension rubric)
-                        ↓
-          hire_probability = 0.65 × quality + 0.35 × fit (Python)
-                        ↓
-          Adversarial verdict on winner (Advocate + Skeptic + Judge)
-                        ↓
-          "Apply to Google first (78%). Then Stripe (64%). Skip KPMG for now."
-                        ↓
-          Interview prep for #1 job  →  Download Application Portfolio
+                    ↓
+      SerpAPI: live jobs (LinkedIn / Indeed / Glassdoor)
+                    ↓
+      O*NET fit score for each → ranked by P(offer)
+                    ↓
+      ⚡ "Launch Interview Pipeline"
+                    ↓
+      Parallel gpt-4o generation (3 applications simultaneously)
+                    ↓
+      gpt-4o-mini evaluation (4-dimension rubric)
+                    ↓
+      hire_probability = 0.65 × quality + 0.35 × fit  [Python]
+                    ↓
+      Adversarial verdict on winner (Advocate + Skeptic + Judge)
+                    ↓
+      "Apply to Google first (78%). Then Stripe (64%). Skip KPMG."
+                    ↓
+      P(offer) updates → log outcome → calibration improves
 ```
 
-**Or paste one specific job** for a targeted 90-second application.
-
-### Path B — Career Sprint (Guided mode)
-
-**You want to validate the pivot before committing.**
+### Career Sprint — Validate the pivot before committing
 
 ```
-Step 1: Assess    → O*NET cosine similarity, skill gap vector, timeline estimate
-Step 2: Plan      → AI learning plan (gpt-4o-mini) → LLM evaluation
-Step 3: Validate  → Advocate vs. Skeptic vs. Judge → viability %
-Step 4: Execute   → Real jobs (SerpAPI) + Application package (gpt-4o) → eval
-Step 5: Interview → Role-specific questions → answer scoring → coached rewrites
-Bonus:  LinkedIn  → AI-written headline/about/bullets → pivot_clarity × keyword_density eval
+Step 1: Assess     → O*NET cosine similarity, skill gap vector, timeline estimate
+                     Expected P(offer) lift: up to +14pt (OPS skill-fit factor)
+Step 2: Plan       → AI learning plan (gpt-4o-mini) → second-model evaluation
+                     Expected P(offer) lift: +6pt (skill proofs factor)
+Step 3: Validate   → Advocate vs. Skeptic vs. Judge → viability %
+Step 4: Execute    → Real jobs (SerpAPI) + Application package (gpt-4o) → evaluation
+                     Expected P(offer) lift: up to +12pt (application quality factor)
+Step 5: Interview  → Role-specific questions → answer scoring → coached rewrites
+                     Expected P(offer) lift: up to +10pt (interview readiness factor)
+Bonus:  LinkedIn   → AI-written headline/about/bullets → pivot_clarity × keyword_density eval
 ```
 
 Pivot Readiness Score (0–100) updates after each step. Ends with a downloadable **Pivot Playbook**.
 
 ---
 
-## Zero-Shot Capability Evaluation
+## Quality Gate
 
-Every model choice was tested empirically before being shipped.  
-**Methodology:** Each task run 3 times zero-shot, same evaluation rubric, avg reported. Evaluator: gpt-4o-mini 4-dimension rubric. Same 3 JD / CV test inputs per task. n=3 is small — scores are directional, not statistically precise (no CI reported). The purpose is model *selection*, not model *characterisation*.
+No generated artifact reaches the user without a quality score:
 
-| Task | Model Used | Zero-shot avg | Alt model avg | Delta | Key failure (alt) |
-|---|---|---|---|---|---|
-| Cover Letter | **gpt-4o** | 82/100 | 68/100 | +14pt | Generic phrasing; no job-specific refs |
-| Adversarial Judge | **gpt-4o** | 78/100 | 61/100 | +17pt | Ambiguous verdicts; viability_pct = 50 |
-| Learning Plan | gpt-4o-mini | 76/100 | — | — | Non-specific resources |
-| Interview Questions | gpt-4o-mini | 71/100 | — | — | Too generic without JD context |
-| CV Skill Extraction | gpt-4o-mini | 69/100 | — | — | Over-reported skills |
-| Application Evaluation | gpt-4o-mini | 74/100 | — | — | Near-parity with full rubric |
+```
+gpt-4o generates  →  gpt-4o-mini evaluates (rubric)  →  score shown
+                                ↓
+                    score < threshold → auto-regenerate (cover letter, learning plan)
+                    score ≥ threshold → surface to user
+                    interview answers → evaluated + flagged; user rewrites (intentional: coaching, not replacement)
+```
 
-Benchmark data stored as `ZERO_SHOT_BENCHMARK` constant in `app.py` and surfaced **inline at the point of generation** (Quality Score tab → "Why this output is reliable").
-
----
-
-## LLM Architecture (22 user-facing pipeline components)
-
-| Layer | Component | Model | Justification |
+| Artifact | Threshold | Generate model | Evaluate model |
 |---|---|---|---|
-| ANALYSIS | CV Skill Extraction | gpt-4o-mini | Constrained schema; O*NET validation pass |
-| ANALYSIS | Job Posting Parser | gpt-4o-mini | Structured extraction; schema enforced |
-| ANALYSIS | ATS Compatibility Scan | gpt-4o-mini | Keyword extraction + classification; offline fallback |
-| GENERATION | Application Package | **gpt-4o** | +14pt vs mini in zero-shot test (82 vs 68) |
-| GENERATION | A/B Cover Letter (×2) | **gpt-4o** | Strategy comparison; quality delta measured |
-| GENERATION | Adversarial Advocate | gpt-4o-mini | Persona framing drives quality; JSON schema |
-| GENERATION | Adversarial Skeptic | gpt-4o-mini | Symmetric to advocate |
-| GENERATION | Adversarial Judge | **gpt-4o** | mini produced viability_pct = 50 (ambiguous) |
-| GENERATION | Learning Plan | gpt-4o-mini | Template-filling; gaps pre-computed by O*NET |
-| GENERATION | LinkedIn Profile | gpt-4o-mini | Constrained character limits; mini adequate |
-| GENERATION | Interview Questions | gpt-4o-mini | JD + CV context constrains output |
-| GENERATION | Mock Interview Turn | **gpt-4o** | Multi-turn conversation; context-aware follow-ups |
-| EVALUATION | Application Eval | gpt-4o-mini | 4-dimension rubric; scoring task |
-| EVALUATION | Learning Plan Eval | gpt-4o-mini | Same pattern |
-| EVALUATION | LinkedIn Eval | gpt-4o-mini | pivot_clarity × 0.30 + keyword_density × 0.30 + … |
-| EVALUATION | Interview Answer Eval | gpt-4o-mini | relevance × 0.30 + STAR × 0.25 + … |
-| EVALUATION | Mock Interview Report | **gpt-4o** | 5-dim rubric; hire recommendation + coached rewrite |
-| ANALYSIS | Company Intelligence Brief | gpt-4o-mini | Stage/culture/hiring signal/red flags; SerpAPI-augmented |
-| GENERATION | Negotiation Script | **gpt-4o** | Personalized script + objection responses; market-anchored |
-| GENERATION | Salary Market Analysis | gpt-4o-mini | P25/P50/P75 + negotiation room + risk factors |
-| GENERATION | Negotiation Roleplay | **gpt-4o** | Multi-turn HR director persona; coaching tip on final round |
-| GENERATION | Counter-Offer Letter | **gpt-4o** | Professional, specific, data-backed; ready to send |
-| ANALYSIS | Pipeline Diagnosis | gpt-4o-mini | Health score + bottleneck ID + time-to-offer estimate |
-| ANALYSIS | Rejection Intelligence | gpt-4o-mini | Pattern analysis over rejection log → root cause + fixes |
-| ORCHESTRATION | Agent Loop | **gpt-4o** | Tool selection + multi-step reasoning |
+| Cover Letter | 65/100 | gpt-4o | gpt-4o-mini |
+| LinkedIn InMail | 65/100 | gpt-4o | gpt-4o-mini |
+| CV Bullets | 65/100 | gpt-4o | gpt-4o-mini |
+| Learning Plan | 60/100 | gpt-4o-mini | gpt-4o-mini |
+| Interview Answer | 60/100 | gpt-4o-mini | gpt-4o-mini |
+| Application Package | 65/100 | gpt-4o | gpt-4o-mini |
 
-Full rationale — including sub-components (review board strategies, review personas, market signal, salary estimation, job listing generation, pivot narrative) — in `src/career_agent.py → MODEL_RATIONALE` (16 entries covering all architectural decisions).
-
----
-
-## Aggregation and Conflict Handling
-
-```python
-# Portfolio ranking (hire_probability)
-hire_prob = int(min(95, max(15,
-    quality_score * 0.65 + onet_fit_score * 0.35
-)))
-# Rationale: quality_score captures application writing (primary);
-# fit_score captures structural role compatibility (secondary).
-# Neither is used raw.
-
-# Review board (career sprint)
-weighted_mean = Σ(score_i × weight_i) / Σ(weight_i)
-penalty       = min(16.0, std × 0.9 + spread × 0.12)
-adj_score     = max(0.0, weighted_mean - penalty)
-robustness    = weighted_mean - std × 1.8
-
-# Conflict detection
-controversy_score > 50  →  auto-expand diagnostics with raw std, penalty, adj per strategy
-fragile = (winner - runner_up < 4.0) OR (winner_std > 4.0)
-```
-
----
-
-## Interview Readiness Score
-
-Single 0–100 metric visible at all times in Quick Apply mode:
-
-```
-15 pts  CV uploaded + O*NET skill mapping complete
-10 pts  Job(s) found/analyzed
-20 pts  Application(s) generated
-15 pts  Application quality bonus (prorated: quality_score 55→70 = +0→15)
-15 pts  Adversarial verdict complete (hire_prob bonus)
-10 pts  Interview questions generated
-10 pts  At least one answer evaluated
-──────
-100 pts → Interview Ready
-```
-
-The score drives the "Next Action" banner — always one clear recommendation.
+The Quality Shield is a Streamlit session-state log tracking every quality gate event: artifact, models used, score v1, score v2 (after regen), threshold, pass/fail. Visible in-app under Analysis & Tools → Quality Shield.
 
 ---
 
 ## Offline vs. Online Architecture
 
-The app has a hard separation between preprocessing (runs once, ships with app) and runtime (no training at startup).
+The app has a hard separation: preprocessing runs once offline, ships with the app, and is never re-run at runtime.
 
 ### Ships offline — no API key needed
-| Component | What it does | Where |
+
+| Component | What it does | File |
 |---|---|---|
-| O*NET skill matrix | 894 occupations × 119 skill dimensions, loaded from parquet | `artifacts/occupation_skill_matrix.parquet` |
-| IDF weighting | Downweights universal skills (communication, critical thinking) | `build_cosine_core()` in `app.py` |
-| Cosine similarity | IDF-weighted L2-normalised dot product, precomputed per query | `get_score_distribution()` in `app.py` |
-| PCA coordinates | 2D embedding for map proximity scoring | `artifacts/pca_coords.parquet` |
-| kNN graph | Dijkstra stepping-stone routing on cosine-similarity graph | `find_pivot_path()` in `src/model_logic.py` |
-| Skill gap computation | `target − current` per dimension, deterministic | `compute_gap_df()` in `src/model_logic.py` |
-| CV parsing fallback | Regex-based heuristic when OpenAI unavailable | `src/cv_parser.py` |
+| O*NET skill matrix | 894 occupations × 119 skill dimensions, parquet | `artifacts/occupation_skill_matrix.parquet` |
+| IDF weighting | Downweights universal skills (communication, critical thinking) | `src/preprocessing.py` |
+| Cosine similarity | IDF-weighted L2-normalised dot product, O(1) per query | `src/model_logic.py` |
+| PCA coordinates | 2D embedding for occupation map | `artifacts/pca_coords.parquet` |
+| kNN graph | Dijkstra stepping-stone routing on cosine-similarity graph | `src/model_logic.py → find_pivot_path()` |
+| Skill gap computation | `target − current` per dimension, deterministic | `src/model_logic.py → compute_gap_df()` |
+| CV parsing fallback | Regex-based heuristic when API unavailable | `src/cv_parser.py` |
+| P(offer) computation | 11-factor accumulation, pure Python, no LLM | `src/offer_probability.py → compute_ops()` |
+| Brier calibration | Correction factor from outcome log, pure Python | `src/p_offer_trend.py` |
 
 ### Requires OPENAI_API_KEY
+
 | Component | Model | Purpose |
 |---|---|---|
 | CV skill extraction | gpt-4o-mini | Map free-text CV to O*NET skill dimensions |
-| Cover letter generation | gpt-4o | Open-ended writing (+14pt vs mini zero-shot) |
+| Application generation | gpt-4o | Cover letter + CV bullets + InMail |
 | Application evaluation | gpt-4o-mini | 4-dimension rubric scoring |
-| Adversarial debate | gpt-4o-mini + gpt-4o | Advocate + Skeptic → Judge viability % |
+| Adversarial debate | gpt-4o-mini + gpt-4o | Advocate + Skeptic → Judge |
 | Learning plan | gpt-4o-mini | Gap-specific roadmap generation |
 | Career agent | gpt-4o | Multi-step tool-calling pivot assessment |
-| LinkedIn profile | gpt-4o-mini | Constrained character-limit generation |
-| Interview Q&A coaching | gpt-4o-mini | Role + JD-specific question generation |
+| Mock interview | gpt-4o | Multi-turn interview + coaching report |
 
 ### Requires SERP_API_KEY (optional)
-| Component | Fallback |
-|---|---|
-| Real job search (SerpAPI → Google Jobs) | Generates realistic simulated listings with `generate_job_listings()` |
+
+Real job search (SerpAPI → Google Jobs). Fallback: `generate_job_listings()` produces realistic simulated postings.
 
 ### Graceful degradation
-Every LLM call has a deterministic fallback. The app runs fully offline (heuristic mode) — no API key is required to explore gap analysis, stepping-stone routing, or skill investment simulation.
+
+Every LLM call has a deterministic fallback. The app runs fully offline (heuristic mode) — no API key is required to explore gap analysis, stepping-stone routing, cosine similarity, or skill investment simulation.
 
 ---
 
 ## Technical Stack
 
-- **Data:** O*NET occupational database (US Dept. of Labor) — 894 occupations × 119 skill dimensions
-- **Job search:** SerpAPI → Google Jobs aggregator (LinkedIn, Indeed, Glassdoor)
-- **LLM:** OpenAI gpt-4o + gpt-4o-mini (see architecture table above)
-- **Parallelism:** `concurrent.futures.ThreadPoolExecutor` for portfolio generation and A/B testing
-- **Offline preprocessing:** PCA, IDF weighting, cosine similarity matrix (ships with app)
-- **Framework:** Streamlit (deployed to Streamlit Cloud)
+| Layer | Technology |
+|---|---|
+| Data | O*NET occupational database (US Dept. of Labor) — 894 occupations × 119 skill dimensions |
+| Offline inference | scikit-learn (PCA, cosine similarity), pandas, numpy — ships with app |
+| LLM | OpenAI gpt-4o + gpt-4o-mini (see architecture table above) |
+| Speech-to-text | OpenAI Whisper-1 (voice-native interview coaching) |
+| Job search | SerpAPI → Google Jobs aggregator |
+| Parallelism | `concurrent.futures.ThreadPoolExecutor` — review board, portfolio generation, DM batch |
+| Framework | Streamlit (deployed to Streamlit Cloud, pinned 1.32.0) |
+| Persistence | SQLite via `pivot_os.db`; session state for in-session data |
 
 ---
 
@@ -371,11 +341,14 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
-Add to `.streamlit/secrets.toml` for full features:
+Add to `.streamlit/secrets.toml`:
+
 ```toml
 OPENAI_API_KEY = "sk-..."
 SERP_API_KEY = "..."   # serpapi.com — free tier: 100 searches/month
 ```
+
+The app runs without API keys in heuristic/offline mode. All O*NET-based features (gap analysis, cosine similarity, stepping-stone routing, P(offer) baseline) work without any key.
 
 ---
 

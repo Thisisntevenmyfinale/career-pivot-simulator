@@ -10693,12 +10693,14 @@ if guided:
     # ── Sprint header ─────────────────────────────────────────────────────
     # P(offer) impact per step: what completing each step does to the number
     _sp_steps = ["Assess", "Plan", "Validate", "Execute", "Interview"]
+    # Max P(offer) lift per step from OPS factor weights (offer_probability.py)
+    _sp_max_lifts = [14, 6, 0, 12, 10]  # O*NET fit, skill proofs, debate (confidence only), app quality, interview
     _sp_impacts = [
-        "OPS score → skill match factor",
-        "Gap-close plan → readiness",
-        "Debate verdict → go/no-go confidence",
-        "Application package → quality score",
-        "Interview prep → conversion rate",
+        "O*NET fit factor · up to +14pt P(offer)",
+        "Skill proofs built · up to +6pt P(offer)",
+        "Go/no-go signal · sharpens targeting",
+        "Application quality · up to +12pt P(offer)",
+        "Interview readiness · up to +10pt P(offer)",
     ]
     _sp_done  = [
         True,
@@ -10777,25 +10779,34 @@ if guided:
         f'</div>'
         f'</div>'
 
-        # Steps with impact labels
+        # Steps with P(offer) lift badges
         f'<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-bottom:14px">'
         + "".join([
             f'<div style="background:{"rgba(74,222,128,0.12)" if _sdone else ("rgba(255,255,255,0.08)" if _si+1==_sp else "rgba(255,255,255,0.03)")};'
             f'border:1px solid {"rgba(74,222,128,0.4)" if _sdone else ("rgba(255,255,255,0.2)" if _si+1==_sp else "rgba(255,255,255,0.06)")};'
             f'border-radius:8px;padding:8px 10px">'
-            f'<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">'
-            f'<div style="width:20px;height:20px;border-radius:50%;flex-shrink:0;'
+            f'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">'
+            f'<div style="display:flex;align-items:center;gap:5px">'
+            f'<div style="width:18px;height:18px;border-radius:50%;flex-shrink:0;'
             f'background:{"#4ADE80" if _sdone else ("rgba(255,255,255,0.9)" if _si+1==_sp else "rgba(255,255,255,0.1)")};'
             f'display:flex;align-items:center;justify-content:center;'
-            f'font-size:9px;font-weight:900;color:{"#0A1628" if _sdone else ("#0A1628" if _si+1==_sp else "rgba(255,255,255,0.3)")}">'
+            f'font-size:8px;font-weight:900;color:{"#0A1628" if _sdone else ("#0A1628" if _si+1==_sp else "rgba(255,255,255,0.3)")}">'
             f'{"✓" if _sdone else str(_si+1)}</div>'
             f'<div style="font-size:10px;font-weight:{"900" if _si+1==_sp else "700"};'
             f'color:{"rgba(255,255,255,0.9)" if (_sdone or _si+1==_sp) else "rgba(255,255,255,0.35)"}">{_sname}</div>'
             f'</div>'
+            + (
+                f'<div style="font-size:8px;font-weight:800;color:{"#4ADE80" if _sdone else "#FCD34D"};'
+                f'background:{"rgba(74,222,128,0.15)" if _sdone else "rgba(252,211,77,0.12)"};'
+                f'border-radius:4px;padding:1px 5px;white-space:nowrap">'
+                f'{"✓" if _sdone else "+"}{_slift}pt</div>'
+                if _slift > 0 else ""
+            )
+            + f'</div>'
             f'<div style="font-size:8px;color:rgba(255,255,255,{"0.5" if (_sdone or _si+1==_sp) else "0.2"});line-height:1.4">'
             f'{_simp}</div>'
             f'</div>'
-            for _si, (_sname, _sdone, _simp) in enumerate(zip(_sp_steps, _sp_done, _sp_impacts))
+            for _si, (_sname, _sdone, _simp, _slift) in enumerate(zip(_sp_steps, _sp_done, _sp_impacts, _sp_max_lifts))
         ])
         + f'</div>'
 
