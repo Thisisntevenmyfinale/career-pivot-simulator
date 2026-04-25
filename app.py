@@ -9382,18 +9382,30 @@ if quick_apply:
                     if _iwr_qs:
                         st.markdown("**Predicted questions + how to answer:**")
                         for _iq in _iwr_qs:
-                            with st.expander(f"Q: {_iq.get('question','')}", expanded=False):
-                                if _iq.get("why_asked"):
-                                    st.caption(f"Why asked: {_iq['why_asked']}")
-                                if _iq.get("star_framework"):
-                                    st.markdown(f"**Framework:** {_iq['star_framework']}")
-                                if _iq.get("answer_hint"):
-                                    st.markdown(
-                                        f'<div style="background:#FFF8F0;border-left:3px solid #C37D16;'
-                                        f'border-radius:0 6px 6px 0;padding:6px 10px;font-size:12px">'
-                                        f'{_iq["answer_hint"]}</div>',
-                                        unsafe_allow_html=True,
-                                    )
+                            _iq_q = _iq.get("question", "")
+                            _iq_why = _iq.get("why_asked", "")
+                            _iq_star = _iq.get("star_framework", "")
+                            _iq_hint = _iq.get("answer_hint", "")
+                            _iq_inner = ""
+                            if _iq_why:
+                                _iq_inner += f'<div style="font-size:11px;color:rgba(0,0,0,0.5);margin-bottom:4px">Why asked: {_iq_why}</div>'
+                            if _iq_star:
+                                _iq_inner += f'<div style="font-size:12px;font-weight:600;margin-bottom:4px">Framework: {_iq_star}</div>'
+                            if _iq_hint:
+                                _iq_inner += (
+                                    f'<div style="background:#FFF8F0;border-left:3px solid #C37D16;'
+                                    f'border-radius:0 6px 6px 0;padding:6px 10px;font-size:12px">'
+                                    f'{_iq_hint}</div>'
+                                )
+                            st.markdown(
+                                f'<details style="margin-bottom:6px;border:1px solid rgba(0,0,0,0.1);'
+                                f'border-radius:6px;padding:6px 10px">'
+                                f'<summary style="cursor:pointer;font-size:12px;font-weight:600;color:#1D2226">'
+                                f'Q: {_iq_q}</summary>'
+                                f'<div style="padding-top:8px">{_iq_inner}</div>'
+                                f'</details>',
+                                unsafe_allow_html=True,
+                            )
 
                     # Smart questions + salary strategy
                     _iwr_qask = _iwr.get("questions_to_ask", [])
