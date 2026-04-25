@@ -7131,13 +7131,18 @@ if quick_apply:
                                 import concurrent.futures as _pf_cf
                                 _pf_results: Dict[int, Any] = {}
 
+                                # Capture session state values before entering threads
+                                # (st.session_state is not accessible inside ThreadPoolExecutor workers)
+                                _pf_cv_profile = st.session_state.cv_profile
+                                _pf_cv_text = st.session_state.cv_text or ""
+
                                 def _pf_worker(idx_job):
                                     _pidx, _pjob = idx_job
                                     return _pidx, _portfolio_item_worker(
                                         job_dict=_pjob,
                                         current_occ=str(current),
-                                        cv_profile=st.session_state.cv_profile,
-                                        cv_text=st.session_state.cv_text or "",
+                                        cv_profile=_pf_cv_profile,
+                                        cv_text=_pf_cv_text,
                                         api_key=_qa_key,
                                         mat=mat,
                                         use_idf=bool(use_idf),
