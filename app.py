@@ -6768,11 +6768,12 @@ if quick_apply:
                 if not _auto_cv_ok:
                     st.warning("Upload your CV in the sidebar first — it personalises every application.")
 
+                _auto_loc_default = (st.session_state.cv_profile or {}).get("location", "") or ""
                 _auto_loc = st.text_input(
-                    "Location", value="United States", key="qa_auto_loc",
-                    placeholder="New York · Remote · Germany",
+                    "Location", value=_auto_loc_default, key="qa_auto_loc",
+                    placeholder="Munich · Remote · Germany",
                     label_visibility="visible",
-                    help="Used for job search",
+                    help="Used for job search — leave blank for worldwide results",
                 )
 
                 if st.button(
@@ -6790,7 +6791,7 @@ if quick_apply:
                         _auto_jobs: List[Dict] = []
                         if _qa_serp_key:
                             _rj2 = search_real_jobs(
-                                str(target), location=_auto_loc or "United States",
+                                str(target), location=_auto_loc or "",
                                 n_jobs=5, serp_api_key=_qa_serp_key,
                             )
                             if _rj2 and not _rj2[0].get("error"):
@@ -6798,6 +6799,7 @@ if quick_apply:
                         if not _auto_jobs:
                             _ai_ls2 = generate_job_listings(
                                 str(target), str(current), n=5,
+                                location=_auto_loc or None,
                                 prefer_online=bool(_qa_key), api_key=_qa_key or None,
                             )
                             _auto_jobs = [
@@ -6999,9 +7001,10 @@ if quick_apply:
                 )
 
                 if not _f1_done:
+                    _f1_loc_default = (st.session_state.cv_profile or {}).get("location", "") or ""
                     _f1_loc = st.text_input(
-                        "Location", value="United States", key="qa_pf_loc",
-                        placeholder="e.g. New York, Remote, Germany",
+                        "Location", value=_f1_loc_default, key="qa_pf_loc",
+                        placeholder="e.g. Munich, Remote, Germany",
                         label_visibility="collapsed",
                     )
                     st.caption(f"Searching for: **{str(target)}** jobs")
@@ -7014,7 +7017,7 @@ if quick_apply:
                             if _qa_serp_key:
                                 with st.spinner("Searching Google Jobs via SerpAPI…"):
                                     _rj = search_real_jobs(
-                                        str(target), location=_f1_loc or "United States",
+                                        str(target), location=_f1_loc or "",
                                         n_jobs=5, serp_api_key=_qa_serp_key,
                                     )
                                     if _rj and not _rj[0].get("error"):
@@ -7022,6 +7025,7 @@ if quick_apply:
                                     else:
                                         _ai_listings = generate_job_listings(
                                             str(target), str(current), n=5,
+                                            location=_f1_loc or None,
                                             prefer_online=bool(_qa_key), api_key=_qa_key or None,
                                         )
                                         st.session_state.qa_portfolio_jobs = [
@@ -7034,6 +7038,7 @@ if quick_apply:
                                 with st.spinner("Finding matching opportunities…"):
                                     _ai_listings = generate_job_listings(
                                         str(target), str(current), n=5,
+                                        location=_f1_loc or None,
                                         prefer_online=bool(_qa_key), api_key=_qa_key or None,
                                     )
                                     st.session_state.qa_portfolio_jobs = [

@@ -223,6 +223,7 @@ def generate_job_listings(
     cv_profile: Optional[Dict] = None,
     n_jobs: int = 4,
     n: Optional[int] = None,          # alias for n_jobs (backward compat)
+    location: Optional[str] = None,   # preferred job location (city / country)
     model: str = "gpt-4o-mini",
     prefer_online: bool = True,
     api_key: Optional[str] = None,
@@ -252,6 +253,8 @@ def generate_job_listings(
             f"Top skills: {', '.join(p.get('top_skills', [])[:5])}"
         )
 
+    _loc_line = f"- Location: jobs should be in or near {location}" if location else "- Location: worldwide / remote-friendly"
+
     prompt = f"""Generate {n_jobs} realistic LinkedIn job listings for the role: {target_role}
 
 CONTEXT:
@@ -259,12 +262,13 @@ CONTEXT:
 - Overall skill match: {match_score:.0f}/100
 - Transferable skills: {', '.join(top_transfer[:4])}
 - Skills to develop: {', '.join(top_missing[:3])}
+{_loc_line}
 {cv_context}
 
 Make the listings REALISTIC and VARIED:
 - Mix of company sizes (startup, mid-market, enterprise)
 - Mix of seniority (1 entry-level, 2 mid-senior, 1 senior/lead)
-- Realistic salary ranges for the role and location
+- Realistic salary ranges for the role and location (use local currency / norms)
 - Requirements that reflect the actual skill gaps identified
 - Each job should feel distinctly different (different company culture, emphasis)
 
