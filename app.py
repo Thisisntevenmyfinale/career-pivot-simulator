@@ -4748,11 +4748,9 @@ if quick_apply:
                     _br_n = _brier.get("n_resolved", 0)
                     _br_pending = _brier.get("n_pending", 0)
 
-                    with st.expander(
-                        f"AI Calibration · Brier Score"
-                        + (f" — {_brier.get('brier_quality','?')} ({_brier.get('brier_score','?')})" if not _brier.get("insufficient_data") else f" — {_br_n}/{_brier.get('min_required',3)} predictions resolved"),
-                        expanded=not _brier.get("insufficient_data"),
-                    ):
+                    _brier_lbl = (f"AI Calibration · Brier Score — {_brier.get('brier_quality','?')}" if not _brier.get("insufficient_data") else f"AI Calibration · Brier Score — {_br_n}/{_brier.get('min_required',3)} predictions resolved")
+                    _brier_open = st.checkbox(_brier_lbl, key="brier_toggle", value=not _brier.get("insufficient_data"))
+                    if _brier_open:
                         st.markdown(
                             '<div style="font-size:11px;color:rgba(0,0,0,0.5);margin-bottom:10px;line-height:1.6">'
                             '<strong>#1 Mistake with AI backends: not evaluating AI in zero-shot tasks.</strong> '
@@ -4870,10 +4868,9 @@ if quick_apply:
                         _dominant_pct = _stage_dist.get("dominant_pct", 0)
                         _dominant_col = bottleneck_color(_dominant or "")
 
-                        with st.expander(
-                            f"Cross-Rejection Synthesis — {_stage_dist.get('n_rejections',0)} rejections · bottleneck: {_dominant or '?'} ({_dominant_pct}%)",
-                            expanded=len(_rej_entries) >= 3,
-                        ):
+                        _crs_lbl = f"Cross-Rejection Synthesis — {_stage_dist.get('n_rejections',0)} rejections · bottleneck: {_dominant or '?'} ({_dominant_pct}%)"
+                        _crs_open = st.checkbox(_crs_lbl, key="crs_toggle", value=len(_rej_entries) >= 3)
+                        if _crs_open:
                             st.markdown(
                                 '<div style="font-size:11px;color:rgba(0,0,0,0.5);margin-bottom:10px;line-height:1.6">'
                                 'Individual rejection diagnosis answers: "what went wrong with this one?" '
@@ -5398,11 +5395,9 @@ if quick_apply:
                                         _dm_key_str = f"{_match.get('full_name','')}_{_match.get('company','')}"
                                         _dm_data = _all_dms.get(_dm_key_str)
                                         if _dm_data:
-                                            with st.expander(
-                                                f"{_match.get('full_name','?')} @ {_match.get('company','')} "
-                                                f"· {csv_seniority_label(_match.get('seniority_score',2))}",
-                                                expanded=False,
-                                            ):
+                                            _dm_name = f"{_match.get('full_name','?')} @ {_match.get('company','')} · {csv_seniority_label(_match.get('seniority_score',2))}"
+                                            _dm_open = st.checkbox(_dm_name, key=f"dm_toggle_{_match.get('full_name','')}_{_match.get('company','')}", value=False)
+                                            if _dm_open:
                                                 st.markdown(
                                                     f'<div style="font-size:11px;font-weight:700;color:#0A66C2;'
                                                     f'margin-bottom:8px;font-style:italic">'
@@ -6178,7 +6173,8 @@ if quick_apply:
                             _hook_colors = {"data":"#0A66C2","story":"#7C3AED","question":"#D97706","counterintuitive":"#DC2626"}
                             _lc_hc = _hook_colors.get(_lc_hook,"#555")
 
-                            with st.expander(f"Week {_lc_week} — {_lc_theme}", expanded=False):
+                            _lc_wk_open = st.checkbox(f"Week {_lc_week} — {_lc_theme}", key=f"lc_wk_{_lc_week}", value=False)
+                            if _lc_wk_open:
                                 st.markdown(
                                     f'<div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap">'
                                     f'<span style="font-size:9px;background:{_lc_hc}20;color:{_lc_hc};padding:2px 8px;border-radius:4px;font-weight:700">{_lc_hook.upper()} hook</span>'
@@ -7304,7 +7300,8 @@ if quick_apply:
                                 st.markdown("<div style='margin-top:12px'></div>", unsafe_allow_html=True)
                                 _qa_ats_key = f"qa_ats_{_pf_ri}"
                                 _qa_ats_res = st.session_state.get(_qa_ats_key)
-                                with st.expander("ATS Compatibility Scan — keyword gap analysis", expanded=False):
+                                _qa_ats_open = st.checkbox("ATS Compatibility Scan — keyword gap analysis", key=f"qa_ats_toggle_{_pf_ri}", value=False)
+                                if _qa_ats_open:
                                     st.caption(
                                         "75% of resumes are filtered out before human review. "
                                         "Check if your application contains the critical keywords from this JD."
@@ -7383,10 +7380,8 @@ if quick_apply:
                                 st.markdown("<div style='margin-top:12px'></div>", unsafe_allow_html=True)
                                 _def_key = f"def_{_pf_co2}_{_pf_jt2}".replace(" ","_")[:60]
                                 _def_res = st.session_state.defensibility_results.get(_def_key)
-                                with st.expander(
-                                    "Pivot Defensibility Briefing — Hardest questions for this role",
-                                    expanded=False,
-                                ):
+                                _def_open = st.checkbox("Pivot Defensibility Briefing — Hardest questions for this role", key=f"def_toggle_{_pf_ri}", value=False)
+                                if _def_open:
                                     st.caption(
                                         "The questions that will make you sweat — calibrated to your weakest pivot points "
                                         "for this specific company. With exact answers from your CV."
@@ -10029,8 +10024,15 @@ if quick_apply:
                 if _pb_objections:
                     st.markdown("**Handling the Tough Questions:**")
                     for _obj in _pb_objections:
-                        with st.expander(f"Objection: {_obj.get('objection','')}"):
-                            st.markdown(_obj.get("response", ""))
+                        st.markdown(
+                            f'<details style="margin-bottom:6px;border:1px solid rgba(0,0,0,0.10);'
+                            f'border-radius:6px;padding:6px 10px">'
+                            f'<summary style="cursor:pointer;font-size:12px;font-weight:600;color:#1D2226">'
+                            f'Objection: {_obj.get("objection","")}</summary>'
+                            f'<div style="padding-top:8px;font-size:12px;line-height:1.6">{_obj.get("response","")}</div>'
+                            f'</details>',
+                            unsafe_allow_html=True,
+                        )
 
                 # Download
                 st.download_button(
@@ -14440,12 +14442,13 @@ with _tab_execute:
                                         f'</div>',
                                         unsafe_allow_html=True,
                                     )
-                                    with st.expander(f"Read {_ab_model} cover letter"):
-                                        st.markdown(
-                                            f'<div style="font-size:12px;line-height:1.7;color:rgba(0,0,0,0.75);'
-                                            f'white-space:pre-wrap">{_ab_text}</div>',
-                                            unsafe_allow_html=True,
-                                        )
+                                    st.markdown(
+                                        f'<details style="margin-top:6px;border:1px solid rgba(0,0,0,0.10);border-radius:6px;padding:6px 10px">'
+                                        f'<summary style="cursor:pointer;font-size:12px;font-weight:600;color:#0A66C2">Read {_ab_model} cover letter</summary>'
+                                        f'<div style="padding-top:8px;font-size:12px;line-height:1.7;color:rgba(0,0,0,0.75);white-space:pre-wrap">{_ab_text}</div>'
+                                        f'</details>',
+                                        unsafe_allow_html=True,
+                                    )
 
                             if st.button("Clear A/B results", key=f"ab_clear_{i}", type="secondary"):
                                 st.session_state[_ab_key] = None
@@ -14677,7 +14680,8 @@ with _tab_execute:
                                     f'</div>',
                                     unsafe_allow_html=True,
                                 )
-                                with st.expander("View fixed cover letter"):
+                                _show_fixed_cl = st.checkbox("View fixed cover letter", key=f"fixed_cl_toggle_{i}", value=False)
+                                if _show_fixed_cl:
                                     st.text_area(
                                         "Fixed cover letter (copy this)",
                                         value=_fx.get("fixed_cover_letter", ""),
