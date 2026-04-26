@@ -2185,6 +2185,7 @@ DEFAULT_STATE = {
     "qa_portfolio_jobs": None,     # List[Dict] — jobs fetched from SerpAPI / AI
     "qa_portfolio_packages": {},   # {idx: {"job":…,"package":…,"eval":…,"fit":…,"hire_prob":…}}
     "qa_portfolio_mode": "paste",  # "paste" | "find"
+    "qa_wizard_step": 1,           # 1-5 — current step in the paste-path wizard
     # AI Advisor (cross-module synthesis)
     "advisor_result": None,        # synthesize_advisor_recommendation result
     # Market Pulse
@@ -7532,9 +7533,84 @@ if quick_apply:
         # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         # PATH A: PASTE A JOB (targeted single-application flow)
         # Reached only when mode == "paste" (find path ends with st.stop() above)
-        # Phases 1-6: paste JD → assess fit → generate → debate → interview → download
+        # Phases 1-5: paste JD → assess fit → generate → verdict → interview prep
         # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        # ── Phase 1: Job input ──────────────────────────────────────────────────
+
+        # ── Wizard: step bar ─────────────────────────────────────────────────────
+        # Guard: if prerequisite data was cleared, snap back to the appropriate step
+        if st.session_state.qa_wizard_step >= 3 and not st.session_state.qa_closest_occ:
+            st.session_state.qa_wizard_step = 2
+        if st.session_state.qa_wizard_step >= 4 and not st.session_state.qa_package:
+            st.session_state.qa_wizard_step = 3
+        if st.session_state.qa_wizard_step >= 2 and not st.session_state.qa_parsed:
+            st.session_state.qa_wizard_step = 1
+        _qa_ws = st.session_state.qa_wizard_step
+        _qa_wlabels = ["Paste JD", "Assess fit", "Generate", "Verdict", "Prep & Download"]
+        _qa_wdone   = [
+            bool(st.session_state.qa_parsed),
+            bool(st.session_state.qa_closest_occ),
+            bool(st.session_state.qa_package),
+            bool(st.session_state.qa_debate),
+            bool(st.session_state.qa_questions),
+        ]
+        _ws_html_parts = []
+        for _wsi in range(5):
+            _wsn       = _wsi + 1
+            _wactive   = _qa_ws == _wsn
+            _wdone     = _qa_wdone[_wsi]
+            _wbg       = "#057642" if (_wdone and not _wactive) else ("#0A66C2" if _wactive else "rgba(0,0,0,0.10)")
+            _wtc       = "#fff"    if (_wactive or _wdone)      else "rgba(0,0,0,0.35)"
+            _wlc       = "#057642" if (_wdone and not _wactive) else ("#0A66C2" if _wactive else "rgba(0,0,0,0.38)")
+            _wfw       = "900"     if _wactive                  else "600"
+            _wicon     = "✓" if (_wdone and not _wactive) else str(_wsn)
+            _ws_html_parts.append(
+                f'<div style="display:flex;flex-direction:column;align-items:center;flex:1;min-width:0">'
+                f'<div style="width:30px;height:30px;border-radius:50%;background:{_wbg};'
+                f'display:flex;align-items:center;justify-content:center;'
+                f'font-size:12px;font-weight:900;color:{_wtc}">{_wicon}</div>'
+                f'<div style="font-size:9.5px;font-weight:{_wfw};color:{_wlc};margin-top:5px;'
+                f'text-align:center;line-height:1.3;max-width:68px">{_qa_wlabels[_wsi]}</div>'
+                f'</div>'
+            )
+            if _wsi < 4:
+                _wline = "#057642" if _qa_wdone[_wsi] else "rgba(0,0,0,0.10)"
+                _ws_html_parts.append(
+                    f'<div style="height:2px;background:{_wline};flex:1;min-width:6px;'
+                    f'margin-top:15px;align-self:flex-start"></div>'
+                )
+        st.markdown(
+            f'<div style="display:flex;align-items:flex-start;padding:14px 20px 12px 20px;'
+            f'background:#fff;border:1px solid rgba(0,0,0,0.08);border-radius:12px;margin-bottom:18px">'
+            + "".join(_ws_html_parts) + '</div>',
+            unsafe_allow_html=True,
+        )
+
+        # ── Wizard: navigation helper ─────────────────────────────────────────────
+        def _qa_nav(step: int) -> None:
+            """Back / Next buttons for wizard step N."""
+            st.markdown('<div style="height:12px"></div>', unsafe_allow_html=True)
+            _nb, _ns = st.columns(2)
+            with _nb:
+                if step > 1:
+                    if st.button("← Back", key=f"qa_back_{step}", use_container_width=True):
+                        st.session_state.qa_wizard_step = step - 1
+                        st.rerun()
+            with _ns:
+                if step < 5:
+                    _can = {
+                        1: bool(st.session_state.qa_parsed),
+                        2: bool(st.session_state.qa_closest_occ),
+                        3: bool(st.session_state.qa_package),
+                        4: True,
+                    }.get(step, False)
+                    if st.button(
+                        "Next →", key=f"qa_next_{step}",
+                        disabled=not _can, type="primary", use_container_width=True,
+                    ):
+                        st.session_state.qa_wizard_step = step + 1
+                        st.rerun()
+
+        # ── Phase 1: Job input (always shown — compact strip on steps 2+) ──────────
         with st.container(border=True):
             _qa_phase1_done = bool(st.session_state.qa_parsed)
             _qa_p1_icon = "✓" if _qa_phase1_done else "→"
@@ -7548,7 +7624,21 @@ if quick_apply:
                 f'</div></div>',
                 unsafe_allow_html=True,
             )
-            if not _qa_phase1_done:
+            if _qa_ws > 1 and _qa_phase1_done:
+                # Compact confirmation strip shown on steps 2-5
+                _qa_p_s1 = st.session_state.qa_parsed
+                st.markdown(
+                    f'<div style="font-size:12px;color:rgba(0,0,0,0.55)">'
+                    f'<span style="color:#057642;font-weight:700">{check_icon(12)} Done</span> — '
+                    f'<strong>{_qa_p_s1.get("job_title","")}</strong>'
+                    + (f' at <strong>{_qa_p_s1.get("company","")}</strong>' if _qa_p_s1.get("company") else "")
+                    + (f' · {_qa_p_s1.get("location","")}' if _qa_p_s1.get("location") else "")
+                    + f'</div>',
+                    unsafe_allow_html=True,
+                )
+            elif _qa_ws > 1:
+                st.caption("← Go back to Step 1 to paste a job posting first.")
+            elif not _qa_phase1_done:
                 _qa_demo_c, _ = st.columns([1, 4])
                 with _qa_demo_c:
                     if st.button("⚡ Load demo job", key="qa_demo_jd", help="Fill with a realistic PM posting"):
@@ -7605,6 +7695,7 @@ if quick_apply:
                         st.session_state.qa_answers = {}
                         st.session_state.qa_answer_evals = {}
                         st.session_state.qa_linkedin = None
+                        st.session_state.qa_wizard_step = 2  # auto-advance to Assess fit
                         st.rerun()
                 with _qa_col_hint:
                     st.caption("Works with any plain-text job posting. LinkedIn, Indeed, job boards, company careers pages.")
@@ -7628,10 +7719,13 @@ if quick_apply:
                     st.session_state.qa_answers = {}
                     st.session_state.qa_answer_evals = {}
                     st.session_state.qa_linkedin = None
+                    st.session_state.qa_wizard_step = 1
                     st.rerun()
 
+        _qa_nav(1)
+
         # ── Phase 2: Match score + occupation confirmation ────────────────────────
-        if st.session_state.qa_parsed:
+        if st.session_state.qa_parsed and st.session_state.qa_wizard_step == 2:
             _qa_p = st.session_state.qa_parsed
             _qa_requirements = _qa_p.get("key_requirements", [])
 
@@ -7909,8 +8003,10 @@ if quick_apply:
                                     if _ev_score >= 75:
                                         st.success(f"Proof accepted! '{_proof_skill}' is now evidenced in your profile.")
 
+        _qa_nav(2)
+
         # ── Phase 3: Generate application ────────────────────────────────────────
-        if st.session_state.qa_parsed and st.session_state.qa_closest_occ:
+        if st.session_state.qa_parsed and st.session_state.qa_closest_occ and st.session_state.qa_wizard_step == 3:
             _qa_p2 = st.session_state.qa_parsed
             _qa_pkg_done = bool(st.session_state.qa_package)
 
@@ -8078,6 +8174,7 @@ if quick_apply:
                                     role_context=_qa_role_ctx,
                                     score=_qa_score_final,
                                 )
+                        st.session_state.qa_wizard_step = 4  # auto-advance to Verdict
                         st.rerun()
                 else:
                     _qa_pkg2: Optional[ApplicationPackage] = st.session_state.qa_package
@@ -8716,8 +8813,10 @@ if quick_apply:
                                     st.session_state.adversarial_results = _adv_store2
                                     st.rerun()
 
+        _qa_nav(3)
+
         # ── Phase 4: Application Debate — adversarial hiring verdict ───────────
-        if st.session_state.qa_package:
+        if st.session_state.qa_package and st.session_state.qa_wizard_step == 4:
             _qa_pkg_db: Optional[ApplicationPackage] = st.session_state.qa_package
             _qa_p_db = st.session_state.qa_parsed or {}
             _qa_db_done = bool(st.session_state.qa_debate)
@@ -9572,8 +9671,10 @@ if quick_apply:
                         )
                     st.caption(f"Confidence: {_hmd.get('confidence','?')} · {_hmd.get('source','')}")
 
+        _qa_nav(4)
+
         # ── Phase 5: Interview prep ──────────────────────────────────────────────
-        if st.session_state.qa_package:
+        if st.session_state.qa_package and st.session_state.qa_wizard_step == 5:
             _qa_p3 = st.session_state.qa_parsed or {}
             _qa_itv_done = bool(st.session_state.qa_questions)
 
@@ -9786,6 +9887,8 @@ if quick_apply:
                     "Switch to **Guided** mode to run the full 5-phase Career Pivot Sprint, "
                     "including skill gap analysis, adversarial debate, learning plan, and Readiness Score."
                 )
+
+        _qa_nav(5)
 
         # ── Pivot Brief — The Shareable Dossier ─────────────────────────────────
         # Synthesises everything into one narrative document candidates can share.
