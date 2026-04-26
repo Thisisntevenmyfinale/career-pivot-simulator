@@ -6843,13 +6843,17 @@ if quick_apply:
                         st.write("**Step 3/5** — Generating 3 applications in parallel (gpt-4o × 3)…")
                         import concurrent.futures as _auto_cf
 
+                        # Capture session state before entering threads
+                        _auto_cv_profile = st.session_state.cv_profile
+                        _auto_cv_text = st.session_state.cv_text or ""
+
                         def _auto_worker(idx_job2):
                             _ai2, _aj2 = idx_job2
                             return _ai2, _portfolio_item_worker(
                                 job_dict=_aj2,
                                 current_occ=str(current),
-                                cv_profile=st.session_state.cv_profile,
-                                cv_text=st.session_state.cv_text or "",
+                                cv_profile=_auto_cv_profile,
+                                cv_text=_auto_cv_text,
                                 api_key=_qa_key,
                                 mat=mat,
                                 use_idf=bool(use_idf),
