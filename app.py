@@ -2885,21 +2885,21 @@ if quick_apply:
         # ── Tool selector ────────────────────────────────────────────────────────
         _tool_options = [
             "— Select a tool —",
-            "📊  P(offer) Command Center",
-            "🎯  Per-JD Offer Predictor",
-            "📋  Application Pipeline",
-            "📝  Outcome Tracker & Calibration",
-            "📅  Daily Pivot Brief",
-            "🤝  Career Command Center",
-            "👥  Cohort Intelligence & Momentum",
-            "🗺️  Pivot Roadmap",
-            "🔄  Closed-Loop Architecture",
-            "📰  Job Market Pulse & Warm Intro",
-            "⚖️  Decision Matrix",
-            "💰  Compensation Engine",
-            "📱  LinkedIn Content Engine",
-            "🏰  Personal Moat Builder",
-            "📋  Week Zero Protocol",
+            "P(offer) Command Center",
+            "Per-JD Offer Predictor",
+            "Application Pipeline",
+            "Outcome Tracker & Calibration",
+            "Daily Pivot Brief",
+            "Career Command Center",
+            "Cohort Intelligence & Momentum",
+            "Pivot Roadmap",
+            "Closed-Loop Architecture",
+            "Job Market Pulse & Warm Intro",
+            "Decision Matrix",
+            "Compensation Engine",
+            "LinkedIn Content Engine",
+            "Personal Moat Builder",
+            "Week Zero Protocol",
         ]
         _tool_sel_raw = st.selectbox(
             "Tools",
@@ -2908,9 +2908,7 @@ if quick_apply:
             key="tools_tab_sel",
             label_visibility="collapsed",
         )
-        # Strip emoji prefix to get bare tool name for if/elif matching
-        _tool_sel = (_tool_sel_raw.split("  ", 1)[-1].strip()
-                     if "  " in _tool_sel_raw else _tool_sel_raw)
+        _tool_sel = _tool_sel_raw
         if _tool_sel == "— Select a tool —":
             st.caption("↑ Select a tool above to explore it.")
 
