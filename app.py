@@ -8003,7 +8003,8 @@ if quick_apply:
                                     if _ev_score >= 75:
                                         st.success(f"Proof accepted! '{_proof_skill}' is now evidenced in your profile.")
 
-        _qa_nav(2)
+        if st.session_state.qa_wizard_step == 2:
+            _qa_nav(2)
 
         # ── Phase 3: Generate application ────────────────────────────────────────
         if st.session_state.qa_parsed and st.session_state.qa_closest_occ and st.session_state.qa_wizard_step == 3:
@@ -8813,7 +8814,8 @@ if quick_apply:
                                     st.session_state.adversarial_results = _adv_store2
                                     st.rerun()
 
-        _qa_nav(3)
+        if st.session_state.qa_wizard_step == 3:
+            _qa_nav(3)
 
         # ── Phase 4: Application Debate — adversarial hiring verdict ───────────
         if st.session_state.qa_package and st.session_state.qa_wizard_step == 4:
@@ -9671,7 +9673,8 @@ if quick_apply:
                         )
                     st.caption(f"Confidence: {_hmd.get('confidence','?')} · {_hmd.get('source','')}")
 
-        _qa_nav(4)
+        if st.session_state.qa_wizard_step == 4:
+            _qa_nav(4)
 
         # ── Phase 5: Interview prep ──────────────────────────────────────────────
         if st.session_state.qa_package and st.session_state.qa_wizard_step == 5:
@@ -9888,7 +9891,8 @@ if quick_apply:
                     "including skill gap analysis, adversarial debate, learning plan, and Readiness Score."
                 )
 
-        _qa_nav(5)
+        if st.session_state.qa_wizard_step == 5:
+            _qa_nav(5)
 
         # ── Pivot Brief — The Shareable Dossier ─────────────────────────────────
         # Synthesises everything into one narrative document candidates can share.
