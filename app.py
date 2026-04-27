@@ -9056,12 +9056,102 @@ if quick_apply:
                     )
                     st.caption(_arch_note)
 
+
+        # ── Phase 5: Interview prep ──────────────────────────────────────────────
+        if st.session_state.qa_package and st.session_state.qa_wizard_step == 5:
+            _qa_p3 = st.session_state.qa_parsed or {}
+            _qa_itv_done = bool(st.session_state.qa_questions)
+
+            with st.container(border=True):
+                st.markdown(
+                    f'<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">'
+                    f'<div style="width:26px;height:26px;border-radius:50%;'
+                    f'background:{"#0A66C2" if _qa_itv_done else "rgba(0,0,0,0.88)"};'
+                    f'display:flex;align-items:center;justify-content:center;'
+                    f'font-size:11px;font-weight:900;color:#fff">{"✓" if _qa_itv_done else "→"}</div>'
+                    f'<div><div style="font-size:14px;font-weight:800">5 · Prepare for the interview</div>'
+                    f'<div style="font-size:11px;color:rgba(0,0,0,0.45)">'
+                    f'Role-specific questions · answer scoring · coached rewrites</div>'
+                    f'</div></div>',
+                    unsafe_allow_html=True,
+                )
+
+                if not _qa_itv_done:
+                    if st.button("Generate interview questions for this role",
+                                 key="qa_gen_itv", type="primary", use_container_width=True):
+                        with st.spinner("Generating questions tailored to this job posting…"):
+                            st.session_state.qa_questions = generate_interview_questions(
+                                target_role=_qa_p3.get("job_title", str(target)),
+                                job_description=_qa_p3.get("cleaned_description", ""),
+                                cv_text=st.session_state.cv_text or "",
+                                n=5, api_key=_qa_key or None, prefer_online=bool(_qa_key),
+                            )
+                        st.session_state.qa_answers = {}
+                        st.session_state.qa_answer_evals = {}
+                        st.rerun()
+                else:
+                    _qa_qs = st.session_state.qa_questions or []
+                    _qa_ans = st.session_state.qa_answers or {}
+                    _qa_evs = st.session_state.qa_answer_evals or {}
+                    for _qa_qi, _qa_q in enumerate(_qa_qs[:5]):
+                        _qa_ev_q = _qa_evs.get(_qa_qi)
+                        _qa_q_bg = "#F0FAF4" if _qa_ev_q else "#F8FAFF"
+                        _qa_q_border = "#057642" if _qa_ev_q else "#A0C3F0"
+                        st.markdown(
+                            f'<div style="background:{_qa_q_bg};border-left:3px solid {_qa_q_border};'
+                            f'border-radius:0 8px 8px 0;padding:10px 14px;margin-bottom:4px">'
+                            f'<div style="font-size:13px;font-weight:700;color:#1D2226">'
+                            f'Q{_qa_qi+1}: {_qa_q.get("question","")}</div>'
+                            f'<div style="font-size:10px;color:rgba(0,0,0,0.4);margin-top:3px">'
+                            f'{_qa_q.get("type","")} · {_qa_q.get("difficulty","")} · {_qa_q.get("why_asked","")}'
+                            f'</div></div>',
+                            unsafe_allow_html=True,
+                        )
+                        _qa_ans_val = st.text_area(
+                            "Your answer",
+                            value=_qa_ans.get(_qa_qi, ""),
+                            height=80, key=f"qa_ans_{_qa_qi}",
+                            placeholder="Type a draft answer — the AI will score and improve it",
+                            label_visibility="collapsed",
+                        )
+                        _qa_btn_col, _qa_score_col = st.columns([1, 3])
+                        with _qa_btn_col:
+                            if st.button("Score + coach", key=f"qa_ev_{_qa_qi}",
+                                         disabled=not bool(_qa_ans_val.strip())):
+                                if st.session_state.qa_answers is None:
+                                    st.session_state.qa_answers = {}
+                                st.session_state.qa_answers[_qa_qi] = _qa_ans_val
+                                with st.spinner("Evaluating…"):
+                                    _qa_new_eval = evaluate_interview_answer(
+                                        question=_qa_q.get("question", ""),
+                                        answer=_qa_ans_val,
+                                        target_role=_qa_p3.get("job_title", str(target)),
+                                        api_key=_qa_key or None,
+                                        prefer_online=bool(_qa_key),
+                                    )
+                                if st.session_state.qa_answer_evals is None:
+                                    st.session_state.qa_answer_evals = {}
+                                st.session_state.qa_answer_evals[_qa_qi] = _qa_new_eval
+                                st.rerun()
+                        with _qa_score_col:
+                            if _qa_ev_q:
+                                _qa_sc_val = _qa_ev_q.get("overall_score", 0)
+                                _qa_sc_c = "#117A37" if _qa_sc_val >= 75 else "#A05A00"
+                                st.markdown(
+                                    f'<div style="font-size:11px;color:{_qa_sc_c};font-weight:700;padding-top:10px">'
+                                    f'{_qa_sc_val}/100 — {_qa_ev_q.get("one_line_verdict","")}</div>',
+                                    unsafe_allow_html=True,
+                                )
+                        if _qa_ev_q and _qa_ev_q.get("coached_answer"):
+                            with st.expander("Coached answer"):
+                                st.markdown(_qa_ev_q["coached_answer"])
+
         # ════════════════════════════════════════════════════════════════════════
         # PHASE 4.5: NEGOTIATION COMMAND CENTER
         # The phase every other tool ignores. Most candidates leave $15-50k on
         # the table because they don't know what to ask for or how to ask for it.
         # ════════════════════════════════════════════════════════════════════════
-        if st.session_state.qa_package:
+        if st.session_state.qa_package and st.session_state.qa_wizard_step == 5:
             _qa_p_neg = st.session_state.qa_parsed or {}
             _neg_job_title = _qa_p_neg.get("job_title", str(target))
             _neg_company = _qa_p_neg.get("company", "")
@@ -9400,7 +9490,7 @@ if quick_apply:
         # ── Interview War Room ───────────────────────────────────────────────────
         # Pre-interview briefing: company intel + likely questions + STAR answers
         # + questions to ask + salary anchor. Everything in one battle-ready doc.
-        if st.session_state.qa_package:
+        if st.session_state.qa_package and st.session_state.qa_wizard_step == 5:
             _iwr_parsed = st.session_state.qa_parsed or {}
             _iwr_company = _iwr_parsed.get("company", "")
             _iwr_role = _iwr_parsed.get("job_title", str(target))
@@ -9564,7 +9654,7 @@ if quick_apply:
 
         # ── Hiring Manager Dossier ───────────────────────────────────────────────
         # Person-level intel: what does THIS person care about?
-        if st.session_state.qa_package:
+        if st.session_state.qa_package and st.session_state.qa_wizard_step == 5:
             _hmd_parsed = st.session_state.qa_parsed or {}
             _hmd_company = _hmd_parsed.get("company", "")
             _hmd_role = _hmd_parsed.get("job_title", str(target))
@@ -9676,97 +9766,9 @@ if quick_apply:
         if st.session_state.qa_wizard_step == 4:
             _qa_nav(4)
 
-        # ── Phase 5: Interview prep ──────────────────────────────────────────────
-        if st.session_state.qa_package and st.session_state.qa_wizard_step == 5:
-            _qa_p3 = st.session_state.qa_parsed or {}
-            _qa_itv_done = bool(st.session_state.qa_questions)
-
-            with st.container(border=True):
-                st.markdown(
-                    f'<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">'
-                    f'<div style="width:26px;height:26px;border-radius:50%;'
-                    f'background:{"#0A66C2" if _qa_itv_done else "rgba(0,0,0,0.88)"};'
-                    f'display:flex;align-items:center;justify-content:center;'
-                    f'font-size:11px;font-weight:900;color:#fff">{"✓" if _qa_itv_done else "→"}</div>'
-                    f'<div><div style="font-size:14px;font-weight:800">5 · Prepare for the interview</div>'
-                    f'<div style="font-size:11px;color:rgba(0,0,0,0.45)">'
-                    f'Role-specific questions · answer scoring · coached rewrites</div>'
-                    f'</div></div>',
-                    unsafe_allow_html=True,
-                )
-
-                if not _qa_itv_done:
-                    if st.button("Generate interview questions for this role",
-                                 key="qa_gen_itv", type="primary", use_container_width=True):
-                        with st.spinner("Generating questions tailored to this job posting…"):
-                            st.session_state.qa_questions = generate_interview_questions(
-                                target_role=_qa_p3.get("job_title", str(target)),
-                                job_description=_qa_p3.get("cleaned_description", ""),
-                                cv_text=st.session_state.cv_text or "",
-                                n=5, api_key=_qa_key or None, prefer_online=bool(_qa_key),
-                            )
-                        st.session_state.qa_answers = {}
-                        st.session_state.qa_answer_evals = {}
-                        st.rerun()
-                else:
-                    _qa_qs = st.session_state.qa_questions or []
-                    _qa_ans = st.session_state.qa_answers or {}
-                    _qa_evs = st.session_state.qa_answer_evals or {}
-                    for _qa_qi, _qa_q in enumerate(_qa_qs[:5]):
-                        _qa_ev_q = _qa_evs.get(_qa_qi)
-                        _qa_q_bg = "#F0FAF4" if _qa_ev_q else "#F8FAFF"
-                        _qa_q_border = "#057642" if _qa_ev_q else "#A0C3F0"
-                        st.markdown(
-                            f'<div style="background:{_qa_q_bg};border-left:3px solid {_qa_q_border};'
-                            f'border-radius:0 8px 8px 0;padding:10px 14px;margin-bottom:4px">'
-                            f'<div style="font-size:13px;font-weight:700;color:#1D2226">'
-                            f'Q{_qa_qi+1}: {_qa_q.get("question","")}</div>'
-                            f'<div style="font-size:10px;color:rgba(0,0,0,0.4);margin-top:3px">'
-                            f'{_qa_q.get("type","")} · {_qa_q.get("difficulty","")} · {_qa_q.get("why_asked","")}'
-                            f'</div></div>',
-                            unsafe_allow_html=True,
-                        )
-                        _qa_ans_val = st.text_area(
-                            "Your answer",
-                            value=_qa_ans.get(_qa_qi, ""),
-                            height=80, key=f"qa_ans_{_qa_qi}",
-                            placeholder="Type a draft answer — the AI will score and improve it",
-                            label_visibility="collapsed",
-                        )
-                        _qa_btn_col, _qa_score_col = st.columns([1, 3])
-                        with _qa_btn_col:
-                            if st.button("Score + coach", key=f"qa_ev_{_qa_qi}",
-                                         disabled=not bool(_qa_ans_val.strip())):
-                                if st.session_state.qa_answers is None:
-                                    st.session_state.qa_answers = {}
-                                st.session_state.qa_answers[_qa_qi] = _qa_ans_val
-                                with st.spinner("Evaluating…"):
-                                    _qa_new_eval = evaluate_interview_answer(
-                                        question=_qa_q.get("question", ""),
-                                        answer=_qa_ans_val,
-                                        target_role=_qa_p3.get("job_title", str(target)),
-                                        api_key=_qa_key or None,
-                                        prefer_online=bool(_qa_key),
-                                    )
-                                if st.session_state.qa_answer_evals is None:
-                                    st.session_state.qa_answer_evals = {}
-                                st.session_state.qa_answer_evals[_qa_qi] = _qa_new_eval
-                                st.rerun()
-                        with _qa_score_col:
-                            if _qa_ev_q:
-                                _qa_sc_val = _qa_ev_q.get("overall_score", 0)
-                                _qa_sc_c = "#117A37" if _qa_sc_val >= 75 else "#A05A00"
-                                st.markdown(
-                                    f'<div style="font-size:11px;color:{_qa_sc_c};font-weight:700;padding-top:10px">'
-                                    f'{_qa_sc_val}/100 — {_qa_ev_q.get("one_line_verdict","")}</div>',
-                                    unsafe_allow_html=True,
-                                )
-                        if _qa_ev_q and _qa_ev_q.get("coached_answer"):
-                            with st.expander("Coached answer"):
-                                st.markdown(_qa_ev_q["coached_answer"])
 
         # ── Phase 6: Download everything ────────────────────────────────────────
-        if st.session_state.qa_package:
+        if st.session_state.qa_package and st.session_state.qa_wizard_step == 5:
             _qa_p4 = st.session_state.qa_parsed or {}
             _qa_pkg4: Optional[ApplicationPackage] = st.session_state.qa_package
             _qa_ev4 = st.session_state.qa_eval or {}
