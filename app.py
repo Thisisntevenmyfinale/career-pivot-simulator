@@ -11001,33 +11001,33 @@ if guided:
     _sp_ns_col = "#4ADE80" if _ns_prob_pct >= 10 else ("#FCD34D" if _ns_prob_pct >= 5 else "#F87171")
 
     st.markdown(
-        f'<div style="background:linear-gradient(135deg,#0A1628 0%,#0F2347 100%);border-radius:14px;'
-        f'padding:18px 24px 16px 24px;margin-bottom:16px">'
+        f'<div style="background:#fff;border:1px solid rgba(0,0,0,0.10);border-radius:12px;'
+        f'padding:18px 22px 16px 22px;margin-bottom:16px;box-shadow:0 1px 4px rgba(0,0,0,0.05)">'
 
         # Top: title + P(offer) + readiness
-        f'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">'
+        f'<div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:14px">'
         f'<div>'
         f'<div style="display:flex;align-items:center;gap:8px;margin-bottom:3px">'
-        f'<div style="font-size:13px;font-weight:900;color:#fff;letter-spacing:-0.3px">Pivot OS · Career Sprint</div>'
-        f'<div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.06em;'
-        f'background:rgba(255,255,255,0.1);color:rgba(255,255,255,0.7);border-radius:12px;'
-        f'padding:2px 8px;white-space:nowrap">{icon("cpu", 11, "rgba(255,255,255,0.7)")} gpt-4o agent</div>'
+        f'<div style="font-size:14px;font-weight:900;color:#1D2226;letter-spacing:-0.3px">Career Sprint</div>'
+        f'<div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;'
+        f'background:#EEF3FB;color:#0A66C2;border-radius:12px;'
+        f'padding:2px 8px;white-space:nowrap">gpt-4o agent</div>'
         f'</div>'
-        f'<div style="font-size:10px;color:rgba(255,255,255,0.4)">'
-        f'~{_sp_time_total} min total · {sum(_sp_done)}/5 steps · goal: maximize P(offer)</div>'
+        f'<div style="font-size:11px;color:rgba(0,0,0,0.45)">'
+        f'~{_sp_time_total} min total · {sum(_sp_done)}/5 steps complete · goal: maximize P(offer)</div>'
         f'</div>'
         # Right: P(offer) + Readiness
-        f'<div style="display:flex;gap:20px;align-items:center">'
+        f'<div style="display:flex;gap:20px;align-items:flex-start">'
         f'<div style="text-align:right">'
         f'<div style="font-size:28px;font-weight:900;color:{_sp_ns_col};line-height:1">{_ns_prob_pct}%</div>'
-        f'<div style="font-size:8px;font-weight:800;letter-spacing:0.1em;text-transform:uppercase;'
-        f'color:rgba(255,255,255,0.35)">P(offer)</div>'
+        f'<div style="font-size:9px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;'
+        f'color:rgba(0,0,0,0.40)">P(offer)</div>'
         f'</div>'
         f'<div style="text-align:right">'
         f'<div style="font-size:28px;font-weight:900;color:{_readiness_bar_color};line-height:1">'
-        f'{_readiness}<span style="font-size:11px;font-weight:600;color:rgba(255,255,255,0.3)">/100</span></div>'
-        f'<div style="font-size:8px;font-weight:800;letter-spacing:0.1em;text-transform:uppercase;'
-        f'color:rgba(255,255,255,0.35)">Readiness</div>'
+        f'{_readiness}<span style="font-size:11px;font-weight:600;color:rgba(0,0,0,0.30)">/100</span></div>'
+        f'<div style="font-size:9px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;'
+        f'color:rgba(0,0,0,0.40)">Readiness</div>'
         f'</div>'
         f'</div>'
         f'</div>'
@@ -11035,28 +11035,28 @@ if guided:
         # Steps with P(offer) lift badges
         f'<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-bottom:14px">'
         + "".join([
-            f'<div style="background:{"rgba(74,222,128,0.12)" if _sdone else ("rgba(255,255,255,0.08)" if _si+1==_sp else "rgba(255,255,255,0.03)")};'
-            f'border:1px solid {"rgba(74,222,128,0.4)" if _sdone else ("rgba(255,255,255,0.2)" if _si+1==_sp else "rgba(255,255,255,0.06)")};'
+            f'<div style="background:{"#F0FAF4" if _sdone else ("#EEF3FB" if _si+1==_sp else "#F9FAFB")};'
+            f'border:1px solid {"#057642" if _sdone else ("#0A66C2" if _si+1==_sp else "rgba(0,0,0,0.10)")};'
             f'border-radius:8px;padding:8px 10px">'
             f'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">'
             f'<div style="display:flex;align-items:center;gap:5px">'
             f'<div style="width:18px;height:18px;border-radius:50%;flex-shrink:0;'
-            f'background:{"#4ADE80" if _sdone else ("rgba(255,255,255,0.9)" if _si+1==_sp else "rgba(255,255,255,0.1)")};'
+            f'background:{"#057642" if _sdone else ("#0A66C2" if _si+1==_sp else "rgba(0,0,0,0.12)")};'
             f'display:flex;align-items:center;justify-content:center;'
-            f'font-size:8px;font-weight:900;color:{"#0A1628" if _sdone else ("#0A1628" if _si+1==_sp else "rgba(255,255,255,0.3)")}">'
+            f'font-size:8px;font-weight:900;color:#fff">'
             f'{"✓" if _sdone else str(_si+1)}</div>'
             f'<div style="font-size:10px;font-weight:{"900" if _si+1==_sp else "700"};'
-            f'color:{"rgba(255,255,255,0.9)" if (_sdone or _si+1==_sp) else "rgba(255,255,255,0.35)"}">{_sname}</div>'
+            f'color:{"#1D2226" if (_sdone or _si+1==_sp) else "rgba(0,0,0,0.35)"}">{_sname}</div>'
             f'</div>'
             + (
-                f'<div style="font-size:8px;font-weight:800;color:{"#4ADE80" if _sdone else "#FCD34D"};'
-                f'background:{"rgba(74,222,128,0.15)" if _sdone else "rgba(252,211,77,0.12)"};'
+                f'<div style="font-size:8px;font-weight:800;color:{"#057642" if _sdone else "#0A66C2"};'
+                f'background:{"rgba(5,118,66,0.12)" if _sdone else "rgba(10,102,194,0.10)"};'
                 f'border-radius:4px;padding:1px 5px;white-space:nowrap">'
                 f'{"✓" if _sdone else "+"}{_slift}pt</div>'
                 if _slift > 0 else ""
             )
             + f'</div>'
-            f'<div style="font-size:8px;color:rgba(255,255,255,{"0.5" if (_sdone or _si+1==_sp) else "0.2"});line-height:1.4">'
+            f'<div style="font-size:8px;color:{"rgba(0,0,0,0.50)" if (_sdone or _si+1==_sp) else "rgba(0,0,0,0.25)"};line-height:1.4">'
             f'{_simp}</div>'
             f'</div>'
             for _si, (_sname, _sdone, _simp, _slift) in enumerate(zip(_sp_steps, _sp_done, _sp_impacts, _sp_max_lifts))
@@ -11064,30 +11064,30 @@ if guided:
         + f'</div>'
 
         # Progress bar
-        f'<div style="height:3px;background:rgba(255,255,255,0.08);border-radius:2px;overflow:hidden">'
-        f'<div style="width:{_sp_pct}%;height:3px;background:#4ADE80;border-radius:2px;transition:width 0.8s"></div>'
+        f'<div style="height:3px;background:rgba(0,0,0,0.07);border-radius:2px;overflow:hidden">'
+        f'<div style="width:{_sp_pct}%;height:3px;background:#0A66C2;border-radius:2px;transition:width 0.8s"></div>'
         f'</div>'
 
         # ── Brier Self-Calibration Status Bar ──────────────────────────────
         + (lambda b: (
-            f'<div style="margin-top:10px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);'
+            f'<div style="margin-top:10px;background:#F3F6F9;border:1px solid rgba(0,0,0,0.08);'
             f'border-radius:6px;padding:8px 12px;display:flex;align-items:center;gap:14px">'
             f'<div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;'
-            f'color:rgba(255,255,255,0.35);white-space:nowrap">AI Calibration</div>'
+            f'color:rgba(0,0,0,0.40);white-space:nowrap">AI Calibration</div>'
             + (
-                f'<div style="flex:1;height:4px;background:rgba(255,255,255,0.08);border-radius:2px;overflow:hidden">'
+                f'<div style="flex:1;height:4px;background:rgba(0,0,0,0.08);border-radius:2px;overflow:hidden">'
                 f'<div style="width:{min(100, int((1-float(b.get("brier_score",0.25)))*100))}%;height:4px;'
-                f'background:#4ADE80;border-radius:2px"></div></div>'
-                f'<div style="font-size:10px;font-weight:800;color:#4ADE80;white-space:nowrap">'
+                f'background:#057642;border-radius:2px"></div></div>'
+                f'<div style="font-size:10px;font-weight:700;color:#057642;white-space:nowrap">'
                 f'BS = {b.get("brier_score","?")} · {b.get("brier_quality","?")} · ×{b.get("correction_factor",1.0):.2f} correction</div>'
-                f'<div style="font-size:9px;color:rgba(255,255,255,0.30);white-space:nowrap">'
+                f'<div style="font-size:9px;color:rgba(0,0,0,0.40);white-space:nowrap">'
                 f'{b.get("n_resolved",0)} outcomes logged</div>'
                 if not b.get("insufficient_data") else
-                f'<div style="flex:1;height:4px;background:rgba(255,255,255,0.08);border-radius:2px;overflow:hidden">'
-                f'<div style="width:{int(b.get("n_resolved",0)/3*100)}%;height:4px;background:#FCD34D;border-radius:2px"></div></div>'
-                f'<div style="font-size:10px;color:#FCD34D;font-weight:700;white-space:nowrap">'
+                f'<div style="flex:1;height:4px;background:rgba(0,0,0,0.08);border-radius:2px;overflow:hidden">'
+                f'<div style="width:{int(b.get("n_resolved",0)/3*100)}%;height:4px;background:#A05A00;border-radius:2px"></div></div>'
+                f'<div style="font-size:10px;color:#A05A00;font-weight:700;white-space:nowrap">'
                 f'{b.get("n_resolved",0)}/{b.get("min_required",3)} outcomes · calibrating…</div>'
-                f'<div style="font-size:9px;color:rgba(255,255,255,0.30)">Log outcomes to activate self-correction</div>'
+                f'<div style="font-size:9px;color:rgba(0,0,0,0.40)">Log outcomes to activate self-correction</div>'
             )
             + f'</div>'
         ))(_ns_brier_data)
@@ -12061,21 +12061,21 @@ if guided:
 
         def _make_score_card(label: str, score: Optional[int], model: str, evlabel: str) -> str:
             sc = score or 0
-            col = "#9EF5C0" if sc >= 75 else ("#FFD580" if sc >= 55 else "#FF8A8A")
+            col = "#057642" if sc >= 75 else ("#A05A00" if sc >= 55 else "#B71C1C")
             score_html = (
                 f'<span style="color:{col};font-weight:900">{sc}</span>'
-                '<span style="font-size:10px;color:rgba(255,255,255,0.35)">/100</span>'
-            ) if score else '<span style="color:rgba(255,255,255,0.35)">—</span>'
+                '<span style="font-size:10px;color:rgba(0,0,0,0.35)">/100</span>'
+            ) if score else '<span style="color:rgba(0,0,0,0.30)">—</span>'
             return (
-                f'<div style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.10);'
+                f'<div style="background:#F9FAFB;border:1px solid rgba(0,0,0,0.09);'
                 f'border-radius:8px;padding:12px;text-align:center">'
                 f'<div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;'
-                f'color:rgba(255,255,255,0.40);margin-bottom:4px">{label}</div>'
+                f'color:rgba(0,0,0,0.40);margin-bottom:4px">{label}</div>'
                 f'<div style="font-size:22px;line-height:1">{score_html}</div>'
                 f'<div style="margin-top:6px"><span style="font-size:9px;font-family:monospace;'
-                f'background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.40);'
+                f'background:#EEF3FB;color:#0A66C2;'
                 f'border-radius:3px;padding:2px 5px">{model}</span></div>'
-                f'<div style="font-size:9px;color:rgba(255,255,255,0.25);margin-top:2px">{evlabel}</div>'
+                f'<div style="font-size:9px;color:rgba(0,0,0,0.35);margin-top:2px">{evlabel}</div>'
                 f'</div>'
             )
 
@@ -12087,21 +12087,22 @@ if guided:
         ])
 
         st.markdown(
-            # ── Outer dark card ──────────────────────────────────────────────
-            '<div style="background:#0A1628;border-radius:14px;padding:24px 28px;margin-top:8px">'
+            # ── Completion card (LinkedIn-style white) ────────────────────────
+            '<div style="background:#fff;border:1px solid rgba(0,0,0,0.10);border-radius:12px;'
+            'padding:24px 28px;margin-top:8px;box-shadow:0 1px 4px rgba(0,0,0,0.05)">'
 
             # Header
             '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">'
             '<div>'
-            '<div style="font-size:20px;font-weight:900;color:#4ADE80;margin-bottom:3px">Mission Complete ✓</div>'
-            '<div style="font-size:12px;color:rgba(255,255,255,0.45)">'
+            '<div style="font-size:20px;font-weight:900;color:#057642;margin-bottom:3px">Sprint Complete</div>'
+            '<div style="font-size:12px;color:rgba(0,0,0,0.45)">'
             f'{str(current)[:35]} → {str(target)[:35]} · full package generated</div>'
             '</div>'
             # P(offer) hero
             f'<div style="text-align:right">'
             f'<div style="font-size:36px;font-weight:900;color:{_ns_prob_col};line-height:1">{_p_raw}%</div>'
-            f'<div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;color:rgba(255,255,255,0.35)">P(offer)</div>'
-            + (f'<div style="font-size:10px;color:rgba(255,255,255,0.40);margin-top:1px">calibrated: {_p_cal}% (×{_brier_cf:.2f})</div>' if _brier_suf else '')
+            f'<div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:rgba(0,0,0,0.40)">P(offer)</div>'
+            + (f'<div style="font-size:10px;color:rgba(0,0,0,0.40);margin-top:1px">calibrated: {_p_cal}% (×{_brier_cf:.2f})</div>' if _brier_suf else '')
             + '</div>'
             '</div>'
 
@@ -12111,28 +12112,28 @@ if guided:
             + '</div>'
 
             # ── Self-Calibration Status ───────────────────────────────────
-            '<div style="background:rgba(248,113,113,0.08);border:1px solid rgba(248,113,113,0.20);'
+            '<div style="background:#F3F6F9;border:1px solid rgba(0,0,0,0.08);'
             'border-radius:8px;padding:12px 16px;margin-bottom:16px">'
             '<div style="display:flex;align-items:center;gap:16px">'
             '<div>'
-            '<div style="font-size:10px;font-weight:800;color:#F87171;text-transform:uppercase;'
+            '<div style="font-size:10px;font-weight:800;color:#0A66C2;text-transform:uppercase;'
             'letter-spacing:0.06em;margin-bottom:3px">Self-Calibration Engine</div>'
-            '<div style="font-size:12px;color:rgba(255,255,255,0.65)">The AI evaluates its own prediction accuracy</div>'
+            '<div style="font-size:12px;color:rgba(0,0,0,0.55)">The AI evaluates its own prediction accuracy</div>'
             '</div>'
             '<div style="flex:1">'
             + (
-                f'<div style="font-family:monospace;font-size:11px;color:#FCA5A5;line-height:1.7">'
+                f'<div style="font-family:monospace;font-size:11px;color:rgba(0,0,0,0.65);line-height:1.7">'
                 f'Brier Score: {_brier_bs} · Quality: {_ns_brier_data.get("brier_quality","?")} <br>'
                 f'{_brier_n} outcomes resolved · correction ×{_brier_cf:.2f} applied to P(offer)</div>'
                 if _brier_suf else
-                f'<div style="font-size:11px;color:rgba(255,255,255,0.40)">Needs {3 - _brier_n} more outcomes to activate.<br>'
-                f'Go to Outcome Tracker → log results → P(offer) self-corrects.</div>'
+                f'<div style="font-size:11px;color:rgba(0,0,0,0.45)">Needs {3 - _brier_n} more outcomes to activate.<br>'
+                f'Log outcomes in the Outcome Tracker → P(offer) self-corrects.</div>'
             )
             + '</div>'
-            f'<div style="font-size:28px;font-weight:900;color:{"#4ADE80" if _brier_suf else "#FCD34D"};'
+            f'<div style="font-size:28px;font-weight:900;color:{"#057642" if _brier_suf else "#A05A00"};'
             f'text-align:center;min-width:48px">'
             + ("✓" if _brier_suf else f'{_brier_n}/3')
-            + f'<div style="font-size:9px;font-weight:700;color:rgba(255,255,255,0.35);text-transform:uppercase;letter-spacing:0.05em">'
+            + f'<div style="font-size:9px;font-weight:700;color:rgba(0,0,0,0.40);text-transform:uppercase;letter-spacing:0.05em">'
             + ("calibrated" if _brier_suf else "pending")
             + '</div></div>'
             '</div></div>'
