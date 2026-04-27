@@ -7724,8 +7724,6 @@ if quick_apply:
                     st.session_state.qa_wizard_step = 1
                     st.rerun()
 
-        _qa_nav(1)
-
         # ── Phase 2: Match score + occupation confirmation ────────────────────────
         if st.session_state.qa_parsed and st.session_state.qa_wizard_step == 2:
             _qa_p = st.session_state.qa_parsed
@@ -10063,13 +10061,13 @@ if not st.session_state.has_run:
         '<div style="font-size:10px;font-weight:800;letter-spacing:0.14em;text-transform:uppercase;'
         'opacity:0.55;margin-bottom:12px">Pivot OS · Career Pivot Simulator</div>'
         '<div style="font-size:30px;font-weight:900;line-height:1.15;margin-bottom:10px;letter-spacing:-0.5px">'
-        'Know your offer probability<br>'
-        '<span style="color:#7DD3FC">before you apply.</span>'
+        'Stop writing cover letters<br>'
+        '<span style="color:#7DD3FC">from scratch.</span>'
         '</div>'
         '<div style="font-size:13px;opacity:0.80;line-height:1.65;max-width:560px">'
-        'Pick a target role, upload your CV, and instantly see your P(offer) score. '
-        'AI generates a tailored application, an adversarial debate tests it, '
-        'and the system calibrates itself every time you log an outcome.'
+        'Paste a job posting — get a tailored cover letter, rewritten CV bullets, and a quality score in seconds. '
+        'An adversarial AI debate stress-tests your application before you send it, '
+        'and the system learns from every outcome you log.'
         '</div>'
         '</div>',
         unsafe_allow_html=True,
