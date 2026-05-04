@@ -7611,6 +7611,16 @@ if quick_apply:
                     ):
                         st.session_state.qa_wizard_step = step + 1
                         st.rerun()
+                elif step == 5:
+                    if st.button("Restart →", key="qa_restart_5", use_container_width=True):
+                        for _k in ["qa_job_text","qa_parsed","qa_closest_occ","qa_package",
+                                   "qa_eval","qa_questions","qa_answers","qa_answer_evals",
+                                   "qa_debate","qa_wizard_step"]:
+                            if _k == "qa_wizard_step":
+                                st.session_state[_k] = 1
+                            else:
+                                st.session_state[_k] = None if _k != "qa_job_text" else ""
+                        st.rerun()
 
         # ── Phase 1: Job input (always shown — compact strip on steps 2+) ──────────
         with st.container(border=True):
@@ -9056,6 +9066,15 @@ if quick_apply:
                     )
                     st.caption(_arch_note)
 
+                # ── Auto-advance CTA after verdict ────────────────────────────
+                if _qa_db_done:
+                    st.markdown('<div style="height:8px"></div>', unsafe_allow_html=True)
+                    if st.button(
+                        "Continue to Interview Prep →",
+                        key="qa_step4_to5", type="primary", use_container_width=True,
+                    ):
+                        st.session_state.qa_wizard_step = 5
+                        st.rerun()
 
         # ── Phase 5: Interview prep ──────────────────────────────────────────────
         if st.session_state.qa_package and st.session_state.qa_wizard_step == 5:
